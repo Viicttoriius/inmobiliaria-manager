@@ -26,6 +26,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: '' # Deshabilita explícitamente el caché para evitar el error de lockfile
 
       - name: Install Backend Dependencies
         run: |
