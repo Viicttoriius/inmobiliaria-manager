@@ -38,17 +38,12 @@
         ]
       },
       {
-        "from": "scrapers",
-        "to": "scrapers"
-      },
-      {
         "from": "data",
         "to": "data"
       }
     ],
     "win": {
-      "target": "nsis",
-      "icon": "frontend/public/vite.svg"
+      "target": "nsis"
     },
     "mac": {
       "target": "dmg",
@@ -65,7 +60,7 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "VictorMunozLopez",
+      "owner": "Viicttoriius",
       "repo": "inmobiliaria-manager"
     }
   },
