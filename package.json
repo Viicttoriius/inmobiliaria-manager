@@ -1,0 +1,82 @@
+{
+  "name": "inmobiliaria-manager",
+  "version": "1.0.0",
+  "description": "Sistema de Gestión Inmobiliaria con Automatización",
+  "main": "electron/main.js",
+  "author": "Victor Muñoz Lopez",
+  "license": "Apache-2.0",
+  "scripts": {
+    "start": "electron .",
+    "dev": "concurrently \"npm run dev --prefix frontend\" \"npm run dev --prefix backend\"",
+    "electron:dev": "concurrently -k \"cross-env BROWSER=none npm run dev --prefix frontend\" \"npm run dev --prefix backend\" \"wait-on http://localhost:5173 && electron .\"",
+    "prebuild": "npm install --prefix frontend && npm run build --prefix frontend && npm install --prefix backend",
+    "dist": "electron-builder",
+    "release": "electron-builder --publish always"
+  },
+  "build": {
+    "appId": "com.victormunoz.inmobiliaria",
+    "productName": "Inmobiliaria Manager",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "frontend/dist/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "backend",
+        "to": "backend",
+        "filter": [
+          "**/*",
+          "!node_modules/.cache",
+          "!test",
+          "!tests",
+          "!.wwebjs_auth",
+          "!.wwebjs_cache"
+        ]
+      },
+      {
+        "from": "scrapers",
+        "to": "scrapers"
+      },
+      {
+        "from": "data",
+        "to": "data"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "frontend/public/vite.svg"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Office"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "VictorMunozLopez",
+      "repo": "inmobiliaria-manager"
+    }
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron": "^28.1.0",
+    "electron-builder": "^24.9.1",
+    "wait-on": "^7.2.0"
+  },
+  "dependencies": {
+    "electron-updater": "^6.1.7"
+  }
+}

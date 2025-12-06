@@ -1,0 +1,57 @@
+# Dependencias
+node_modules/
+package-lock.json
+
+# Archivos de build
+dist/
+dist_electron/
+release/
+.astro/
+
+# Variables de entorno
+.env
+.env.local
+.env.production
+.env.*
+
+# Datos locales
+data/
+*.json
+!package.json
+!tsconfig.json
+!data/clients/.keep
+!data/properties/.keep
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporal
+tmp/
+temp/
+*.tmp
+
+# WhatsApp Session (Backend)
+backend/.wwebjs_auth/
+backend/.wwebjs_cache/
+
+# Scrapers data
+scrapers/*/data/
+*.zip
+
+# Electron
+build/
