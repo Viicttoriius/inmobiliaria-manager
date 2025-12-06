@@ -26,7 +26,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache-dependency-path: '**/package-lock.json' # Forzamos la ruta del lockfile para ver si así lo encuentra
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+            package-lock.json
 
       - name: Install Backend Dependencies
         run: |
