@@ -26,7 +26,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: '' # Deshabilita explícitamente el caché para evitar el error de lockfile
+          cache-dependency-path: '**/package-lock.json' # Forzamos la ruta del lockfile para ver si así lo encuentra
 
       - name: Install Backend Dependencies
         run: |
