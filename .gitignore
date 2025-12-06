@@ -1,6 +1,5 @@
 # Dependencias
 node_modules/
-package-lock.json
 
 # Archivos de build
 dist/
@@ -18,6 +17,7 @@ release/
 data/
 *.json
 !package.json
+!**/package-lock.json
 !tsconfig.json
 !data/clients/.keep
 !data/properties/.keep
