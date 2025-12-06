@@ -26,8 +26,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          # Eliminamos el cache por ahora para evitar errores de lockfile
-          # cache: 'npm'
 
       - name: Install Backend Dependencies
         run: |
