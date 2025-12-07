@@ -1,8 +1,11 @@
-import { useState, useEffect } from 'react'
-import { Home, Building2, MapPin, Calendar, Phone, ExternalLink, Search, Filter, Play, Users, MessageSquare, Plus, Trash2, Send, RefreshCw, Image as ImageIcon, Pencil, History, Settings, AlertCircle, CheckCircle, Info, X, Bell, LifeBuoy } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { Home, Building2, MapPin, Calendar, Phone, ExternalLink, Search, Filter, Play, Users, MessageSquare, Plus, Trash2, Send, RefreshCw, Image as ImageIcon, Pencil, History, Settings, AlertCircle, CheckCircle, Info, X, Bell, LifeBuoy, Upload, Mail } from 'lucide-react'
+import Papa from 'papaparse';
+import UpdateNotification from './components/UpdateNotification';
 import './App.css'
 
 const API_URL = 'http://localhost:3001/api';
+const NOTIFICATION_SOUND_URL = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
 
 function App() {
   const [properties, setProperties] = useState([])
@@ -17,11 +20,18 @@ function App() {
   const [showFotocasaOptions, setShowFotocasaOptions] = useState(false);
   const [scrapingLog, setScrapingLog] = useState('')
 
+  // Refs para detección de cambios (nuevos clientes/propiedades)
+  const prevClientsRef = useRef(null);
+  const prevPropertiesRef = useRef(null);
+  const audioRef = useRef(new Audio(NOTIFICATION_SOUND_URL));
+
   // Estados para Modal de Configuración
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [configStatus, setConfigStatus] = useState({ whatsapp: { ready: false, qr: null }, email: { configured: false, user: '' } });
   const [emailForm, setEmailForm] = useState({ email: '', password: '' });
   const [savingEmail, setSavingEmail] = useState(false);
+  const [scraperConfig, setScraperConfig] = useState({ fotocasa: { enabled: false, interval: "60" } });
+  const [savingScraperConfig, setSavingScraperConfig] = useState(false);
 
   // Estados para Notificaciones y Modales
   const [notifications, setNotifications] = useState([]);
@@ -55,10 +65,66 @@ function App() {
     onConfirm: () => {}
   });
 
+  // Column Resizing Logic
+  const [columnWidths, setColumnWidths] = useState({
+    name: 150,
+    phone: 120,
+    email: 200,
+    contactName: 150,
+    location: 150,
+    propertyType: 120,
+    adLink: 100,
+    whatsappLink: 100,
+    answered: 100,
+    response: 200,
+    date: 120,
+    appointmentDate: 150,
+    actions: 120
+  });
+
+  const resizingRef = useRef({ column: null, startX: 0, startWidth: 0 });
+
+  const handleMouseMove = useCallback((e) => {
+    if (!resizingRef.current.column) return;
+    const { column, startX, startWidth } = resizingRef.current;
+    const diff = e.clientX - startX;
+    setColumnWidths(prev => ({
+      ...prev,
+      [column]: Math.max(50, startWidth + diff)
+    }));
+  }, []);
+
+  const handleMouseUp = useCallback(() => {
+    resizingRef.current.column = null;
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'default';
+  }, [handleMouseMove]);
+
+  const startResizing = (e, column) => {
+    e.preventDefault();
+    resizingRef.current = {
+      column,
+      startX: e.clientX,
+      startWidth: columnWidths[column] || 100
+    };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'col-resize';
+  };
+
   const showNotification = (message, type = 'info') => {
     const id = Date.now();
     const newNotification = { id, message, type, timestamp: new Date().toISOString() };
     
+    // Reproducir sonido
+    try {
+        audioRef.current.currentTime = 0;
+        audioRef.current.play().catch(e => console.log("Audio play failed (interaction needed first):", e));
+    } catch (e) {
+        console.error("Error playing notification sound:", e);
+    }
+
     // Mostrar toast
     setNotifications(prev => [...prev, newNotification]);
     setTimeout(() => {
@@ -129,7 +195,22 @@ function App() {
 
 
 
-  const [newClient, setNewClient] = useState({ name: '', phone: '', email: '', interest: 'Comprar', preferences: '' })
+  const [newClient, setNewClient] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    interest: 'Comprar',
+    preferences: '',
+    contactName: '',
+    location: '',
+    adLink: '',
+    status: 'Enviado',
+    propertyType: '',
+    answered: '',
+    response: '',
+    date: '',
+    appointmentDate: ''
+  })
   const [editingId, setEditingId] = useState(null)
   const [selectedClients, setSelectedClients] = useState([])
   const [selectedProperties, setSelectedProperties] = useState([])
@@ -141,14 +222,34 @@ function App() {
   const [updateLog, setUpdateLog] = useState([]);
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [viewingClientHistory, setViewingClientHistory] = useState(null);
+  const [showClientForm, setShowClientForm] = useState(false);
 
   // Filtros de Clientes
-  const [clientFilters, setClientFilters] = useState({ search: '', interest: 'all' });
+  const [clientFilters, setClientFilters] = useState({ 
+    search: '', 
+    status: 'all',
+    propertyType: 'all',
+    answered: 'all',
+    location: '',
+    date: '',
+    appointmentDate: '',
+    phone: '',
+    email: '',
+    adLink: ''
+  });
   const [filteredClients, setFilteredClients] = useState([]);
 
   useEffect(() => {
     loadProperties()
     loadClients()
+    
+    // Polling automático cada 10 segundos para actualizar datos y notificar
+    const interval = setInterval(() => {
+        loadProperties(true);
+        loadClients(true);
+    }, 10000);
+    
+    return () => clearInterval(interval);
   }, [])
 
   useEffect(() => {
@@ -159,39 +260,122 @@ function App() {
   useEffect(() => {
     let result = [...clients];
     
+    // Helper para normalizar fechas del CSV (DD/MM/YY o D/M/YY) a YYYY-MM-DD
+    const normalizeDate = (dateStr) => {
+        if (!dateStr) return '';
+        // Quitar hora si existe (para fecha cita)
+        const datePart = dateStr.split(' ')[0];
+        const parts = datePart.trim().split('/');
+        if (parts.length === 3) {
+            let [d, m, y] = parts;
+            if (d.length === 1) d = '0' + d;
+            if (m.length === 1) m = '0' + m;
+            if (y.length === 2) y = '20' + y;
+            return `${y}-${m}-${d}`;
+        }
+        return '';
+    };
+
     if (clientFilters.search) {
       const search = clientFilters.search.toLowerCase();
       result = result.filter(c => 
         c.name.toLowerCase().includes(search) || 
         c.phone.includes(search) ||
-        (c.email && c.email.toLowerCase().includes(search))
+        (c.email && c.email.toLowerCase().includes(search)) ||
+        (c.contactName && c.contactName.toLowerCase().includes(search)) ||
+        (c.response && c.response.toLowerCase().includes(search))
       );
     }
 
-    if (clientFilters.interest !== 'all') {
-      result = result.filter(c => c.interest === clientFilters.interest);
+    if (clientFilters.status !== 'all') {
+      result = result.filter(c => c.status === clientFilters.status);
+    }
+
+    if (clientFilters.propertyType !== 'all') {
+      const type = clientFilters.propertyType;
+      if (type === 'Viviendas') {
+        result = result.filter(c => {
+           const pType = (c.propertyType || '').trim();
+           return ['Casa', 'Piso', 'Viviendas', 'Chalet', 'Finca rústica', 'Finca rustica'].includes(pType);
+        });
+      } else {
+        result = result.filter(c => (c.propertyType || '').trim() === type);
+      }
+    }
+
+    if (clientFilters.answered !== 'all') {
+      result = result.filter(c => c.answered === clientFilters.answered);
+    }
+
+    if (clientFilters.location) {
+      const loc = clientFilters.location.toLowerCase();
+      result = result.filter(c => c.location && c.location.toLowerCase().includes(loc));
+    }
+
+    if (clientFilters.date) {
+      result = result.filter(c => normalizeDate(c.date) === clientFilters.date);
+    }
+
+    if (clientFilters.appointmentDate) {
+      result = result.filter(c => normalizeDate(c.appointmentDate) === clientFilters.appointmentDate);
+    }
+
+    if (clientFilters.phone) {
+      result = result.filter(c => c.phone && c.phone.includes(clientFilters.phone));
+    }
+
+    if (clientFilters.email) {
+      const emailFilter = clientFilters.email.toLowerCase();
+      result = result.filter(c => c.email && c.email.toLowerCase().includes(emailFilter));
+    }
+
+    if (clientFilters.adLink) {
+      const linkFilter = clientFilters.adLink.toLowerCase();
+      result = result.filter(c => c.adLink && c.adLink.toLowerCase().includes(linkFilter));
     }
 
     setFilteredClients(result);
   }, [clients, clientFilters]);
 
-  const loadProperties = async () => {
-    setLoading(true)
+  const loadProperties = async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
-      const response = await fetch(`${API_URL}/properties`)
+      const response = await fetch(`${API_URL}/properties?t=${new Date().getTime()}`)
       const data = await response.json()
+      
+      // Detección de nuevas propiedades
+      if (prevPropertiesRef.current) {
+          const oldIds = new Set(prevPropertiesRef.current.map(p => p.id));
+          const newItems = data.filter(p => !oldIds.has(p.id));
+          if (newItems.length > 0) {
+              showNotification(`¡${newItems.length} nueva(s) propiedad(es) detectada(s)!`, 'success');
+          }
+      }
+      prevPropertiesRef.current = data;
+
       setProperties(data)
     } catch (error) {
       console.error('Error cargando propiedades:', error)
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
-  const loadClients = async () => {
+  const loadClients = async (silent = false) => {
     try {
-      const response = await fetch(`${API_URL}/clients`)
+      const response = await fetch(`${API_URL}/clients?t=${new Date().getTime()}`)
       const data = await response.json()
+
+      // Detección de nuevos clientes
+      if (prevClientsRef.current) {
+          const oldIds = new Set(prevClientsRef.current.map(c => c.id));
+          const newItems = data.filter(c => !oldIds.has(c.id));
+          if (newItems.length > 0) {
+              showNotification(`¡${newItems.length} nuevo(s) cliente(s) detectado(s)!`, 'success');
+          }
+      }
+      prevClientsRef.current = data;
+
       setClients(data)
     } catch (error) {
       console.error('Error cargando clientes:', error)
@@ -211,8 +395,36 @@ function App() {
       if (data.email.configured) {
           setEmailForm(prev => ({ ...prev, email: data.email.user }));
       }
+      
+      // Load scraper config
+      const scraperResponse = await fetch(`${API_URL}/config/scraper`);
+      if (scraperResponse.ok) {
+        const scraperData = await scraperResponse.json();
+        setScraperConfig(scraperData);
+      }
     } catch (error) {
       console.error('Error cargando estado de configuración:', error);
+    }
+  };
+
+  const handleScraperConfigSave = async () => {
+    setSavingScraperConfig(true);
+    try {
+        const response = await fetch(`${API_URL}/config/scraper`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(scraperConfig)
+        });
+        const data = await response.json();
+        if (data.success) {
+            showNotification('Configuración de scraper guardada.', 'success');
+        } else {
+            showNotification('Error guardando configuración.', 'error');
+        }
+    } catch (error) {
+        showNotification('Error de conexión.', 'error');
+    } finally {
+        setSavingScraperConfig(false);
     }
   };
 
@@ -287,6 +499,30 @@ function App() {
       setScrapingInProgress(prev => ({ ...prev, [stateKey]: false }))
     }
   }
+
+  const handleCleanup = async () => {
+    requestConfirm({
+      title: 'Limpiar Archivos Temporales',
+      message: '¿Estás seguro de que deseas eliminar los archivos temporales de actualización y propiedades? Esta acción no se puede deshacer.',
+      isDanger: true,
+      confirmText: 'Eliminar',
+      onConfirm: async () => {
+        try {
+            const response = await fetch(`${API_URL}/config/cleanup`, { method: 'POST' });
+            const data = await response.json();
+            
+            if (data.success) {
+                showNotification(data.message, 'success');
+            } else {
+                showNotification('Error: ' + data.error, 'error');
+            }
+        } catch (error) {
+            console.error('Error cleanup:', error);
+            showNotification('Error de conexión al limpiar archivos.', 'error');
+        }
+      }
+    });
+  };
 
   const handleSendSupport = async (e) => {
     e.preventDefault();
@@ -408,7 +644,13 @@ function App() {
         setClients([...clients, data])
         showNotification('Cliente creado correctamente', 'success')
       }
-      setNewClient({ name: '', phone: '', email: '', interest: 'Comprar', preferences: '' })
+      setNewClient({
+        name: '', phone: '', email: '', interest: 'Comprar', preferences: '',
+        contactName: '', location: '', adLink: '',
+      status: 'Enviado',
+      propertyType: '', answered: '', response: '', date: '', appointmentDate: ''
+      })
+      setShowClientForm(false)
     } catch (error) {
       console.error('Error guardando cliente:', error)
       showNotification('Error guardando cliente', 'error')
@@ -418,11 +660,18 @@ function App() {
   const startEditing = (client) => {
     setNewClient(client)
     setEditingId(client.id)
+    setShowClientForm(true)
   }
 
   const cancelEditing = () => {
-    setNewClient({ name: '', phone: '', email: '', interest: 'Comprar', preferences: '' })
+    setNewClient({
+      name: '', phone: '', email: '', interest: 'Comprar', preferences: '',
+      contactName: '', location: '', adLink: '',
+      status: 'Enviado',
+      propertyType: '', answered: '', response: '', date: '', appointmentDate: ''
+    })
     setEditingId(null)
+    setShowClientForm(false)
   }
 
   const deleteClient = async (id) => {
@@ -585,6 +834,67 @@ function App() {
     }
   }
 
+  const handleFileUpload = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (results) => {
+        const importedClients = results.data.map(row => {
+          const phone = (row['Teléfono'] || row['telefono'] || '').replace(/\s+/g, '');
+          const whatsappLink = row['Click para contactar'] || row['Link Wtp'] || row['Link WTP'] || (phone ? `https://web.whatsapp.com/send?phone=34${phone}` : '');
+          
+          return {
+            name: row['Nombre'] || row['Nombre del cliente'] || '',
+            phone: phone,
+            contactName: row['Contacto'] || '',
+            location: row['UBICACION '] || row['UBICACION'] || row['Ubicacion'] || '',
+            adLink: row['Enlace del anuncio'] || '',
+            status: row['Estado'] || 'Enviado',
+            propertyType: (row['Tipo de Inmueble '] || row['Tipo de Inmueble'] || '').trim(),
+            whatsappLink: whatsappLink,
+            answered: row['Contestado '] || row['Contestado'] || '',
+            response: row['Respuesta'] || '',
+            date: row['Fecha'] || '',
+            appointmentDate: row['Fecha de Cita'] || '',
+            email: '', // CSV doesn't seem to have email
+            interest: 'Comprar', // Default
+            preferences: ''
+          };
+        }).filter(c => c.name || c.phone); // Filter empty rows
+
+        if (importedClients.length === 0) {
+          showNotification('No se encontraron clientes válidos en el archivo.', 'warning');
+          return;
+        }
+
+        try {
+          const response = await fetch(`${API_URL}/clients/batch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(importedClients)
+          });
+          const data = await response.json();
+          if (data.success) {
+            showNotification(data.message || `Importados ${data.count} clientes correctamente.`, 'success');
+            loadClients();
+          } else {
+            showNotification('Error al importar clientes.', 'error');
+          }
+        } catch (error) {
+          console.error('Error importing clients:', error);
+          showNotification('Error de conexión al importar.', 'error');
+        }
+      },
+      error: (error) => {
+        console.error('CSV Error:', error);
+        showNotification('Error al leer el archivo CSV.', 'error');
+      }
+    });
+  };
+
   const selectAllProperties = () => {
     const allFilteredUrls = filteredProperties.map(p => p.url);
     setSelectedProperties(allFilteredUrls);
@@ -610,7 +920,14 @@ function App() {
 
       if (data.success) {
         setUpdateLog(prev => [...prev, `\n✅ Actualización completada! ${data.updatedCount} propiedades actualizadas.`]);
+        
+        // Notificar si hay nuevos clientes
+        if (data.newClientsCount && data.newClientsCount > 0) {
+            showNotification(`🎉 Se han añadido ${data.newClientsCount} nuevos clientes!`, 'success');
+        }
+
         await loadProperties(); // Recargar propiedades
+        await loadClients(); // Recargar clientes (nuevos clientes pueden haber sido creados)
         setSelectedProperties([]); // Limpiar selección
       } else {
         setUpdateLog(prev => [...prev, `\n❌ Error en la actualización: ${data.error || 'Error desconocido'}`]);
@@ -1027,91 +1344,184 @@ function App() {
 
         {activeTab === 'clients' && (
           <div className="clients-section">
-            <div className="clients-header">
-              <h2>Gestión de Clientes</h2>
-              <form onSubmit={handleClientSubmit} className="client-form">
-                <input
-                  type="text"
-                  placeholder="Nombre *"
-                  value={newClient.name}
-                  onChange={(e) => setNewClient({ ...newClient, name: e.target.value })}
-                  required
-                />
-                <input
-                  type="tel"
-                  placeholder="Teléfono *"
-                  value={newClient.phone}
-                  onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })}
-                  required
-                />
-                <input
-                  type="email"
-                  placeholder="Email"
-                  value={newClient.email}
-                  onChange={(e) => setNewClient({ ...newClient, email: e.target.value })}
-                />
-                <select
-                  value={newClient.interest}
-                  onChange={(e) => setNewClient({ ...newClient, interest: e.target.value })}
-                  className="interest-select"
-                >
-                  <option value="Comprar">Comprar</option>
-                  <option value="Vender">Vender</option>
-                  <option value="Alquilar">Alquilar</option>
-                  <option value="Hipotecar">Hipotecar</option>
-                </select>
-                <input
-                  type="text"
-                  placeholder="Características / Preferencias"
-                  value={newClient.preferences}
-                  onChange={(e) => setNewClient({ ...newClient, preferences: e.target.value })}
-                />
-                <div className="form-actions">
-                  <button type="submit" className={editingId ? 'update-btn' : 'add-btn'}>
-                    {editingId ? <RefreshCw size={20} /> : <Plus size={20} />}
-                    {editingId ? 'Actualizar' : 'Añadir'}
-                  </button>
-                  {editingId && (
-                    <button type="button" onClick={cancelEditing} className="cancel-btn">
-                      Cancelar
-                    </button>
-                  )}
+            <div className="clients-header-unified" style={{ marginBottom: '2rem' }}>
+              <div className="controls-unified" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: 'var(--surface)', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 4px 6px var(--shadow)' }}>
+                <div className="controls-top" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                   <h2 style={{ margin: 0 }}>Gestión de Clientes</h2>
+                   <div className="action-buttons-top" style={{ display: 'flex', gap: '0.5rem' }}>
+                     <label className="import-btn" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1rem', background: '#22c55e', color: 'white', borderRadius: '0.5rem', fontSize: '0.9rem', fontWeight: '500', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', transition: 'all 0.2s', height: '40px', boxSizing: 'border-box' }}>
+                       <Upload size={18} />
+                       <span className="btn-text">Importar</span>
+                       <input type="file" accept=".csv" onChange={handleFileUpload} style={{ display: 'none' }} />
+                     </label>
+                     <button 
+                        onClick={() => {
+                            if(showClientForm) cancelEditing();
+                            else setShowClientForm(true);
+                        }} 
+                        className={showClientForm ? 'cancel-btn' : 'add-btn'} 
+                        style={{ padding: '0.6rem 1rem', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', background: showClientForm ? 'var(--danger)' : 'var(--primary)', color: 'white', fontWeight: '500', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', transition: 'all 0.2s', height: '40px', boxSizing: 'border-box' }}
+                     >
+                       {showClientForm ? <X size={18} /> : <Plus size={18} />}
+                       {showClientForm ? 'Cerrar Formulario' : 'Añadir Cliente'}
+                     </button>
+                   </div>
                 </div>
-              </form>
-            </div>
 
-            <div className="controls" style={{ marginTop: '1rem', marginBottom: '1rem' }}>
-              <div className="search-bar">
-                <Search size={20} />
-                <input 
-                  type="text" 
-                  placeholder="Buscar clientes (nombre, tel, email)..." 
-                  value={clientFilters.search}
-                  onChange={(e) => setClientFilters(prev => ({ ...prev, search: e.target.value }))}
-                />
-                 {clientFilters.search && (
-                  <button onClick={() => setClientFilters(prev => ({ ...prev, search: '' }))} className="clear-search">✕</button>
+                {showClientForm && (
+                  <div className="client-form-container" style={{ marginBottom: '1.5rem', padding: '1.5rem', background: 'var(--background)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                      <form id="client-form" onSubmit={handleClientSubmit} className="client-form">
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', width: '100%' }}>
+                          <input type="text" placeholder="Nombre *" value={newClient.name} onChange={(e) => setNewClient({ ...newClient, name: e.target.value })} required />
+                          <input type="tel" placeholder="Teléfono *" value={newClient.phone} onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })} required />
+                          <input type="email" placeholder="Email" value={newClient.email} onChange={(e) => setNewClient({ ...newClient, email: e.target.value })} />
+                          <input type="text" placeholder="Nombre Contacto" value={newClient.contactName} onChange={(e) => setNewClient({ ...newClient, contactName: e.target.value })} />
+                          <input type="text" placeholder="Ubicación" value={newClient.location} onChange={(e) => setNewClient({ ...newClient, location: e.target.value })} />
+                          <input type="text" placeholder="Enlace Anuncio" value={newClient.adLink} onChange={(e) => setNewClient({ ...newClient, adLink: e.target.value })} />
+                          <input type="text" placeholder="Tipo Inmueble" value={newClient.propertyType} onChange={(e) => setNewClient({ ...newClient, propertyType: e.target.value })} />
+                          <select value={newClient.answered} onChange={(e) => setNewClient({ ...newClient, answered: e.target.value })} style={{ background: 'var(--background)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.75rem' }}>
+                            <option value="">-- Contestado --</option>
+                            <option value="Si">Si</option>
+                            <option value="No">No</option>
+                          </select>
+                          <input type="date" placeholder="Fecha" value={newClient.date} onChange={(e) => setNewClient({ ...newClient, date: e.target.value })} />
+                          <input type="datetime-local" placeholder="Fecha Cita" value={newClient.appointmentDate} onChange={(e) => setNewClient({ ...newClient, appointmentDate: e.target.value })} />
+                          <input type="text" placeholder="Respuesta" value={newClient.response} onChange={(e) => setNewClient({ ...newClient, response: e.target.value })} style={{ gridColumn: 'span 2' }} />
+                        </div>
+                        <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
+                            <button type="button" onClick={cancelEditing} className="cancel-btn" style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--text)', padding: '0.5rem 1rem', borderRadius: '0.5rem', cursor: 'pointer' }}>Cancelar</button>
+                            <button type="submit" className="save-btn" style={{ background: 'var(--secondary)', color: 'white', border: 'none', padding: '0.5rem 1.5rem', borderRadius: '0.5rem', cursor: 'pointer' }}>
+                                {editingId ? 'Actualizar Cliente' : 'Guardar Cliente'}
+                            </button>
+                        </div>
+                      </form>
+                  </div>
                 )}
-              </div>
-              <div className="filters">
-                <div className="filter-group">
-                   <Filter size={20} />
-                   <select 
-                      value={clientFilters.interest} 
-                      onChange={(e) => setClientFilters(prev => ({ ...prev, interest: e.target.value }))}
-                   >
-                     <option value="all">Todos los intereses</option>
-                     <option value="Comprar">Comprar</option>
-                     <option value="Vender">Vender</option>
-                     <option value="Alquilar">Alquilar</option>
-                     <option value="Hipotecar">Hipotecar</option>
-                   </select>
+
+                <div className="filters-container" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: 'var(--background)', padding: '1rem', borderRadius: '0.5rem', border: '1px solid var(--border)' }}>
+                    {/* Search Bar Row - Full Width */}
+                    <div className="search-bar" style={{ width: '100%', marginBottom: 0, height: '42px', border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--surface)', padding: '0 1rem', display: 'flex', alignItems: 'center' }}>
+                      <Search size={20} style={{ color: 'var(--text-secondary)' }} />
+                      <input 
+                        type="text" 
+                        placeholder="Buscar clientes (Nombre, Teléfono, Email...)" 
+                        value={clientFilters.search}
+                        onChange={(e) => setClientFilters(prev => ({ ...prev, search: e.target.value }))}
+                        style={{ height: '100%', border: 'none', background: 'transparent', width: '100%', marginLeft: '0.5rem', outline: 'none', color: 'var(--text)', fontSize: '1rem' }}
+                      />
+                       {clientFilters.search && (
+                        <button onClick={() => setClientFilters(prev => ({ ...prev, search: '' }))} className="clear-search">✕</button>
+                      )}
+                    </div>
+
+                    {/* Filters Row */}
+                    <div className="filters-row" style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                        <div className="filter-group" style={{ marginBottom: 0 }}>
+                           <CheckCircle size={18} style={{ color: 'var(--text-secondary)' }} />
+                           <select value={clientFilters.answered} onChange={(e) => setClientFilters(prev => ({ ...prev, answered: e.target.value }))} style={{ padding: '0.5rem 2rem 0.5rem 0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', cursor: 'pointer', fontWeight: '500' }}>
+                             <option value="all">Estado</option>
+                             <option value="Si">Si</option>
+                             <option value="Pendiente">Pendiente</option>
+                             <option value="No">No</option>
+                           </select>
+                        </div>
+
+                        <div className="filter-group" style={{ marginBottom: 0 }}>
+                           <Home size={18} style={{ color: 'var(--text-secondary)' }} />
+                           <select value={clientFilters.propertyType} onChange={(e) => setClientFilters(prev => ({ ...prev, propertyType: e.target.value }))} style={{ padding: '0.5rem 2rem 0.5rem 0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', cursor: 'pointer', fontWeight: '500' }}>
+                             <option value="all">Tipo</option>
+                             <option value="Viviendas">Viviendas</option>
+                              <option value="Casa">Casa</option>
+                              <option value="Piso">Piso</option>
+                              <option value="Chalet">Chalet</option>
+                              <option value="Finca rústica">Finca rústica</option>
+                              <option value="Local">Local</option>
+                             <option value="Terreno">Terreno</option>
+                           </select>
+                        </div>
+
+                        <div className="filter-group" style={{ marginBottom: 0 }}>
+                           <MapPin size={18} style={{ color: 'var(--text-secondary)' }} />
+                           <input 
+                             type="text" 
+                             placeholder="Ubicación" 
+                             value={clientFilters.location}
+                             onChange={(e) => setClientFilters(prev => ({ ...prev, location: e.target.value }))}
+                             style={{ padding: '0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', width: '120px' }}
+                           />
+                        </div>
+
+                        <div className="filter-group" style={{ marginBottom: 0 }}>
+                           <Calendar size={18} style={{ color: 'var(--text)' }} />
+                           <span style={{ fontSize: '0.9rem', color: 'var(--text)', fontWeight: 500 }}>Fecha:</span>
+                           <input 
+                             type="date" 
+                             value={clientFilters.date}
+                             onChange={(e) => setClientFilters(prev => ({ ...prev, date: e.target.value }))}
+                             style={{ padding: '0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', width: 'auto', fontFamily: 'inherit', cursor: 'pointer' }}
+                           />
+                        </div>
+
+                        <div className="filter-group" style={{ marginBottom: 0 }}>
+                           <History size={18} style={{ color: 'var(--text)' }} />
+                           <span style={{ fontSize: '0.9rem', color: 'var(--text)', fontWeight: 500 }}>Cita:</span>
+                           <input 
+                             type="date" 
+                             value={clientFilters.appointmentDate}
+                             onChange={(e) => setClientFilters(prev => ({ ...prev, appointmentDate: e.target.value }))}
+                             style={{ padding: '0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', width: 'auto', fontFamily: 'inherit', cursor: 'pointer' }}
+                           />
+                        </div>
+                        
+                        <div className="filter-group" style={{ marginBottom: 0 }}>
+                           <Phone size={18} style={{ color: 'var(--text-secondary)' }} />
+                           <input 
+                             type="text" 
+                             placeholder="Teléfono" 
+                             value={clientFilters.phone}
+                             onChange={(e) => setClientFilters(prev => ({ ...prev, phone: e.target.value }))}
+                             style={{ padding: '0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', width: '120px' }}
+                           />
+                        </div>
+
+                        <div className="filter-group" style={{ marginBottom: 0 }}>
+                           <Mail size={18} style={{ color: 'var(--text-secondary)' }} />
+                           <input 
+                             type="text" 
+                             placeholder="Email" 
+                             value={clientFilters.email}
+                             onChange={(e) => setClientFilters(prev => ({ ...prev, email: e.target.value }))}
+                             style={{ padding: '0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', width: '150px' }}
+                           />
+                        </div>
+
+                        <div className="filter-group" style={{ marginBottom: 0 }}>
+                           <ExternalLink size={18} style={{ color: 'var(--text-secondary)' }} />
+                           <input 
+                             type="text" 
+                             placeholder="Enlace Anuncio" 
+                             value={clientFilters.adLink}
+                             onChange={(e) => setClientFilters(prev => ({ ...prev, adLink: e.target.value }))}
+                             style={{ padding: '0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', width: '150px' }}
+                           />
+                        </div>
+
+                        <button 
+                          onClick={() => setClientFilters({ search: '', status: 'all', propertyType: 'all', answered: 'all', location: '', date: '', appointmentDate: '', phone: '', email: '', adLink: '' })}
+                          style={{ marginLeft: 'auto', padding: '0.5rem 1rem', background: 'var(--surface-hover)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--text)', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem', fontWeight: '500' }}
+                          title="Limpiar filtros"
+                        >
+                          <X size={16} />
+                          <span>Limpiar</span>
+                        </button>
+                    </div>
                 </div>
               </div>
             </div>
 
-            <div className="clients-table">
-              <table>
+            <div className="clients-table-wrapper">
+              <div className="clients-table">
+                <table>
                 <thead>
                   <tr>
                     <th style={{ width: '40px' }}>
@@ -1127,19 +1537,65 @@ function App() {
                         }}
                       />
                     </th>
-                    <th>Nombre</th>
-                    <th>Teléfono</th>
-                    <th>Email</th>
-                    <th>Interés</th>
-                    <th>Características</th>
-                    <th style={{ width: '80px' }}>Acciones</th>
+                    <th style={{ width: columnWidths.name }}>
+                      Nombre
+                      <div className="resizer" onMouseDown={(e) => startResizing(e, 'name')} />
+                    </th>
+                    <th style={{ width: columnWidths.phone }}>
+                      Teléfono
+                      <div className="resizer" onMouseDown={(e) => startResizing(e, 'phone')} />
+                    </th>
+                    <th style={{ width: columnWidths.email }}>
+                      Email
+                      <div className="resizer" onMouseDown={(e) => startResizing(e, 'email')} />
+                    </th>
+                    <th style={{ width: columnWidths.contactName }}>
+                      Contacto
+                      <div className="resizer" onMouseDown={(e) => startResizing(e, 'contactName')} />
+                    </th>
+                    <th style={{ width: columnWidths.location }}>
+                      Ubicación
+                      <div className="resizer" onMouseDown={(e) => startResizing(e, 'location')} />
+                    </th>
+                    <th style={{ width: columnWidths.propertyType }}>
+                      Tipo
+                      <div className="resizer" onMouseDown={(e) => startResizing(e, 'propertyType')} />
+                    </th>
+                    <th style={{ width: columnWidths.adLink }}>
+                      Anuncio
+                      <div className="resizer" onMouseDown={(e) => startResizing(e, 'adLink')} />
+                    </th>
+                    <th style={{ width: columnWidths.whatsappLink }}>
+                      WhatsApp
+                      <div className="resizer" onMouseDown={(e) => startResizing(e, 'whatsappLink')} />
+                    </th>
+                    <th style={{ width: columnWidths.answered }}>
+                      Estado
+                      <div className="resizer" onMouseDown={(e) => startResizing(e, 'answered')} />
+                    </th>
+                    <th style={{ width: columnWidths.response }}>
+                      Respuesta
+                      <div className="resizer" onMouseDown={(e) => startResizing(e, 'response')} />
+                    </th>
+                    <th style={{ width: columnWidths.date }}>
+                      Fecha
+                      <div className="resizer" onMouseDown={(e) => startResizing(e, 'date')} />
+                    </th>
+                    <th style={{ width: columnWidths.appointmentDate }}>
+                      Cita
+                      <div className="resizer" onMouseDown={(e) => startResizing(e, 'appointmentDate')} />
+                    </th>
+                    <th style={{ width: columnWidths.actions }}>
+                      Acciones
+                      <div className="resizer" onMouseDown={(e) => startResizing(e, 'actions')} />
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredClients.length === 0 ? (
                     <tr>
-                      <td colSpan="7" style={{ textAlign: 'center', padding: '2rem' }}>
-                        {clients.length === 0 ? 'No hay clientes. Añade uno usando el formulario de arriba.' : 'No se encontraron clientes con los filtros seleccionados.'}
+                      <td colSpan="13" style={{ textAlign: 'center', padding: '2rem' }}>
+                        {clients.length === 0 ? 'No hay clientes. Añade uno usando el formulario de arriba o importa un CSV.' : 'No se encontraron clientes con los filtros seleccionados.'}
                       </td>
                     </tr>
                   ) : (
@@ -1158,11 +1614,38 @@ function App() {
                             }}
                           />
                         </td>
-                        <td>{client.name}</td>
-                        <td>{client.phone}</td>
-                        <td>{client.email || '-'}</td>
-                        <td><span className={`badge ${client.interest?.toLowerCase()}`}>{client.interest || 'Comprar'}</span></td>
-                        <td>{client.preferences || '-'}</td>
+                        <td title={client.name}>{client.name}</td>
+                        <td title={client.phone}>{client.phone}</td>
+                        <td title={client.email || '-'}>{client.email || '-'}</td>
+                        <td title={client.contactName || '-'}>{client.contactName || '-'}</td>
+                        <td title={client.location || '-'}>{client.location || '-'}</td>
+                        <td title={client.propertyType || '-'}>{client.propertyType || '-'}</td>
+                        <td>
+                          {client.adLink ? (
+                            <a href={client.adLink} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6' }}>
+                              <ExternalLink size={14} /> Link
+                            </a>
+                          ) : '-'}
+                        </td>
+                        <td>
+                          {client.whatsappLink ? (
+                            <a href={client.whatsappLink} target="_blank" rel="noopener noreferrer" style={{ color: '#22c55e', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <MessageSquare size={14} /> Chat
+                            </a>
+                          ) : '-'}
+                        </td>
+                        <td>
+                          {client.answered ? (
+                            <span className={`badge ${client.answered.toLowerCase().includes('si') ? 'success' : 'warning'}`}>
+                              {client.answered}
+                            </span>
+                          ) : '-'}
+                        </td>
+                        <td title={client.response || '-'} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {client.response || '-'}
+                        </td>
+                        <td title={client.date || '-'}>{client.date || '-'}</td>
+                        <td title={client.appointmentDate || '-'}>{client.appointmentDate || '-'}</td>
                         <td>
                           <div className="action-buttons">
                             <button onClick={() => viewHistory(client)} className="edit-btn" title="Ver Historial" style={{ background: '#8b5cf6' }}>
@@ -1182,6 +1665,7 @@ function App() {
                 </tbody>
               </table>
             </div>
+            </div>
           </div>
         )}
 
@@ -1191,9 +1675,9 @@ function App() {
 
             <div className="message-config">
               <div className="config-panel">
-                <h3>1. Selecciona Propiedades</h3>
+                <h3>1. Selecciona Propiedades (Opcional)</h3>
                 <p className={selectedProperties.length > 0 ? 'selected' : ''}>{selectedProperties.length} propiedad(es) seleccionada(s)</p>
-                <small>Ve a "Propiedades" y marca las propiedades relevantes</small>
+                <small>Ve a "Propiedades" y marca las propiedades relevantes (si aplica)</small>
               </div>
 
               <div className="config-panel">
@@ -1233,7 +1717,7 @@ function App() {
               <button
                 onClick={generateMessage}
                 className="generate-btn"
-                disabled={selectedClients.length === 0 || selectedProperties.length === 0 || generatingMessage}
+                disabled={selectedClients.length === 0 || generatingMessage}
               >
                 {generatingMessage ? (
                   <>
@@ -1340,6 +1824,90 @@ function App() {
                 {configStatus.email.configured && (
                     <p className="success-text">✅ Email configurado correctamente ({configStatus.email.user})</p>
                 )}
+            </div>
+
+            <div className="config-section">
+                <h4><RefreshCw size={20} /> Scraper Automático (Fotocasa)</h4>
+                <p className="config-info">
+                    Configura la búsqueda automática de nuevas propiedades en Fotocasa (solo 1ª página).
+                </p>
+                
+                <div className="form-group">
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                        <input 
+                            type="checkbox" 
+                            checked={scraperConfig.fotocasa?.enabled || false} 
+                            onChange={e => setScraperConfig(prev => ({ 
+                                ...prev, 
+                                fotocasa: { ...prev.fotocasa, enabled: e.target.checked } 
+                            }))}
+                            style={{ width: 'auto' }}
+                        />
+                        Activar Scraper Automático
+                    </label>
+                </div>
+
+                {scraperConfig.fotocasa?.enabled && (
+                    <div className="form-group">
+                        <label>Intervalo de ejecución:</label>
+                        <select 
+                            value={scraperConfig.fotocasa?.interval || "60"} 
+                            onChange={e => setScraperConfig(prev => ({ 
+                                ...prev, 
+                                fotocasa: { ...prev.fotocasa, interval: e.target.value } 
+                            }))}
+                            style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)' }}
+                        >
+                            <option value="15">Cada 15 minutos</option>
+                            <option value="30">Cada 30 minutos</option>
+                            <option value="60">Cada 1 hora</option>
+                        </select>
+                    </div>
+                )}
+
+                <button 
+                    onClick={handleScraperConfigSave} 
+                    className="save-btn" 
+                    disabled={savingScraperConfig}
+                    style={{ marginTop: '1rem' }}
+                >
+                    {savingScraperConfig ? 'Guardando...' : 'Guardar Configuración'}
+                </button>
+            </div>
+
+            <div className="config-section">
+                <h4><RefreshCw size={20} /> Actualizaciones</h4>
+                <p className="config-info">
+                    Comprueba si hay nuevas versiones de la aplicación disponibles.
+                </p>
+                <button 
+                    onClick={() => {
+                        if (window.electronAPI) {
+                            window.electronAPI.checkForUpdates();
+                            showNotification('Buscando actualizaciones...', 'info');
+                        } else {
+                            showNotification('Esta función solo está disponible en la versión de escritorio.', 'warning');
+                        }
+                    }} 
+                    className="save-btn" 
+                    style={{ marginTop: '1rem', backgroundColor: '#3b82f6' }}
+                >
+                    Buscar Actualizaciones Ahora
+                </button>
+            </div>
+
+            <div className="config-section">
+                <h4><Trash2 size={20} /> Mantenimiento</h4>
+                <p className="config-info">
+                    Elimina archivos temporales generados por los scrapers y actualizaciones para liberar espacio.
+                </p>
+                <button 
+                    onClick={handleCleanup} 
+                    className="save-btn" 
+                    style={{ marginTop: '1rem', backgroundColor: '#ef4444' }}
+                >
+                    Limpiar Archivos Temporales
+                </button>
             </div>
 
             <div className="modal-actions">
@@ -1473,6 +2041,9 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* Componente de Notificación de Actualización */}
+      <UpdateNotification />
     </div >
   )
 }

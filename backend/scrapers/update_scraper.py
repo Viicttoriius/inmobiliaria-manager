@@ -3,6 +3,7 @@ import json
 import time
 import os
 import io
+from datetime import datetime
 
 # Añadir el directorio 'fotocasa' al path para poder importar el módulo
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -32,6 +33,116 @@ class SuppressStdout:
     def __exit__(self, exc_type, exc_val, exc_tb):
         sys.stdout.close()
         sys.stdout = self._original_stdout
+
+def save_client_from_property(property_data):
+    """
+    Guarda un nuevo cliente a partir de los datos de la propiedad scrapeada.
+    Intenta completar datos faltantes usando properties.json existente.
+    """
+    try:
+        clients_file = os.path.join(current_dir, "../../data/clients/clients.json")
+        properties_file = os.path.join(current_dir, "../../data/properties.json")
+        
+        # Asegurar que el directorio de clientes existe
+        os.makedirs(os.path.dirname(clients_file), exist_ok=True)
+        
+        # Cargar clientes existentes
+        clients = []
+        if os.path.exists(clients_file):
+            try:
+                with open(clients_file, 'r', encoding='utf-8') as f:
+                    clients = json.load(f)
+            except:
+                clients = []
+
+        # Cargar propiedades existentes para fallback de datos
+        existing_props = []
+        if os.path.exists(properties_file):
+            try:
+                with open(properties_file, 'r', encoding='utf-8') as f:
+                    existing_props = json.load(f)
+            except:
+                pass
+        
+        url = property_data.get('url')
+        
+        # Buscar datos existentes de la propiedad (fallback)
+        # Normalizamos URL quitando parámetros para mejorar coincidencia
+        def normalize_url(u):
+            return u.split('?')[0].strip() if u else ""
+
+        target_url = normalize_url(url)
+        existing_prop_data = {}
+        
+        for p in existing_props:
+            if normalize_url(p.get('url')) == target_url:
+                existing_prop_data = p
+                break
+        
+        if not existing_prop_data:
+             print(f"  ℹ️ No se encontraron datos previos en properties.json para {target_url}", file=sys.stderr)
+        else:
+             print(f"  ℹ️ Datos previos encontrados para completar ficha de cliente.", file=sys.stderr)
+
+        # Combinar datos (prioridad: scrapeado > existente)
+        phone = property_data.get('Phone') or existing_prop_data.get('Phone') or ''
+        name = property_data.get('Advertiser') or existing_prop_data.get('Advertiser') or 'Particular'
+        location = property_data.get('Municipality') or existing_prop_data.get('Municipality') or 'Desconocido'
+        title = property_data.get('Title') or existing_prop_data.get('Title') or 'Sin título'
+        
+        # Normalizar teléfono para comparación (simple)
+        # Eliminar espacios, guiones, y prefijo +34 si existe para comparar
+        def clean_phone(p):
+            if not p: return ""
+            p = str(p).replace(' ', '').replace('-', '').replace('.', '')
+            if p.startswith('+34'): p = p[3:]
+            if p.startswith('34') and len(p) > 9: p = p[2:] # Caso 34666...
+            return p
+
+        phone_clean = clean_phone(phone)
+
+        # Verificar duplicados por TELÉFONO
+        if phone_clean:
+            for c in clients:
+                c_phone = clean_phone(c.get('phone'))
+                if c_phone and c_phone == phone_clean:
+                    print(f"  ℹ️ Cliente ya existe con el teléfono {phone} (ID: {c.get('id')}).", file=sys.stderr)
+                    return
+        
+        # Si no hay teléfono, verificar por URL para evitar duplicados obvios
+        elif any(c.get('adLink') == url for c in clients):
+             print(f"  ℹ️ Cliente ya existe para esta propiedad (URL).", file=sys.stderr)
+             return
+
+        # Generar ID único
+        client_id = str(int(time.time() * 1000)) + str(len(clients))
+        
+        # Determinar tipo (por defecto vivienda)
+        prop_type = "vivienda" 
+        
+        new_client = {
+            "id": client_id,
+            "name": name,
+            "phone": phone,
+            "email": "", 
+            "location": location,
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "status": "pendiente",
+            "adLink": url,
+            "propertyType": prop_type,
+            "createdAt": datetime.now().isoformat(),
+            "notes": f"Cliente importado automáticamente: {title}"
+        }
+        
+        clients.append(new_client)
+        
+        with open(clients_file, 'w', encoding='utf-8') as f:
+            json.dump(clients, f, ensure_ascii=False, indent=2)
+        
+        print(f"  ✅ Nuevo cliente añadido: {new_client['name']} ({new_client['location']}) - Tlf: {phone}", file=sys.stderr)
+        
+    except Exception as e:
+        print(f"  ⚠️ Error al guardar cliente: {e}", file=sys.stderr)
 
 def get_element_text(driver, by, value):
     """Obtiene el texto de un elemento de forma segura."""
@@ -96,6 +207,80 @@ def scrape_single_url(driver, url):
             advertiser = "Particular"
         
         reference = get_element_text(driver, By.CSS_SELECTOR, '.re-FormContactDetailDown-reference p strong')
+        
+        # Extracción de teléfono (Intento mejorado)
+        phone = None
+        try:
+            # 1. Buscar en el área de contacto específica (Sidebar o Formulario)
+            # Clases comunes en Fotocasa: .re-FormContact-phone, .re-ContactDetail-phone, .sui-AtomButton-phone
+            
+            contact_area_selectors = [
+                ".re-FormContactDetail", 
+                ".re-ContactDetail",
+                ".re-FormContact",
+                ".sui-FormContact"
+            ]
+            
+            phone_element = None
+            for selector in contact_area_selectors:
+                try:
+                    area = driver.find_element(By.CSS_SELECTOR, selector)
+                    # Buscar enlace tel dentro del área
+                    links = area.find_elements(By.XPATH, ".//a[starts-with(@href, 'tel:')]")
+                    if links:
+                        phone_element = links[0]
+                        print(f"  � Teléfono encontrado en área {selector}", file=sys.stderr)
+                        break
+                except:
+                    continue
+            
+            # 2. Búsqueda por texto (Regex) - Prioridad media (si no hay link específico)
+            # Buscamos patrones de móvil español 6xx...
+            text_phones = []
+            try:
+                page_source = driver.page_source
+                import re
+                # Patrones: 6xx xxx xxx, 6xxxxxxxx, 6xx-xxx-xxx
+                matches = re.findall(r'\b(6\d{2}[\s\.-]?\d{3}[\s\.-]?\d{3})\b', page_source)
+                for m in matches:
+                    clean = m.replace(' ', '').replace('-', '').replace('.', '')
+                    if clean not in text_phones:
+                        text_phones.append(clean)
+                
+                if text_phones:
+                    print(f"  🔢 Teléfonos encontrados en texto: {text_phones}", file=sys.stderr)
+            except:
+                pass
+
+            # 3. Si no se encontró en áreas específicas, decidir mejor candidato
+            if not phone_element:
+                # Si encontramos teléfonos en texto, probamos el primero que NO sea el prohibido
+                ignored_phones = ['664023517', '34664023517'] # Números conocidos de sistema/usuario
+                
+                for tp in text_phones:
+                    if tp not in ignored_phones:
+                        phone = tp
+                        print(f"  ✅ Usando teléfono del texto: {phone}", file=sys.stderr)
+                        break
+                
+                # Si aún no tenemos teléfono, usar fallback de cualquier link
+                if not phone:
+                    all_links = driver.find_elements(By.XPATH, "//a[starts-with(@href, 'tel:')]")
+                    for link in all_links:
+                        href = link.get_attribute('href').replace('tel:', '')
+                        clean_href = href.replace('+34', '').replace(' ', '')
+                        
+                        if clean_href not in ignored_phones:
+                            phone = href
+                            print(f"  � Usando enlace telefónico genérico: {phone}", file=sys.stderr)
+                            break
+            
+            if phone_element and not phone:
+                 phone = phone_element.get_attribute('href').replace('tel:', '')
+
+        except Exception as e:
+            print(f"  ⚠️ Error buscando teléfonos: {e}", file=sys.stderr)
+            pass
 
         # Construir el diccionario de datos actualizados
         updated_details = {}
@@ -109,6 +294,10 @@ def scrape_single_url(driver, url):
         if description: updated_details["Description"] = description
         updated_details["Advertiser"] = advertiser
         if reference: updated_details["Reference"] = reference
+        if phone: updated_details["Phone"] = phone
+        
+        # Guardar cliente automáticamente
+        save_client_from_property(updated_details)
 
         return updated_details
 

@@ -14,6 +14,13 @@
   --idealista: #FFD700;
 }
 
+/* Fix Calendar Icon on Dark Background */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    cursor: pointer;
+}
+
 .fotocasa-group {
   position: relative;
 }
@@ -90,6 +97,31 @@ body {
   display: flex;
   gap: 1rem;
   flex-wrap: wrap;
+}
+
+/* Table Column Resizer */
+.clients-table th {
+  position: relative;
+}
+
+.resizer {
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 100%;
+  width: 5px;
+  background: rgba(255, 255, 255, 0.1);
+  cursor: col-resize;
+  user-select: none;
+  touch-action: none;
+  transition: background 0.2s;
+  z-index: 1;
+}
+
+.resizer:hover,
+.resizer.is-resizing {
+  background: var(--primary);
+  width: 7px;
 }
 
 .scraper-btn {
@@ -311,6 +343,11 @@ body {
   cursor: pointer;
   outline: none;
   transition: all 0.2s;
+}
+
+.filter-group select option {
+  background-color: var(--background);
+  color: var(--text);
 }
 
 .filter-group select:hover,
@@ -677,13 +714,26 @@ body {
   transform: translateY(-2px);
 }
 
-.clients-table {
+.clients-table-wrapper {
   overflow-x: auto;
+  transform: rotateX(180deg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.clients-table {
+  transform: rotateX(180deg);
+  max-height: 70vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 100%;
+  width: fit-content;
 }
 
 .clients-table table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .clients-table th,
@@ -691,6 +741,9 @@ body {
   text-align: left;
   padding: 1rem;
   border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .clients-table th {
@@ -698,6 +751,10 @@ body {
   font-weight: 600;
   font-size: 0.9rem;
   background: var(--background);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 1px 0 var(--border);
 }
 
 .clients-table td {
@@ -1035,6 +1092,8 @@ body {
 
 .config-modal {
     max-width: 600px !important;
+    max-height: 90vh;
+    overflow-y: auto;
 }
 
 .config-section {

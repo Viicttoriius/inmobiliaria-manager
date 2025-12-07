@@ -7,6 +7,7 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcodeTerminal = require('qrcode-terminal');
 const QRCode = require('qrcode'); // Para generar QR en frontend
 const nodemailer = require('nodemailer');
+const notifier = require('node-notifier');
 
 require('dotenv').config();
 
@@ -274,11 +275,29 @@ const calculatePublicationDetails = (scrapeDate, timeago) => {
 app.get('/api/properties', (req, res) => {
     try {
         const fileContent = fs.readFileSync(PROPERTIES_JSON_FILE, 'utf8');
-        const properties = JSON.parse(fileContent);
+        let properties = JSON.parse(fileContent);
+        let modified = false;
+
+        // Migración on-the-fly: Asegurar que todos tengan scrape_date
+        properties = properties.map(prop => {
+            if (!prop.scrape_date) {
+                modified = true;
+                return {
+                    ...prop,
+                    scrape_date: prop.lastUpdated || new Date().toISOString()
+                };
+            }
+            return prop;
+        });
+
+        if (modified) {
+            fs.writeFileSync(PROPERTIES_JSON_FILE, JSON.stringify(properties, null, 2));
+            console.log('🔄 Propiedades migradas: se añadió scrape_date a registros antiguos.');
+        }
 
         // Aunque los datos ya están consolidados, aún necesitamos calcular el timeago dinámico
         const propertiesWithDetails = properties.map(prop => {
-            const { publicationDate, displayTimeago } = calculatePublicationDetails(prop.scrape_date || new Date(), prop.Timeago);
+            const { publicationDate, displayTimeago } = calculatePublicationDetails(prop.scrape_date, prop.Timeago);
             return {
                 ...prop,
                 publicationDate: publicationDate, // Fecha ISO para ordenar
@@ -319,6 +338,14 @@ const runPythonScraper = (scraperPath, res) => {
     pythonProcess.on('close', (code) => {
         if (code === 0) {
             console.log(`✅ Scraper completado exitosamente`);
+            
+            // Notificación de ÉXITO
+            notifier.notify({
+              title: 'Scraper Finalizado',
+              message: `El proceso de scraping terminó correctamente.`,
+              sound: 'Glass', // Sonido en Windows/macOS
+              wait: false
+            });
 
             // Lógica de consolidación
             const mainPropertiesFile = path.join(__dirname, '../data/properties.json');
@@ -364,6 +391,14 @@ const runPythonScraper = (scraperPath, res) => {
             // Verificar que newPropertiesArray es un array antes de combinar
             if (!Array.isArray(newPropertiesArray)) {
                 console.error('El archivo del scraper no contiene un array de propiedades válido.');
+                
+                notifier.notify({
+                  title: 'Error en Scraper',
+                  message: 'Datos inválidos generados.',
+                  sound: 'Basso',
+                  wait: false
+                });
+
                 // No se puede continuar sin un array, así que se finaliza la respuesta.
                 return res.json({ success: true, message: 'Scraper completado, pero los datos generados no tienen el formato correcto.', output });
             }
@@ -385,11 +420,31 @@ const runPythonScraper = (scraperPath, res) => {
             // (Opcional) Eliminar el archivo temporal
             // fs.unlinkSync(latestScraperFile);
 
+            // Detectar cuántas nuevas se añadieron realmente
+            const actuallyAddedCount = uniqueProperties.length - existingProperties.length;
+            
+            if (actuallyAddedCount > 0) {
+                 notifier.notify({
+                  title: 'Nuevas Propiedades',
+                  message: `Se han encontrado ${actuallyAddedCount} nuevas propiedades.`,
+                  sound: 'Ping', // Sonido diferente para nuevos items
+                  wait: false
+                });
+            }
+
             console.log(`✅ Consolidación completada: ${uniqueProperties.length} propiedades únicas.`);
             res.json({ success: true, message: 'Scraper y consolidación completados', output });
 
         } else {
             console.error(`❌ Scraper falló con código ${code}`);
+            
+            notifier.notify({
+              title: 'Error Fatal en Scraper',
+              message: `El proceso falló con código ${code}`,
+              sound: 'Sosumi',
+              wait: false
+            });
+
             res.status(500).json({ success: false, error: 'Error ejecutando scraper', output: errorOutput });
         }
     });
@@ -421,6 +476,51 @@ app.post('/api/scraper/fotocasa/run', (req, res) => {
 // Ejecutar el scraper de Idealista
 app.post('/api/scraper/idealista/run', (req, res) => {
     runPythonScraper(IDEALISTA_SCRAPER, res);
+});
+
+// Limpiar archivos temporales
+app.post('/api/config/cleanup', (req, res) => {
+    try {
+        const updateDir = path.join(__dirname, '../data/update');
+        const propertiesDir = path.join(__dirname, '../data/properties');
+        
+        let deletedCount = 0;
+        let errors = [];
+
+        // Función auxiliar para limpiar directorio
+        const cleanDirectory = (dirPath) => {
+            if (fs.existsSync(dirPath)) {
+                const files = fs.readdirSync(dirPath);
+                for (const file of files) {
+                    try {
+                        const filePath = path.join(dirPath, file);
+                        // Verificar si es un archivo antes de borrar
+                        if (fs.lstatSync(filePath).isFile()) {
+                            fs.unlinkSync(filePath);
+                            deletedCount++;
+                        }
+                    } catch (err) {
+                        errors.push(`Error borrando ${file}: ${err.message}`);
+                    }
+                }
+            }
+        };
+
+        cleanDirectory(updateDir);
+        cleanDirectory(propertiesDir);
+
+        if (errors.length > 0) {
+            console.warn('Errores durante la limpieza:', errors);
+            // Retornamos success true porque parcialmente funcionó, pero avisamos
+            res.json({ success: true, message: `Limpieza completada con advertencias. ${deletedCount} archivos borrados.`, errors });
+        } else {
+            res.json({ success: true, message: `Limpieza completada. ${deletedCount} archivos borrados.` });
+        }
+
+    } catch (error) {
+        console.error('Error crítico en limpieza:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
 });
 
 const UPDATE_SCRAPER = path.join(__dirname, 'scrapers/update_scraper.py');
@@ -623,7 +723,18 @@ app.post('/api/properties/update', async (req, res) => {
             console.error("Error actualizando properties.json:", e);
         }
 
-        res.json({ success: true, updatedCount: successCount });
+        // Contar nuevos clientes desde la salida stderr
+        let newClientsCount = 0;
+        try {
+            const newClientMatches = errorData.match(/Nuevo cliente añadido/g);
+            if (newClientMatches) {
+                newClientsCount = newClientMatches.length;
+            }
+        } catch (e) {
+            console.error("Error contando nuevos clientes:", e);
+        }
+
+        res.json({ success: true, updatedCount: successCount, newClientsCount });
 
     } catch (error) {
         console.error('❌ Error en el proceso de actualización de propiedades:', error);
@@ -661,6 +772,85 @@ app.post('/api/clients', (req, res) => {
     } catch (error) {
         console.error('Error añadiendo cliente:', error);
         res.status(500).json({ error: 'Error añadiendo cliente' });
+    }
+});
+
+// Importar clientes masivamente
+app.post('/api/clients/batch', (req, res) => {
+    try {
+        const clients = JSON.parse(fs.readFileSync(CLIENTS_FILE, 'utf8'));
+        const newClients = req.body;
+
+        if (!Array.isArray(newClients)) {
+            return res.status(400).json({ error: 'El cuerpo debe ser un array de clientes' });
+        }
+
+        let addedCount = 0;
+        let updatedCount = 0;
+        const cleanPhone = (p) => (p || '').replace(/\D/g, '');
+
+        newClients.forEach(newClient => {
+            const newClientPhone = cleanPhone(newClient.phone);
+            if (!newClientPhone) return;
+
+            // Buscar si ya existe un cliente con este teléfono (comparando versiones limpias)
+            const existingIndex = clients.findIndex(c => cleanPhone(c.phone) === newClientPhone);
+
+            if (existingIndex !== -1) {
+                // ACTUALIZAR (Upsert) - Solo campos relevantes del CSV, preservando datos locales
+                const existing = clients[existingIndex];
+                
+                // Campos que permitimos actualizar desde el CSV si tienen valor
+                const fieldsToUpdate = [
+                    'name', 'contactName', 'location', 'adLink', 'status', 
+                    'propertyType', 'whatsappLink', 'answered', 'response', 
+                    'date', 'appointmentDate', 'phone'
+                ];
+
+                const updatedFields = {};
+                fieldsToUpdate.forEach(field => {
+                    if (newClient[field]) {
+                        updatedFields[field] = newClient[field];
+                    }
+                });
+
+                clients[existingIndex] = {
+                    ...existing,
+                    ...updatedFields,
+                    // Asegurar que no sobrescribimos ID o historial
+                    id: existing.id,
+                    createdAt: existing.createdAt,
+                    contactHistory: existing.contactHistory || [],
+                    // Preservar email e intereses si el CSV no trae nuevos datos válidos
+                    email: (newClient.email && newClient.email.length > 0) ? newClient.email : existing.email,
+                    interest: (newClient.interest && newClient.interest !== 'Comprar') ? newClient.interest : existing.interest,
+                    preferences: (newClient.preferences && newClient.preferences.length > 0) ? newClient.preferences : existing.preferences
+                };
+                updatedCount++;
+            } else {
+                // INSERTAR NUEVO
+                clients.push({
+                    id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                    ...newClient,
+                    createdAt: new Date().toISOString(),
+                    contactHistory: []
+                });
+                addedCount++;
+            }
+        });
+
+        fs.writeFileSync(CLIENTS_FILE, JSON.stringify(clients, null, 2));
+
+        res.json({ 
+            success: true, 
+            count: addedCount, 
+            updatedCount: updatedCount,
+            totalProcessed: addedCount + updatedCount,
+            message: `Importación: ${addedCount} nuevos, ${updatedCount} actualizados.` 
+        });
+    } catch (error) {
+        console.error('Error importando clientes masivamente:', error);
+        res.status(500).json({ error: 'Error importando clientes' });
     }
 });
 
@@ -950,6 +1140,90 @@ app.post('/api/support', async (req, res) => {
     } catch (err) {
         console.error('   ❌ Error enviando Email de soporte:', err);
         res.status(500).json({ error: `Error enviando email: ${err.message}` });
+    }
+});
+
+// ============ CONFIGURACIÓN DE SCRAPER AUTOMÁTICO ============
+const SCRAPER_CONFIG_FILE = path.join(__dirname, '../data/scraper_config.json');
+let autoScraperInterval = null;
+
+// Ensure config file exists
+if (!fs.existsSync(SCRAPER_CONFIG_FILE)) {
+    try {
+        fs.writeFileSync(SCRAPER_CONFIG_FILE, JSON.stringify({ fotocasa: { enabled: false, interval: "60" } }, null, 2));
+    } catch (e) {
+        console.error("Error creating scraper config file:", e);
+    }
+}
+
+const loadScraperConfig = () => {
+    try {
+        if (fs.existsSync(SCRAPER_CONFIG_FILE)) {
+            return JSON.parse(fs.readFileSync(SCRAPER_CONFIG_FILE, 'utf8'));
+        }
+    } catch (error) {
+        console.error("Error reading scraper config:", error);
+    }
+    return { fotocasa: { enabled: false, interval: "60" } };
+};
+
+const runAutoScrapers = async () => {
+    console.log("⏰ Running auto scrapers...");
+    const types = ['viviendas', 'terrenos', 'locales'];
+    for (const type of types) {
+        const scraperScript = `run_${type}_auto.py`;
+        const scraperPath = path.join(__dirname, `scrapers/fotocasa/${scraperScript}`);
+        if (fs.existsSync(scraperPath)) {
+            console.log(`   ▶ Running ${scraperScript}...`);
+             // We use a promise wrapper around spawn to await completion
+            await new Promise((resolve) => {
+                const process = spawn('python', [scraperPath]);
+                process.stdout.on('data', (data) => console.log(`[${type}] ${data}`));
+                process.stderr.on('data', (data) => console.error(`[${type} ERROR] ${data}`));
+                process.on('close', (code) => {
+                    console.log(`[${type}] Finished with code ${code}`);
+                    resolve();
+                });
+            });
+        }
+    }
+    console.log("✅ Auto scrapers cycle completed.");
+};
+
+const setupAutoScraper = () => {
+    // Clear existing interval
+    if (autoScraperInterval) {
+        clearInterval(autoScraperInterval);
+        autoScraperInterval = null;
+    }
+
+    const config = loadScraperConfig();
+    if (config.fotocasa && config.fotocasa.enabled) {
+        const minutes = parseInt(config.fotocasa.interval);
+        console.log(`⏰ Setting up auto scraper every ${minutes} minutes.`);
+        
+        autoScraperInterval = setInterval(runAutoScrapers, minutes * 60 * 1000);
+    } else {
+        console.log("⏰ Auto scraper is disabled.");
+    }
+};
+
+// Initialize on startup
+setupAutoScraper();
+
+// Routes
+app.get('/api/config/scraper', (req, res) => {
+    res.json(loadScraperConfig());
+});
+
+app.post('/api/config/scraper', (req, res) => {
+    const newConfig = req.body;
+    try {
+        fs.writeFileSync(SCRAPER_CONFIG_FILE, JSON.stringify(newConfig, null, 2));
+        setupAutoScraper(); // Apply changes
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: "Failed to save config" });
     }
 });
 

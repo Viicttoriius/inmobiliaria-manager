@@ -17,6 +17,14 @@ import time
 import random
 import re
 import os
+import sys
+
+# Configurar la salida estándar a UTF-8 para evitar errores de codificación en Windows (charmap)
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+except AttributeError:
+    pass  # Versiones antiguas de Python o entornos sin stdout estándar
 
 from selenium.webdriver.edge.options import Options as EdgeOptions
 from selenium.webdriver.edge.service import Service as EdgeService
@@ -227,8 +235,24 @@ def extract_properties_from_page(html_content, property_type, sort_by):
                     title = GetText(link_text)
 
             # MUNICIPIO (Intentar extraer del título o descripción si no hay campo explícito)
-            municipality = 'Dénia' # Valor por defecto ya que el scraper es de Dénia
-            # Intentar buscar en el título (ej: "Piso en ...")
+            municipality = 'Desconocido'
+            
+            # Intento 1: Buscar elemento específico de dirección/ubicación
+            # Buscamos elementos que contengan 'address', 'location' o 'subtitle' en su clase
+            location_element = article.find(['span', 'div', 'h4'], {'class': lambda x: x and any(k in x for k in ['address', 'location', 'subtitle'])})
+            
+            if location_element:
+                municipality = GetText(location_element)
+            
+            # Intento 2: Extraer del título (ej: "Piso en Dénia" o "Piso en Calle X, Dénia")
+            if municipality == 'Desconocido' and title != 'None':
+                # Buscar " en " y tomar lo que sigue
+                match = re.search(r"\s+en\s+(.*)", title, re.IGNORECASE)
+                if match:
+                    extracted = match.group(1).strip()
+                    # Si hay comas, a veces el formato es "Calle, Municipio"
+                    # Intentamos limpiar un poco
+                    municipality = extracted
             
             # ANUNCIANTE (Por defecto Particular ya que filtramos por eso)
             advertiser = 'Anunciante Particular'
@@ -480,3 +504,49 @@ def save_to_json(properties, property_type, location, output_dir):
         json.dump(output_data, f, ensure_ascii=False, indent=2)
     
     print(f"Datos guardados correctamente en '{output_path}'")
+
+    # --- ACTUALIZACIÓN DEL ARCHIVO PRINCIPAL properties.json ---
+    try:
+        # Asumiendo que output_dir es .../data/properties, el principal está en .../data/properties.json
+        main_file = os.path.join(output_dir, "..", "properties.json")
+        main_file = os.path.abspath(main_file)
+        
+        existing_data = []
+        if os.path.exists(main_file):
+            with open(main_file, 'r', encoding='utf-8') as f:
+                try:
+                    existing_data = json.load(f)
+                    if not isinstance(existing_data, list):
+                        existing_data = [] 
+                except json.JSONDecodeError:
+                    existing_data = []
+        
+        # Crear conjunto de URLs existentes para evitar duplicados
+        existing_urls = {p.get('url') for p in existing_data if p.get('url')}
+        
+        added_count = 0
+        current_time_iso = datetime.now().isoformat()
+
+        for prop in properties:
+            if prop.get('url') and prop.get('url') not in existing_urls:
+                # Asegurar que tenga fecha de scrapeo
+                if 'scrape_date' not in prop:
+                    prop['scrape_date'] = current_time_iso
+                
+                # ASEGURAR PROPERTY_TYPE
+                if 'property_type' not in prop or not prop['property_type']:
+                     prop['property_type'] = property_type
+
+                existing_data.append(prop)
+                added_count += 1
+        
+        if added_count > 0:
+            with open(main_file, 'w', encoding='utf-8') as f:
+                json.dump(existing_data, f, ensure_ascii=False, indent=2)
+            print(f"  ✅ Se han agregado {added_count} nuevas propiedades a {main_file}")
+        else:
+            print(f"  ℹ️ No hay propiedades nuevas (URL única) para agregar a {main_file}")
+
+    except Exception as e:
+        print(f"  ⚠️ Error actualizando properties.json principal: {e}")
+

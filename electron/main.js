@@ -32,7 +32,8 @@ function createWindow() {
 
   // Comprobar actualizaciones al iniciar
   if (!isDev) {
-    autoUpdater.checkForUpdatesAndNotify();
+    autoUpdater.autoDownload = false;
+    autoUpdater.checkForUpdates();
   }
 }
 
@@ -95,22 +96,48 @@ app.on('before-quit', () => {
 // Eventos de Auto-Updater
 autoUpdater.on('checking-for-update', () => {
   console.log('Checking for update...');
+  if (mainWindow) mainWindow.webContents.send('update-status', { status: 'checking' });
 });
+
 autoUpdater.on('update-available', (info) => {
   console.log('Update available.', info);
+  if (mainWindow) mainWindow.webContents.send('update-status', { status: 'available', info });
 });
+
 autoUpdater.on('update-not-available', (info) => {
   console.log('Update not available.', info);
+  if (mainWindow) mainWindow.webContents.send('update-status', { status: 'not-available', info });
 });
+
 autoUpdater.on('error', (err) => {
   console.log('Error in auto-updater. ' + err);
+  if (mainWindow) mainWindow.webContents.send('update-status', { status: 'error', error: err.message });
 });
+
 autoUpdater.on('download-progress', (progressObj) => {
   let log_message = "Download speed: " + progressObj.bytesPerSecond;
   log_message = log_message + ' - Downloaded ' + progressObj.percent + '%';
   log_message = log_message + ' (' + progressObj.transferred + "/" + progressObj.total + ')';
   console.log(log_message);
+  if (mainWindow) mainWindow.webContents.send('update-status', { status: 'progress', progress: progressObj });
 });
+
 autoUpdater.on('update-downloaded', (info) => {
   console.log('Update downloaded');
+  if (mainWindow) mainWindow.webContents.send('update-status', { status: 'downloaded', info });
+});
+
+// IPC Handlers para control manual desde el frontend
+ipcMain.handle('check-for-updates', () => {
+  if (!isDev) {
+    autoUpdater.checkForUpdates();
+  }
+});
+
+ipcMain.handle('download-update', () => {
+  autoUpdater.downloadUpdate();
+});
+
+ipcMain.handle('quit-and-install', () => {
+  autoUpdater.quitAndInstall();
 });
