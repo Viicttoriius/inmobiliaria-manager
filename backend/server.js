@@ -31,7 +31,7 @@ whatsappClient.on('qr', (qr) => {
     console.log('⚠️  ESCANEA ESTE CÓDIGO QR CON TU WHATSAPP PARA INICIAR SESIÓN:');
     console.log('=============================================================\n');
     qrcodeTerminal.generate(qr, { small: true });
-    
+
     // Generar Data URL para el frontend
     QRCode.toDataURL(qr, (err, url) => {
         if (err) {
@@ -73,8 +73,8 @@ const createTransporter = () => {
     return nodemailer.createTransport({
         service: 'gmail',
         auth: {
-            user: process.env.EMAIL_USER, 
-            pass: process.env.EMAIL_PASS 
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS
         },
         tls: {
             rejectUnauthorized: false
@@ -107,7 +107,7 @@ app.get('/api/config/status', (req, res) => {
 // Actualizar credenciales de Email
 app.post('/api/config/email', (req, res) => {
     const { email, password } = req.body;
-    
+
     if (!email || !password) {
         return res.status(400).json({ error: 'Email y contraseña son requeridos' });
     }
@@ -123,7 +123,7 @@ app.post('/api/config/email', (req, res) => {
     try {
         const envPath = path.join(__dirname, '.env');
         let envContent = '';
-        
+
         if (fs.existsSync(envPath)) {
             envContent = fs.readFileSync(envPath, 'utf8');
         }
@@ -155,7 +155,7 @@ app.post('/api/config/email', (req, res) => {
 app.post('/api/config/whatsapp/logout', async (req, res) => {
     try {
         console.log('Solicitud de cierre de sesión de WhatsApp recibida...');
-        
+
         // Intentar logout si parece estar listo
         if (isWhatsAppReady) {
             try {
@@ -171,15 +171,15 @@ app.post('/api/config/whatsapp/logout', async (req, res) => {
             await whatsappClient.destroy();
             console.log('Cliente destruido.');
         } catch (err) {
-             console.warn('Error destruyendo cliente:', err.message);
+            console.warn('Error destruyendo cliente:', err.message);
         }
-        
+
         // Reinicializar para generar nuevo QR
         console.log('Reinicializando cliente...');
         whatsappClient.initialize();
         isWhatsAppReady = false;
         currentQR = null;
-        
+
         res.json({ success: true });
     } catch (error) {
         console.error('Error crítico cerrando sesión WhatsApp:', error);
@@ -220,7 +220,7 @@ const calculatePublicationDetails = (scrapeDate, timeago) => {
     // 1. Calcular la fecha de publicación original basándonos en el timeago del scrapeo
     let originalPublicationDate = new Date(referenceDate);
     const timeagoLower = (timeago || '').toLowerCase();
-    
+
     try {
         if (timeagoLower.includes('hoy')) {
             // La fecha de publicación es la misma que la del scrapeo
@@ -244,7 +244,7 @@ const calculatePublicationDetails = (scrapeDate, timeago) => {
     // Ignoramos las horas/minutos/segundos para comparar solo los días completos
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const startOfPublicationDay = new Date(originalPublicationDate.getFullYear(), originalPublicationDate.getMonth(), originalPublicationDate.getDate());
-    
+
     const diffTime = startOfToday - startOfPublicationDay;
     const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
@@ -275,7 +275,7 @@ app.get('/api/properties', (req, res) => {
     try {
         const fileContent = fs.readFileSync(PROPERTIES_JSON_FILE, 'utf8');
         const properties = JSON.parse(fileContent);
-        
+
         // Aunque los datos ya están consolidados, aún necesitamos calcular el timeago dinámico
         const propertiesWithDetails = properties.map(prop => {
             const { publicationDate, displayTimeago } = calculatePublicationDetails(prop.scrape_date || new Date(), prop.Timeago);
@@ -318,77 +318,77 @@ const runPythonScraper = (scraperPath, res) => {
 
     pythonProcess.on('close', (code) => {
         if (code === 0) {
-                console.log(`✅ Scraper completado exitosamente`);
+            console.log(`✅ Scraper completado exitosamente`);
 
-                // Lógica de consolidación
-                const mainPropertiesFile = path.join(__dirname, '../data/properties.json');
+            // Lógica de consolidación
+            const mainPropertiesFile = path.join(__dirname, '../data/properties.json');
 
-                // Encontrar el último archivo JSON generado
-                const files = fs.readdirSync(PROPERTIES_DIR)
-                    .filter(file => file.startsWith('fotocasa') && file.endsWith('.json'))
-                    .map(file => ({ file, mtime: fs.statSync(path.join(PROPERTIES_DIR, file)).mtime }))
-                    .sort((a, b) => b.mtime - a.mtime);
+            // Encontrar el último archivo JSON generado
+            const files = fs.readdirSync(PROPERTIES_DIR)
+                .filter(file => file.startsWith('fotocasa') && file.endsWith('.json'))
+                .map(file => ({ file, mtime: fs.statSync(path.join(PROPERTIES_DIR, file)).mtime }))
+                .sort((a, b) => b.mtime - a.mtime);
 
-                if (files.length === 0) {
-                    return res.json({ success: true, message: 'Scraper completado, pero no se encontraron nuevos datos para consolidar.', output });
-                }
+            if (files.length === 0) {
+                return res.json({ success: true, message: 'Scraper completado, pero no se encontraron nuevos datos para consolidar.', output });
+            }
 
-                const latestScraperFile = path.join(PROPERTIES_DIR, files[0].file);
+            const latestScraperFile = path.join(PROPERTIES_DIR, files[0].file);
 
-                // Leer los datos existentes y los nuevos
-                let existingProperties = [];
-                if (fs.existsSync(mainPropertiesFile)) {
-                    try {
-                        const existingData = JSON.parse(fs.readFileSync(mainPropertiesFile, 'utf-8'));
-                        // Asegurarse de que los datos existentes son un array
-                        if (Array.isArray(existingData)) {
-                            existingProperties = existingData;
-                        }
-                    } catch (e) {
-                        console.error('Error al parsear el archivo de propiedades principal, se tratará como vacío.', e);
-                        existingProperties = [];
+            // Leer los datos existentes y los nuevos
+            let existingProperties = [];
+            if (fs.existsSync(mainPropertiesFile)) {
+                try {
+                    const existingData = JSON.parse(fs.readFileSync(mainPropertiesFile, 'utf-8'));
+                    // Asegurarse de que los datos existentes son un array
+                    if (Array.isArray(existingData)) {
+                        existingProperties = existingData;
                     }
+                } catch (e) {
+                    console.error('Error al parsear el archivo de propiedades principal, se tratará como vacío.', e);
+                    existingProperties = [];
                 }
+            }
 
-                const newPropertiesData = JSON.parse(fs.readFileSync(latestScraperFile, 'utf-8'));
+            const newPropertiesData = JSON.parse(fs.readFileSync(latestScraperFile, 'utf-8'));
 
-                // Extraer el tipo de propiedad y la fuente del objeto principal y añadirlo a cada propiedad
-                const propertyType = newPropertiesData.property_type;
-                const source = newPropertiesData.source || 'Fotocasa'; // Default to Fotocasa if missing
-                const newPropertiesArray = newPropertiesData.properties.map(prop => ({
-                    ...prop,
-                    property_type: propertyType,
-                    source: source
-                }));
+            // Extraer el tipo de propiedad y la fuente del objeto principal y añadirlo a cada propiedad
+            const propertyType = newPropertiesData.property_type;
+            const source = newPropertiesData.source || 'Fotocasa'; // Default to Fotocasa if missing
+            const newPropertiesArray = newPropertiesData.properties.map(prop => ({
+                ...prop,
+                property_type: propertyType,
+                source: source
+            }));
 
-                // Verificar que newPropertiesArray es un array antes de combinar
-                if (!Array.isArray(newPropertiesArray)) {
-                    console.error('El archivo del scraper no contiene un array de propiedades válido.');
-                    // No se puede continuar sin un array, así que se finaliza la respuesta.
-                    return res.json({ success: true, message: 'Scraper completado, pero los datos generados no tienen el formato correcto.', output });
+            // Verificar que newPropertiesArray es un array antes de combinar
+            if (!Array.isArray(newPropertiesArray)) {
+                console.error('El archivo del scraper no contiene un array de propiedades válido.');
+                // No se puede continuar sin un array, así que se finaliza la respuesta.
+                return res.json({ success: true, message: 'Scraper completado, pero los datos generados no tienen el formato correcto.', output });
+            }
+
+
+            // Combinar y eliminar duplicados
+            const allProperties = [...existingProperties, ...newPropertiesArray];
+            const uniqueProperties = allProperties.reduce((acc, current) => {
+                // Asegurarse de que el item actual tiene una URL para evitar errores
+                if (current && current.url && !acc.find(item => item.url === current.url)) {
+                    acc.push(current);
                 }
+                return acc;
+            }, []);
 
+            // Guardar los datos consolidados
+            fs.writeFileSync(mainPropertiesFile, JSON.stringify(uniqueProperties, null, 2));
 
-                // Combinar y eliminar duplicados
-                const allProperties = [...existingProperties, ...newPropertiesArray];
-                const uniqueProperties = allProperties.reduce((acc, current) => {
-                    // Asegurarse de que el item actual tiene una URL para evitar errores
-                    if (current && current.url && !acc.find(item => item.url === current.url)) {
-                        acc.push(current);
-                    }
-                    return acc;
-                }, []);
+            // (Opcional) Eliminar el archivo temporal
+            // fs.unlinkSync(latestScraperFile);
 
-                // Guardar los datos consolidados
-                fs.writeFileSync(mainPropertiesFile, JSON.stringify(uniqueProperties, null, 2));
+            console.log(`✅ Consolidación completada: ${uniqueProperties.length} propiedades únicas.`);
+            res.json({ success: true, message: 'Scraper y consolidación completados', output });
 
-                // (Opcional) Eliminar el archivo temporal
-                // fs.unlinkSync(latestScraperFile);
-
-                console.log(`✅ Consolidación completada: ${uniqueProperties.length} propiedades únicas.`);
-                res.json({ success: true, message: 'Scraper y consolidación completados', output });
-
-            } else {
+        } else {
             console.error(`❌ Scraper falló con código ${code}`);
             res.status(500).json({ success: false, error: 'Error ejecutando scraper', output: errorOutput });
         }
@@ -451,14 +451,14 @@ app.post('/api/properties/update', async (req, res) => {
         const pythonProcess = spawn('python', [UPDATE_SCRAPER, tempUrlsFile], {
             env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
         });
-        
+
         let rawData = '';
         let errorData = '';
 
         pythonProcess.on('error', (err) => {
             console.error('❌ Error iniciando proceso Python:', err);
             // Intentar borrar archivo temporal si existe
-            try { if (fs.existsSync(tempUrlsFile)) fs.unlinkSync(tempUrlsFile); } catch(e) {}
+            try { if (fs.existsSync(tempUrlsFile)) fs.unlinkSync(tempUrlsFile); } catch (e) { }
             // No podemos responder dos veces si ya respondimos, pero aquí es temprano
             if (!res.headersSent) {
                 res.status(500).json({ success: false, error: 'Error al iniciar el proceso de actualización: ' + err.message });
@@ -497,12 +497,12 @@ app.post('/api/properties/update', async (req, res) => {
             // Intentar encontrar el JSON en la salida (puede haber logs previos si algo falló en suppress)
             const jsonStartIndex = rawData.indexOf('[');
             const jsonEndIndex = rawData.lastIndexOf(']');
-            
+
             if (jsonStartIndex !== -1 && jsonEndIndex !== -1) {
                 const jsonString = rawData.substring(jsonStartIndex, jsonEndIndex + 1);
                 updatedProperties = JSON.parse(jsonString);
             } else {
-                 throw new Error("No se encontró JSON válido en la salida");
+                throw new Error("No se encontró JSON válido en la salida");
             }
         } catch (e) {
             console.error("Error parseando salida del scraper:", e);
@@ -510,14 +510,14 @@ app.post('/api/properties/update', async (req, res) => {
             try {
                 const updateDir = path.join(__dirname, '../data/update');
                 if (fs.existsSync(updateDir)) {
-                     const files = fs.readdirSync(updateDir)
+                    const files = fs.readdirSync(updateDir)
                         .filter(f => f.startsWith('update_batch_'))
                         .sort((a, b) => fs.statSync(path.join(updateDir, b)).mtime - fs.statSync(path.join(updateDir, a)).mtime);
-                     
-                     if (files.length > 0) {
-                         const content = fs.readFileSync(path.join(updateDir, files[0]), 'utf-8');
-                         updatedProperties = JSON.parse(content);
-                     }
+
+                    if (files.length > 0) {
+                        const content = fs.readFileSync(path.join(updateDir, files[0]), 'utf-8');
+                        updatedProperties = JSON.parse(content);
+                    }
                 }
             } catch (err) {
                 console.error("Error fallback leyendo archivo update:", err);
@@ -546,7 +546,7 @@ app.post('/api/properties/update', async (req, res) => {
                             }
                         });
                     }
-                } catch(e) {}
+                } catch (e) { }
             }
         });
 
@@ -595,13 +595,13 @@ app.post('/api/properties/update', async (req, res) => {
                 }
             }
         }
-        
+
         // Actualizar properties.json consolidado también
         try {
             if (fs.existsSync(PROPERTIES_JSON_FILE)) {
                 const consolidatedData = JSON.parse(fs.readFileSync(PROPERTIES_JSON_FILE, 'utf8'));
                 let consolidatedModified = false;
-                
+
                 updatedProperties.forEach(update => {
                     const index = consolidatedData.findIndex(p => p.url === update.url);
                     if (index !== -1) {
@@ -613,14 +613,14 @@ app.post('/api/properties/update', async (req, res) => {
                         consolidatedModified = true;
                     }
                 });
-                
+
                 if (consolidatedModified) {
                     fs.writeFileSync(PROPERTIES_JSON_FILE, JSON.stringify(consolidatedData, null, 2));
                     console.log(`💾 Archivo consolidado properties.json actualizado.`);
                 }
             }
         } catch (e) {
-             console.error("Error actualizando properties.json:", e);
+            console.error("Error actualizando properties.json:", e);
         }
 
         res.json({ success: true, updatedCount: successCount });
@@ -810,59 +810,59 @@ IAD Denia
 
 // Enviar mensaje (WhatsApp Local y Email)
 app.post('/api/messages/send', async (req, res) => {
-  const { clientId, clientPhone, message, channels, propertyUrl, clientEmail } = req.body;
-  
-  console.log('\n==================================================');
-  console.log('📥 RECIBIDA SOLICITUD DE ENVÍO DESDE FRONTEND');
-  console.log('==================================================');
-  console.log('   - Phone:', clientPhone);
-  console.log('   - Email:', clientEmail);
-  console.log('   - Channels:', channels);
-  console.log('   - Message length:', message ? message.length : 0);
-  
-  const results = { whatsapp: 'skipped', email: 'skipped' };
+    const { clientId, clientPhone, message, channels, propertyUrl, clientEmail } = req.body;
+
+    console.log('\n==================================================');
+    console.log('📥 RECIBIDA SOLICITUD DE ENVÍO DESDE FRONTEND');
+    console.log('==================================================');
+    console.log('   - Phone:', clientPhone);
+    console.log('   - Email:', clientEmail);
+    console.log('   - Channels:', channels);
+    console.log('   - Message length:', message ? message.length : 0);
+
+    const results = { whatsapp: 'skipped', email: 'skipped' };
     const errors = [];
     let success = false;
 
     // 1. ENVIAR WHATSAPP
-          if (channels === 'whatsapp' || channels === 'both') {
-            console.log('   [DEBUG] Intentando envío WhatsApp. Estado ready:', isWhatsAppReady);
-            if (!isWhatsAppReady) {
-              errors.push('WhatsApp no está listo. Revisa la terminal del servidor y escanea el QR.');
-              results.whatsapp = 'failed';
-            } else {
-              try {
+    if (channels === 'whatsapp' || channels === 'both') {
+        console.log('   [DEBUG] Intentando envío WhatsApp. Estado ready:', isWhatsAppReady);
+        if (!isWhatsAppReady) {
+            errors.push('WhatsApp no está listo. Revisa la terminal del servidor y escanea el QR.');
+            results.whatsapp = 'failed';
+        } else {
+            try {
                 // Formatear número: eliminar caracteres no numéricos
                 let formattedPhone = clientPhone.replace(/\D/g, '');
-                
+
                 // Asegurar código de país (asumiendo España 34 si no lo tiene y tiene 9 dígitos)
                 if (formattedPhone.length === 9) {
-                  formattedPhone = '34' + formattedPhone;
+                    formattedPhone = '34' + formattedPhone;
                 }
-                
+
                 const chatId = `${formattedPhone}@c.us`;
-                
+
                 console.log(`   📱 Enviando WhatsApp a ${chatId}...`);
                 const response = await whatsappClient.sendMessage(chatId, message);
                 console.log('   ✅ WhatsApp enviado. ID:', response.id ? response.id._serialized : 'Desconocido');
                 results.whatsapp = 'sent';
                 success = true;
-              } catch (err) {
+            } catch (err) {
                 console.error('   ❌ Error enviando WhatsApp:', err);
                 errors.push(`Error WhatsApp: ${err.message}`);
                 results.whatsapp = 'failed';
-              }
             }
-          }
+        }
+    }
 
     // 2. ENVIAR EMAIL
     if (channels === 'email' || channels === 'both') {
         if (!clientEmail) {
-             errors.push('No se proporcionó email para el cliente.');
-             results.email = 'failed';
+            errors.push('No se proporcionó email para el cliente.');
+            results.email = 'failed';
         } else if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-             errors.push('Faltan credenciales de email en .env (EMAIL_USER, EMAIL_PASS).');
-             results.email = 'failed';
+            errors.push('Faltan credenciales de email en .env (EMAIL_USER, EMAIL_PASS).');
+            results.email = 'failed';
         } else {
             try {
                 console.log(`   📧 Enviando Email a ${clientEmail}...`);
@@ -890,12 +890,12 @@ app.post('/api/messages/send', async (req, res) => {
             try {
                 const clients = JSON.parse(fs.readFileSync(CLIENTS_FILE, 'utf8'));
                 const clientIndex = clients.findIndex(c => c.id === clientId);
-                
+
                 if (clientIndex !== -1) {
                     if (!clients[clientIndex].contactHistory) {
                         clients[clientIndex].contactHistory = [];
                     }
-                    
+
                     clients[clientIndex].contactHistory.push({
                         date: new Date().toISOString(),
                         propertyUrl: propertyUrl || 'Multiple/General',
@@ -903,7 +903,7 @@ app.post('/api/messages/send', async (req, res) => {
                         message: message.substring(0, 100) + '...', // Guardar preview
                         status: results
                     });
-                    
+
                     fs.writeFileSync(CLIENTS_FILE, JSON.stringify(clients, null, 2));
                     console.log(`   📝 Historial actualizado para cliente ${clientId}`);
                 }
@@ -915,11 +915,11 @@ app.post('/api/messages/send', async (req, res) => {
         res.json({ success: true, results, errors });
     } else {
         // Si fallaron todos los intentos solicitados
-        res.status(500).json({ 
-            success: false, 
-            error: 'Falló el envío de mensajes.', 
+        res.status(500).json({
+            success: false,
+            error: 'Falló el envío de mensajes.',
             details: errors,
-            results 
+            results
         });
     }
 });
