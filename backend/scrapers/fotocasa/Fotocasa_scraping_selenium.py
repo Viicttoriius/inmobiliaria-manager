@@ -49,8 +49,20 @@ def setup_driver(headless=True):
     
     edge_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0')
     
-    # Ruta al driver descargado manualmente
-    driver_path = r"d:\Trabajo\Alex Automatización\inmobiliaria\driver\msedgedriver.exe"
+    # Ruta al driver dinámica
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    # Subir 3 niveles: fotocasa -> scrapers -> backend -> root (donde está driver/)
+    # En prod: resources/backend/scrapers/fotocasa -> ... -> resources/driver
+    driver_path = os.path.join(current_dir, "..", "..", "..", "driver", "msedgedriver.exe")
+    driver_path = os.path.abspath(driver_path)
+
+    if not os.path.exists(driver_path):
+        # Fallback a ruta absoluta original por si acaso
+        fallback_path = r"d:\Trabajo\Alex Automatización\inmobiliaria\driver\msedgedriver.exe"
+        if os.path.exists(fallback_path):
+            driver_path = fallback_path
+            
+    print(f"Iniciando WebDriver con: {driver_path}")
     service = EdgeService(executable_path=driver_path)
     # Suppress logs
     service.creation_flags = 0x08000000 # CREATE_NO_WINDOW

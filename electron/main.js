@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, Notification } = require('electron');
 const path = require('path');
 const { fork } = require('child_process');
 const { autoUpdater } = require('electron-updater');
@@ -109,6 +109,12 @@ autoUpdater.on('checking-for-update', () => {
 autoUpdater.on('update-available', (info) => {
   console.log('Update available.', info);
   if (mainWindow) mainWindow.webContents.send('update-status', { status: 'available', info });
+
+  // Notificación nativa con versión
+  new Notification({
+    title: 'Nueva Actualización Disponible',
+    body: `La versión ${info.version} está lista para descargar.`
+  }).show();
 });
 
 autoUpdater.on('update-not-available', (info) => {
@@ -132,6 +138,12 @@ autoUpdater.on('download-progress', (progressObj) => {
 autoUpdater.on('update-downloaded', (info) => {
   console.log('Update downloaded');
   if (mainWindow) mainWindow.webContents.send('update-status', { status: 'downloaded', info });
+
+  // Notificación nativa de descarga completada
+  new Notification({
+    title: 'Actualización Lista',
+    body: `La versión ${info.version} se ha descargado. Reinicia para instalar.`
+  }).show();
 });
 
 // IPC Handlers para control manual desde el frontend
