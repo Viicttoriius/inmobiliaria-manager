@@ -3,6 +3,31 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const { spawn, exec } = require('child_process');
+
+// Función para buscar Python en rutas comunes de Windows
+const findPythonOnWindows = () => {
+    const commonPaths = [
+        'C:\\Python314\\python.exe',
+        'C:\\Python313\\python.exe',
+        'C:\\Python312\\python.exe',
+        'C:\\Python311\\python.exe',
+        'C:\\Python310\\python.exe',
+        'C:\\Python39\\python.exe',
+        path.join(process.env.LOCALAPPDATA || '', 'Programs\\Python\\Python314\\python.exe'),
+        path.join(process.env.LOCALAPPDATA || '', 'Programs\\Python\\Python313\\python.exe'),
+        path.join(process.env.LOCALAPPDATA || '', 'Programs\\Python\\Python312\\python.exe'),
+        path.join(process.env.LOCALAPPDATA || '', 'Programs\\Python\\Python311\\python.exe'),
+        path.join(process.env.LOCALAPPDATA || '', 'Programs\\Python\\Python310\\python.exe'),
+    ];
+
+    for (const p of commonPaths) {
+        if (fs.existsSync(p)) {
+            return p;
+        }
+    }
+    return null;
+};
+
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcodeTerminal = require('qrcode-terminal');
 const QRCode = require('qrcode'); // Para generar QR en frontend
@@ -52,8 +77,19 @@ const checkPythonDependencies = () => {
         console.log('📦 Verificando dependencias de Python...');
         
         let defaultPython = 'python';
-        if (process.platform !== 'win32') defaultPython = 'python3';
-        const pythonExecutable = process.env.PYTHON_PATH || defaultPython;
+    if (process.platform !== 'win32') {
+        defaultPython = 'python3';
+    } else {
+        // En Windows, si 'python' no funciona (se puede asumir si process.env.PYTHON_PATH no está), intentamos buscar
+        if (!process.env.PYTHON_PATH) {
+            const detected = findPythonOnWindows();
+            if (detected) {
+                console.log(`🔍 Python detectado automáticamente en: ${detected}`);
+                defaultPython = detected;
+            }
+        }
+    }
+    const pythonExecutable = process.env.PYTHON_PATH || defaultPython;
 
         // Intentar instalar dependencias
         exec(`${pythonExecutable} -m pip install -r "${requirementsPath}"`, (error, stdout, stderr) => {
@@ -461,6 +497,12 @@ const runPythonScraper = (scraperPath, res) => {
     let defaultPython = 'python';
     if (process.platform !== 'win32') {
         defaultPython = 'python3';
+    } else {
+        // En Windows, intentar autodetectar si no hay path manual
+        if (!process.env.PYTHON_PATH) {
+             const detected = findPythonOnWindows();
+             if (detected) defaultPython = detected;
+        }
     }
     
     const pythonExecutable = process.env.PYTHON_PATH || defaultPython;
@@ -707,11 +749,16 @@ app.post('/api/properties/update', async (req, res) => {
         fs.writeFileSync(tempUrlsFile, JSON.stringify(urls));
         console.log(`   📄 Archivo temporal creado: ${tempUrlsFile}`);
 
-        // 2. Ejecutar scraper con el archivo de URLs
+         // 2. Ejecutar scraper con el archivo de URLs
         // Determinar el ejecutable de Python
         let defaultPython = 'python';
         if (process.platform !== 'win32') {
             defaultPython = 'python3';
+        } else {
+             if (!process.env.PYTHON_PATH) {
+                  const detected = findPythonOnWindows();
+                  if (detected) defaultPython = detected;
+             }
         }
         const pythonExecutable = process.env.PYTHON_PATH || defaultPython;
 
@@ -1342,6 +1389,11 @@ const runAutoScrapers = async () => {
     let defaultPython = 'python';
     if (process.platform !== 'win32') {
         defaultPython = 'python3';
+    } else {
+         if (!process.env.PYTHON_PATH) {
+              const detected = findPythonOnWindows();
+              if (detected) defaultPython = detected;
+         }
     }
     const pythonExecutable = process.env.PYTHON_PATH || defaultPython;
     

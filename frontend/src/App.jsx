@@ -523,13 +523,25 @@ function App() {
     setScrapingLog(`Iniciando scraper de ${scraperName}${propertyType ? ` (${propertyType})` : ''}...\n`)
 
     try {
+      // Usar un timeout en el fetch para evitar esperas infinitas si el backend tarda, pero dando margen suficiente (5 min)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutos
+
       const response = await fetch(`${API_URL}/scraper/${scraperName}/run`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ type: propertyType })
+        body: JSON.stringify({ type: propertyType }),
+        signal: controller.signal
       })
+      
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+          throw new Error(`Error del servidor: ${response.status} ${response.statusText}`);
+      }
+
       const data = await response.json()
 
       if (data.success) {
@@ -539,7 +551,13 @@ function App() {
         setScrapingLog(prev => prev + `\n❌ Error en ${scraperName}${propertyType ? ` (${propertyType})` : ''}: ` + (data.error || 'Error desconocido'))
       }
     } catch (error) {
-      setScrapingLog(prev => prev + `\n❌ Error ejecutando scraper de ${scraperName}${propertyType ? ` (${propertyType})` : ''}: ` + error.message)
+      let errorMsg = error.message;
+      if (error.name === 'AbortError') {
+          errorMsg = 'Tiempo de espera agotado (Timeout)';
+      } else if (errorMsg === 'Failed to fetch') {
+          errorMsg = 'No se pudo conectar con el servidor. Verifica que el backend esté corriendo.';
+      }
+      setScrapingLog(prev => prev + `\n❌ Error ejecutando scraper de ${scraperName}${propertyType ? ` (${propertyType})` : ''}: ` + errorMsg)
     } finally {
       setScrapingInProgress(prev => ({ ...prev, [stateKey]: false }))
     }
