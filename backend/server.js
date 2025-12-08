@@ -92,7 +92,10 @@ const checkPythonDependencies = () => {
     const pythonExecutable = process.env.PYTHON_PATH || defaultPython;
 
         // Intentar instalar dependencias
-        exec(`${pythonExecutable} -m pip install -r "${requirementsPath}"`, (error, stdout, stderr) => {
+        // Asegurar que el path de python esté entre comillas si tiene espacios
+        const safePythonExec = pythonExecutable.includes(' ') ? `"${pythonExecutable}"` : pythonExecutable;
+        
+        exec(`${safePythonExec} -m pip install -r "${requirementsPath}"`, (error, stdout, stderr) => {
             if (error) {
                 console.warn('⚠️ No se pudieron instalar las dependencias de Python automáticamente.');
                 console.warn('Si el scraper falla, asegúrate de tener instalado: selenium, beautifulsoup4');
@@ -103,6 +106,16 @@ const checkPythonDependencies = () => {
         });
     }
 };
+
+// Manejo de errores globales para evitar cierres inesperados
+process.on('uncaughtException', (err) => {
+    console.error('🔥 UNCAUGHT EXCEPTION:', err);
+    // No salimos del proceso para mantener el servidor vivo, pero logueamos el error crítico
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('🔥 UNHANDLED REJECTION:', reason);
+});
 
 // Ejecutar verificación en segundo plano al iniciar
 checkPythonDependencies();
@@ -141,6 +154,7 @@ const whatsappClient = new Client({
 let isWhatsAppReady = false;
 let currentQR = null; // Guardar el QR actual para enviarlo al frontend
 
+// Manejo robusto de eventos
 whatsappClient.on('qr', (qr) => {
     console.log('\n=============================================================');
     console.log('⚠️  ESCANEA ESTE CÓDIGO QR CON TU WHATSAPP PARA INICIAR SESIÓN:');
@@ -174,6 +188,7 @@ whatsappClient.on('authenticated', () => {
 whatsappClient.on('auth_failure', msg => {
     console.error('❌ Error de autenticación de WhatsApp:', msg);
     currentQR = null;
+    isWhatsAppReady = false;
 });
 
 whatsappClient.on('disconnected', (reason) => {
@@ -181,10 +196,22 @@ whatsappClient.on('disconnected', (reason) => {
     isWhatsAppReady = false;
     currentQR = null;
     // Reinicializar para permitir reconexión
-    whatsappClient.initialize();
+    try {
+        whatsappClient.initialize().catch(err => console.error('Error reinicializando WhatsApp tras desconexión:', err));
+    } catch (e) {
+        console.error('Excepción al intentar reinicializar WhatsApp:', e);
+    }
 });
 
-whatsappClient.initialize();
+// Inicialización segura
+try {
+    whatsappClient.initialize().catch(err => {
+        console.error('❌ Error fatal al inicializar WhatsApp Client:', err);
+        // No detener el servidor si falla WhatsApp
+    });
+} catch (error) {
+    console.error('❌ Excepción síncrona al inicializar WhatsApp:', error);
+}
 
 // --- CONFIGURACIÓN EMAIL (NODEMAILER) ---
 // Función para crear el transporter con credenciales actualizadas
@@ -516,7 +543,7 @@ const runPythonScraper = (scraperPath, res) => {
             PYTHONIOENCODING: 'utf-8',
             PROPERTIES_OUTPUT_DIR: PROPERTIES_DIR
         },
-        shell: process.platform === 'win32' // shell:true solo en Windows para evitar problemas en Mac
+        shell: false // IMPORTANTE: shell:false evita problemas con espacios en rutas en Windows si pasamos el ejecutable directo
     });
 
     let output = '';
@@ -764,7 +791,7 @@ app.post('/api/properties/update', async (req, res) => {
 
         const pythonProcess = spawn(pythonExecutable, [UPDATE_SCRAPER, tempUrlsFile], {
             env: { ...process.env, PYTHONIOENCODING: 'utf-8', USER_DATA_PATH: BASE_PATH },
-            shell: process.platform === 'win32'
+            shell: false
         });
 
         let rawData = '';
@@ -1410,7 +1437,7 @@ const runAutoScrapers = async () => {
                         ...process.env, 
                         PROPERTIES_OUTPUT_DIR: PROPERTIES_DIR
                     },
-                    shell: process.platform === 'win32' // shell:true solo en Windows para evitar problemas en Mac
+                    shell: false
                 });
                 process.stdout.on('data', (data) => console.log(`[${type}] ${data}`));
                 process.stderr.on('data', (data) => console.error(`[${type} ERROR] ${data}`));
