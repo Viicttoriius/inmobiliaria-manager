@@ -14,6 +14,30 @@ const BASE_PATH = process.env.USER_DATA_PATH || path.join(__dirname, '..');
 const DATA_DIR = path.join(BASE_PATH, 'data');
 const ENV_FILE = path.join(BASE_PATH, '.env');
 
+// --- MIGRATION LOGIC START ---
+// Intenta migrar datos desde la carpeta resources (legacy) si la carpeta de datos de usuario está vacía
+try {
+    const LEGACY_DATA_PATH = path.join(__dirname, '..', 'data');
+    // Solo migrar si estamos usando USER_DATA_PATH, la carpeta de destino no existe (o está vacía de clientes) y la de origen sí existe
+    if (process.env.USER_DATA_PATH && fs.existsSync(LEGACY_DATA_PATH)) {
+        const destClients = path.join(DATA_DIR, 'clients', 'clients.json');
+        if (!fs.existsSync(destClients)) {
+             console.log('🔄 Migrando datos desde ubicación legacy:', LEGACY_DATA_PATH, '->', DATA_DIR);
+             // Crear directorio destino si no existe
+             if (!fs.existsSync(DATA_DIR)) {
+                 fs.mkdirSync(DATA_DIR, { recursive: true });
+             }
+             
+             // Copiar recursivamente (requiere Node 16.7+)
+             fs.cpSync(LEGACY_DATA_PATH, DATA_DIR, { recursive: true });
+             console.log('✅ Datos migrados correctamente.');
+        }
+    }
+} catch (error) {
+    console.error('❌ Error durante la migración de datos:', error);
+}
+// --- MIGRATION LOGIC END ---
+
 require('dotenv').config({ path: ENV_FILE });
 
 const app = express();
@@ -245,6 +269,22 @@ const PROPERTIES_JSON_FILE = path.join(DATA_DIR, 'properties.json');
 // Asegurar que existen las carpetas y el archivo de clientes
 if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+// DEBUG: Escribir información de rutas para depuración
+try {
+    const debugInfo = `
+Time: ${new Date().toISOString()}
+Platform: ${process.platform}
+BASE_PATH: ${BASE_PATH}
+DATA_DIR: ${DATA_DIR}
+ENV_FILE: ${ENV_FILE}
+USER_DATA_ENV: ${process.env.USER_DATA_PATH}
+LEGACY_PATH_CHECK: ${path.join(__dirname, '..', 'data')}
+`;
+    fs.writeFileSync(path.join(DATA_DIR, 'debug_paths.txt'), debugInfo);
+} catch(e) {
+    console.error('Error escribiendo debug info:', e);
 }
 
 const dataClientsDir = path.join(DATA_DIR, 'clients');
