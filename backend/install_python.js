@@ -92,34 +92,60 @@ try {
     // 5. Post-instalación específica (ej. .pth en windows)
     currentConfig.postInstall(DEST_DIR);
 
-    // 6. Instalar PIP (Solo si no viene incluido, standalone builds suelen traerlo pero windows embed no)
-    // En Windows siempre lo instalamos. En Linux/Mac standalone builds a veces ya traen pip.
-    // Vamos a intentar instalarlo siempre para asegurar.
-    
-    console.log('⬇️ Descargando/Verificando pip...');
+    // 6. Instalar PIP
+    console.log('⬇️ Verificando/Instalando pip...');
     // Determinar ejecutable
     let pythonExe;
     if (process.platform === 'win32') {
         pythonExe = path.join(DEST_DIR, 'python.exe');
     } else {
-        pythonExe = path.join(DEST_DIR, 'bin', 'python3');
+        const binDir = path.join(DEST_DIR, 'bin');
+        if (fs.existsSync(path.join(binDir, 'python3'))) {
+            pythonExe = path.join(binDir, 'python3');
+        } else if (fs.existsSync(path.join(binDir, 'python3.11'))) {
+            pythonExe = path.join(binDir, 'python3.11');
+        } else {
+            // Fallback checking
+            console.log('⚠️ No se encontró python3 ni python3.11 en bin. Listando contenido de bin:');
+            try {
+                if (fs.existsSync(binDir)) {
+                    console.log(fs.readdirSync(binDir));
+                } else {
+                    console.log('Directorio bin no existe. Contenido de DEST_DIR:');
+                    console.log(fs.readdirSync(DEST_DIR));
+                }
+            } catch(e) {}
+            pythonExe = path.join(binDir, 'python3'); // Fallback default
+        }
+        
         // Dar permisos de ejecución en unix
-        execSync(`chmod +x "${pythonExe}"`);
+        if (fs.existsSync(pythonExe)) {
+            execSync(`chmod +x "${pythonExe}"`);
+        }
     }
 
     if (fs.existsSync(pythonExe)) {
+        // Intentar ensurepip primero (más robusto)
         try {
-            execSync(`curl -L "${GET_PIP_URL}" -o "${GET_PIP_FILE}"`, { stdio: 'inherit' });
+            console.log('🔧 Intentando instalar pip via ensurepip...');
+            execSync(`"${pythonExe}" -m ensurepip`, { stdio: 'inherit' });
         } catch (e) {
-            if (process.platform === 'win32') {
-                 execSync(`powershell -command "Invoke-WebRequest -Uri '${GET_PIP_URL}' -OutFile '${GET_PIP_FILE}'"`, { stdio: 'inherit' });
+            console.log('⚠️ ensurepip falló, intentando con get-pip.py...');
+            try {
+                execSync(`curl -L "${GET_PIP_URL}" -o "${GET_PIP_FILE}"`, { stdio: 'inherit' });
+            } catch (err) {
+                if (process.platform === 'win32') {
+                     execSync(`powershell -command "Invoke-WebRequest -Uri '${GET_PIP_URL}' -OutFile '${GET_PIP_FILE}'"`, { stdio: 'inherit' });
+                }
+            }
+    
+            if (fs.existsSync(GET_PIP_FILE)) {
+                console.log('🔧 Instalando pip via get-pip.py...');
+                execSync(`"${pythonExe}" "${GET_PIP_FILE}"`, { stdio: 'inherit' });
+                fs.unlinkSync(GET_PIP_FILE);
             }
         }
 
-        console.log('🔧 Instalando pip...');
-        execSync(`"${pythonExe}" "${GET_PIP_FILE}"`, { stdio: 'inherit' });
-
-        // 7. Instalar dependencias
         const reqFile = path.join(__dirname, 'requirements.txt');
         if (fs.existsSync(reqFile)) {
             console.log('📚 Instalando dependencias...');
