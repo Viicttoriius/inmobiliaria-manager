@@ -2,29 +2,38 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
+const DEST_DIR = path.join(__dirname, 'python_env');
+
+// Asegurar que el directorio existe para evitar errores en electron-builder (extraResources)
+if (!fs.existsSync(DEST_DIR)) {
+    fs.mkdirSync(DEST_DIR);
+}
+
+if (process.platform !== 'win32') {
+    console.log('ℹ️ No estamos en Windows. Creando marcador de posición para evitar errores de build.');
+    fs.writeFileSync(path.join(DEST_DIR, 'placeholder.txt'), 'Python environment is handled by the system on non-Windows platforms.');
+    process.exit(0);
+}
+
 const PYTHON_VERSION = '3.11.9';
 const PYTHON_URL = `https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-embed-amd64.zip`;
-const DEST_DIR = path.join(__dirname, 'python_env');
 const ZIP_FILE = path.join(__dirname, 'python.zip');
 const GET_PIP_URL = 'https://bootstrap.pypa.io/get-pip.py';
 const GET_PIP_FILE = path.join(DEST_DIR, 'get-pip.py');
 
 console.log('🚀 Iniciando instalación automática de Python Portable...');
 
-if (process.platform !== 'win32') {
-    console.log('ℹ️ No estamos en Windows. Saltando instalación de Python Portable (se usará Python del sistema en Linux/Mac).');
-    process.exit(0);
-}
-
 try {
-    // 1. Crear directorio
-    if (!fs.existsSync(DEST_DIR)) {
-        fs.mkdirSync(DEST_DIR);
-        console.log('📁 Directorio creado:', DEST_DIR);
+    // 1. Limpiar directorio si existe (para asegurar instalación limpia en Windows)
+    if (fs.existsSync(DEST_DIR)) {
+         console.log('ℹ️ Limpiando directorio para instalación limpia...');
+         // En Windows, fs.rmSync puede fallar si hay archivos bloqueados, pero en CI debería estar bien
+         try {
+            fs.rmSync(DEST_DIR, { recursive: true, force: true });
+         } catch(e) { console.warn('No se pudo borrar completamente, intentando continuar...'); }
+         fs.mkdirSync(DEST_DIR, { recursive: true });
     } else {
-        console.log('ℹ️ El directorio ya existe. Limpiando para reinstalación limpia...');
-        fs.rmSync(DEST_DIR, { recursive: true, force: true });
-        fs.mkdirSync(DEST_DIR);
+        fs.mkdirSync(DEST_DIR, { recursive: true });
     }
 
     // 2. Descargar Python ZIP
