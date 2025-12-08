@@ -1,6 +1,26 @@
-from Fotocasa_scraping_selenium import scrape_fotocasa_selenium, save_to_json
-import time
+import sys
 import os
+
+# Asegurar que el directorio actual está en el path para importar módulos locales
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+
+try:
+    from Fotocasa_scraping_selenium import scrape_fotocasa_selenium, save_to_json
+except ImportError as e:
+    print(f"❌ Error crítico importando módulos: {e}")
+    print(f"ℹ️ Directorio actual: {current_dir}")
+    print(f"ℹ️ sys.path: {sys.path}")
+    # Verificar dependencias
+    try:
+        import selenium
+        print("✅ Selenium está instalado.")
+    except ImportError:
+        print("❌ Selenium NO está instalado o no se encuentra.")
+    sys.exit(1)
+
+import time
 
 def main():
     """
