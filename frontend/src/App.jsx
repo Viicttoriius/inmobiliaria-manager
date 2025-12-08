@@ -32,6 +32,8 @@ function App() {
   const [savingEmail, setSavingEmail] = useState(false);
   const [scraperConfig, setScraperConfig] = useState({ fotocasa: { enabled: false, interval: "60" } });
   const [savingScraperConfig, setSavingScraperConfig] = useState(false);
+  const [pythonPathInput, setPythonPathInput] = useState('');
+  const [savingPythonPath, setSavingPythonPath] = useState(false);
 
   // Estados para Notificaciones y Modales
   const [notifications, setNotifications] = useState([]);
@@ -256,6 +258,23 @@ function App() {
     filterAndSortProperties()
   }, [properties, searchTerm, filterType, sortBy])
 
+  // Polling para actualizar el estado del QR cuando el modal está abierto
+  useEffect(() => {
+    let interval;
+    if (configModalOpen && !configStatus.whatsapp.ready) {
+      // Hacer una carga inicial
+      loadConfigStatus();
+      
+      // Y luego polling cada 3 segundos
+      interval = setInterval(() => {
+        loadConfigStatus();
+      }, 3000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [configModalOpen, configStatus.whatsapp.ready]);
+
   // Efecto para filtrar clientes
   useEffect(() => {
     let result = [...clients];
@@ -395,6 +414,9 @@ function App() {
       if (data.email.configured) {
           setEmailForm(prev => ({ ...prev, email: data.email.user }));
       }
+      if (data.python && data.python.path) {
+          setPythonPathInput(data.python.path);
+      }
       
       // Load scraper config
       const scraperResponse = await fetch(`${API_URL}/config/scraper`);
@@ -448,6 +470,29 @@ function App() {
         showNotification('Error de conexión.', 'error');
     } finally {
         setSavingEmail(false);
+    }
+  };
+
+  const handlePythonPathSave = async (e) => {
+    e.preventDefault();
+    setSavingPythonPath(true);
+    try {
+        const response = await fetch(`${API_URL}/config/python`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pythonPath: pythonPathInput })
+        });
+        const data = await response.json();
+        if (data.success) {
+            showNotification('Ruta de Python guardada correctamente.', 'success');
+            loadConfigStatus();
+        } else {
+            showNotification('Error guardando ruta: ' + data.error, 'error');
+        }
+    } catch (error) {
+        showNotification('Error de conexión.', 'error');
+    } finally {
+        setSavingPythonPath(false);
     }
   };
 
@@ -1873,6 +1918,30 @@ function App() {
                 >
                     {savingScraperConfig ? 'Guardando...' : 'Guardar Configuración'}
                 </button>
+            </div>
+
+            <div className="config-section">
+                <h4><Settings size={20} /> Configuración del Sistema</h4>
+                <p className="config-info">
+                    Configura rutas y opciones del sistema. Si los scrapers fallan con error 9009, especifica la ruta completa a Python.
+                </p>
+                <form onSubmit={handlePythonPathSave} className="config-form">
+                    <div className="form-group">
+                        <label>Ruta ejecutable Python:</label>
+                        <input 
+                            type="text" 
+                            value={pythonPathInput}
+                            onChange={e => setPythonPathInput(e.target.value)}
+                            placeholder="Ej: C:\Python314\python.exe (Win) o /usr/bin/python3 (Mac)"
+                        />
+                        <small style={{ display: 'block', marginTop: '0.25rem', color: 'var(--text-secondary)' }}>
+                            Por defecto: 'python' (Win) o 'python3' (Mac/Linux). Si falla, pon la ruta completa.
+                        </small>
+                    </div>
+                    <button type="submit" className="save-btn" disabled={savingPythonPath}>
+                        {savingPythonPath ? 'Guardando...' : 'Guardar Configuración Sistema'}
+                    </button>
+                </form>
             </div>
 
             <div className="config-section">

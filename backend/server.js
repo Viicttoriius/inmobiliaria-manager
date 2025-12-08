@@ -108,8 +108,47 @@ app.get('/api/config/status', (req, res) => {
         email: {
             configured: !!(process.env.EMAIL_USER && process.env.EMAIL_PASS),
             user: process.env.EMAIL_USER || ''
+        },
+        python: {
+            path: process.env.PYTHON_PATH || 'python'
         }
     });
+});
+
+// Actualizar ruta de Python
+app.post('/api/config/python', (req, res) => {
+    const { pythonPath } = req.body;
+
+    if (!pythonPath) {
+        return res.status(400).json({ error: 'Ruta de Python requerida' });
+    }
+
+    // Actualizar variable en memoria
+    process.env.PYTHON_PATH = pythonPath;
+
+    // Persistir en .env
+    try {
+        const envPath = ENV_FILE;
+        let envContent = '';
+
+        if (fs.existsSync(envPath)) {
+            envContent = fs.readFileSync(envPath, 'utf8');
+        }
+
+        // Reemplazar o agregar PYTHON_PATH
+        if (envContent.includes('PYTHON_PATH=')) {
+            envContent = envContent.replace(/PYTHON_PATH=.*/g, `PYTHON_PATH=${pythonPath}`);
+        } else {
+            envContent += `\nPYTHON_PATH=${pythonPath}`;
+        }
+
+        fs.writeFileSync(envPath, envContent);
+        console.log(`✅ Ruta de Python actualizada a: ${pythonPath}`);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error guardando .env:', error);
+        res.status(500).json({ error: 'Error guardando configuración' });
+    }
 });
 
 // Actualizar credenciales de Email
@@ -325,14 +364,26 @@ app.get('/api/properties', (req, res) => {
 
 // Función auxiliar para ejecutar un scraper de Python
 const runPythonScraper = (scraperPath, res) => {
+    // Determinar el ejecutable de Python
+    // 1. Usar PYTHON_PATH del .env si existe
+    // 2. Si no, determinar por plataforma: 'python' en Win, 'python3' en Mac/Linux
+    let defaultPython = 'python';
+    if (process.platform !== 'win32') {
+        defaultPython = 'python3';
+    }
+    
+    const pythonExecutable = process.env.PYTHON_PATH || defaultPython;
+    
     console.log(`🚀 Iniciando scraper desde ${scraperPath}...`);
+    console.log(`🐍 Usando intérprete Python: ${pythonExecutable}`);
 
-    const pythonProcess = spawn('python', [scraperPath], {
+    const pythonProcess = spawn(pythonExecutable, [scraperPath], {
         env: { 
             ...process.env, 
             PYTHONIOENCODING: 'utf-8',
             PROPERTIES_OUTPUT_DIR: PROPERTIES_DIR
-        }
+        },
+        shell: process.platform === 'win32' // shell:true solo en Windows para evitar problemas en Mac
     });
 
     let output = '';
