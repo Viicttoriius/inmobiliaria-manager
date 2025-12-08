@@ -27,15 +27,14 @@ const CONFIG = {
     },
     linux: {
         // Python 3.11.14 Standalone
-        url: 'https://github.com/indygreg/python-build-standalone/releases/download/20251010/cpython-3.11.14+20251010-x86_64-unknown-linux-gnu-install_only.tar.gz',
+        url: 'https://github.com/astral-sh/python-build-standalone/releases/download/20251010/cpython-3.11.14+20251010-x86_64-unknown-linux-gnu-install_only.tar.gz',
         filename: 'python.tar.gz',
-        extractCmd: (src, dest) => `tar -xzf "${src}" -C "${dest}" --strip-components=1`, // --strip-components=1 porque suele venir en carpeta 'python'
+        extractCmd: (src, dest) => `tar -xzf "${src}" -C "${dest}" --strip-components=1`, 
         postInstall: () => {}
     },
     darwin: {
-        // Python 3.11.14 Standalone (x86_64 para compatibilidad Intel/Rosetta)
-        // Nota: Si se requiere soporte nativo M1 sin Rosetta, se necesitaría lógica extra, pero x86_64 funciona en ambos.
-        url: 'https://github.com/indygreg/python-build-standalone/releases/download/20251010/cpython-3.11.14+20251010-x86_64-apple-darwin-install_only.tar.gz',
+        // Python 3.11.14 Standalone
+        url: 'https://github.com/astral-sh/python-build-standalone/releases/download/20251010/cpython-3.11.14+20251010-x86_64-apple-darwin-install_only.tar.gz',
         filename: 'python.tar.gz',
         extractCmd: (src, dest) => `tar -xzf "${src}" -C "${dest}" --strip-components=1`,
         postInstall: () => {}
@@ -68,7 +67,7 @@ try {
     // 2. Descargar Python
     console.log(`⬇️ Descargando Python desde ${currentConfig.url}...`);
     try {
-        execSync(`curl -L "${currentConfig.url}" -o "${DOWNLOAD_FILE}"`, { stdio: 'inherit' });
+        execSync(`curl -L -f "${currentConfig.url}" -o "${DOWNLOAD_FILE}"`, { stdio: 'inherit' });
     } catch (e) {
         if (process.platform === 'win32') {
              execSync(`powershell -command "Invoke-WebRequest -Uri '${currentConfig.url}' -OutFile '${DOWNLOAD_FILE}'"`, { stdio: 'inherit' });
