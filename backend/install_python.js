@@ -26,15 +26,15 @@ const CONFIG = {
         }
     },
     linux: {
-        // Python 3.11.8 Standalone (Release 20240224 - Known stable)
-        url: 'https://github.com/astral-sh/python-build-standalone/releases/download/20240224/cpython-3.11.8+20240224-x86_64-unknown-linux-gnu-install_only.tar.gz',
+        // Python 3.10.13 Standalone (20231002) - Stable & Compatible
+        url: 'https://github.com/astral-sh/python-build-standalone/releases/download/20231002/cpython-3.10.13+20231002-x86_64-unknown-linux-gnu-install_only.tar.gz',
         filename: 'python.tar.gz',
         extractCmd: (src, dest) => `tar -xzf "${src}" -C "${dest}" --strip-components=1`, 
         postInstall: () => {}
     },
     darwin: {
-        // Python 3.11.8 Standalone (Release 20240224 - Known stable)
-        url: 'https://github.com/astral-sh/python-build-standalone/releases/download/20240224/cpython-3.11.8+20240224-x86_64-apple-darwin-install_only.tar.gz',
+        // Python 3.10.13 Standalone (20231002) - Stable & Compatible
+        url: 'https://github.com/astral-sh/python-build-standalone/releases/download/20231002/cpython-3.10.13+20231002-x86_64-apple-darwin-install_only.tar.gz',
         filename: 'python.tar.gz',
         extractCmd: (src, dest) => `tar -xzf "${src}" -C "${dest}" --strip-components=1`,
         postInstall: () => {}
@@ -101,6 +101,8 @@ try {
         const binDir = path.join(DEST_DIR, 'bin');
         if (fs.existsSync(path.join(binDir, 'python3'))) {
             pythonExe = path.join(binDir, 'python3');
+        } else if (fs.existsSync(path.join(binDir, 'python3.10'))) {
+            pythonExe = path.join(binDir, 'python3.10');
         } else if (fs.existsSync(path.join(binDir, 'python3.11'))) {
             pythonExe = path.join(binDir, 'python3.11');
         } else if (fs.existsSync(path.join(binDir, 'python'))) {
