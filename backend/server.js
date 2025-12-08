@@ -13,6 +13,7 @@ const notifier = require('node-notifier');
 const BASE_PATH = process.env.USER_DATA_PATH || path.join(__dirname, '..');
 const DATA_DIR = path.join(BASE_PATH, 'data');
 const ENV_FILE = path.join(BASE_PATH, '.env');
+const ROOT_ENV_FILE = path.join(__dirname, '..', '.env');
 
 // --- MIGRATION LOGIC START ---
 // Intenta migrar datos desde la carpeta resources (legacy) si la carpeta de datos de usuario está vacía
@@ -39,6 +40,10 @@ try {
 // --- MIGRATION LOGIC END ---
 
 require('dotenv').config({ path: ENV_FILE });
+// Also try to load from project root if different (useful for dev or if USER_DATA_PATH is set but no .env there)
+if (ROOT_ENV_FILE !== ENV_FILE) {
+    require('dotenv').config({ path: ROOT_ENV_FILE });
+}
 
 // --- VERIFICACIÓN DE DEPENDENCIAS PYTHON ---
 const checkPythonDependencies = () => {
@@ -75,6 +80,8 @@ const whatsappClient = new Client({
     authStrategy: new LocalAuth({
         dataPath: DATA_DIR
     }),
+    authTimeoutMs: 60000, // Aumentar tiempo de espera de autenticación
+    qrMaxRetries: 0, // Reintentos infinitos de QR
     puppeteer: {
         headless: true,
         args: [
@@ -85,8 +92,13 @@ const whatsappClient = new Client({
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
+            '--disable-extensions', // Deshabilitar extensiones
             // '--single-process', // Descomentar si sigue fallando, pero puede ser inestable
         ]
+    },
+    webVersionCache: {
+        type: 'remote',
+        remotePath: 'https://raw.githubusercontent.com/guigo613/alternative-wa-version/main/html/2.2412.54v2.html',
     }
 });
 
@@ -696,8 +708,16 @@ app.post('/api/properties/update', async (req, res) => {
         console.log(`   📄 Archivo temporal creado: ${tempUrlsFile}`);
 
         // 2. Ejecutar scraper con el archivo de URLs
-        const pythonProcess = spawn('python', [UPDATE_SCRAPER, tempUrlsFile], {
-            env: { ...process.env, PYTHONIOENCODING: 'utf-8', USER_DATA_PATH: BASE_PATH }
+        // Determinar el ejecutable de Python
+        let defaultPython = 'python';
+        if (process.platform !== 'win32') {
+            defaultPython = 'python3';
+        }
+        const pythonExecutable = process.env.PYTHON_PATH || defaultPython;
+
+        const pythonProcess = spawn(pythonExecutable, [UPDATE_SCRAPER, tempUrlsFile], {
+            env: { ...process.env, PYTHONIOENCODING: 'utf-8', USER_DATA_PATH: BASE_PATH },
+            shell: process.platform === 'win32'
         });
 
         let rawData = '';
@@ -1317,6 +1337,14 @@ const loadScraperConfig = () => {
 
 const runAutoScrapers = async () => {
     console.log("⏰ Running auto scrapers...");
+    
+    // Determinar el ejecutable de Python
+    let defaultPython = 'python';
+    if (process.platform !== 'win32') {
+        defaultPython = 'python3';
+    }
+    const pythonExecutable = process.env.PYTHON_PATH || defaultPython;
+    
     const types = ['viviendas', 'terrenos', 'locales'];
     for (const type of types) {
         const scraperScript = `run_${type}_auto.py`;
@@ -1325,11 +1353,12 @@ const runAutoScrapers = async () => {
             console.log(`   ▶ Running ${scraperScript}...`);
              // We use a promise wrapper around spawn to await completion
             await new Promise((resolve) => {
-                const process = spawn('python', [scraperPath], {
+                const process = spawn(pythonExecutable, [scraperPath], {
                     env: { 
                         ...process.env, 
                         PROPERTIES_OUTPUT_DIR: PROPERTIES_DIR
-                    }
+                    },
+                    shell: process.platform === 'win32' // shell:true solo en Windows para evitar problemas en Mac
                 });
                 process.stdout.on('data', (data) => console.log(`[${type}] ${data}`));
                 process.stderr.on('data', (data) => console.error(`[${type} ERROR] ${data}`));
