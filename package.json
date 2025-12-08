@@ -77,7 +77,8 @@
     "publish": {
       "provider": "github",
       "owner": "Viicttoriius",
-      "repo": "inmobiliaria-manager"
+      "repo": "inmobiliaria-manager",
+      "releaseType": "release"
     }
   },
   "devDependencies": {
