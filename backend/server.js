@@ -212,15 +212,27 @@ if (ROOT_ENV_FILE !== ENV_FILE) {
 
 // --- VERIFICACIÓN DE DEPENDENCIAS PYTHON ---
 const getPythonExecutable = () => {
-    // 1. Si está configurado en ENV y no es 'python' (default), respetarlo
+    // 1. Si está configurado en ENV y no es 'python' (default), verificar si existe y respetarlo
     if (process.env.PYTHON_PATH && process.env.PYTHON_PATH !== 'python') {
-        return process.env.PYTHON_PATH;
+        if (fs.existsSync(process.env.PYTHON_PATH)) {
+            console.log(`💡 Usando Python configurado en ENV: ${process.env.PYTHON_PATH}`);
+            return process.env.PYTHON_PATH;
+        } else {
+            console.warn(`⚠️ Ruta PYTHON_PATH configurada no existe: ${process.env.PYTHON_PATH}. Buscando alternativa...`);
+        }
     }
     
     // 2. Intentar buscar (Bundled > Sistema)
     if (process.platform === 'win32') {
         const detected = findPythonOnWindows();
-        if (detected) return detected;
+        if (detected) {
+            // Guardar automáticamente la ruta detectada válida para futuras ejecuciones
+            if (process.env.PYTHON_PATH !== detected) {
+                console.log(`💾 Guardando ruta de Python detectada en .env: ${detected}`);
+                savePythonPathToEnv(detected);
+            }
+            return detected;
+        }
     }
     
     // 3. Fallback Linux/Mac o si todo falla
@@ -663,6 +675,12 @@ const runPythonScraper = (scraperPath, res) => {
     pythonProcess.on('error', (err) => {
         console.error('❌ Error CRÍTICO al iniciar proceso Python:', err);
         errorOutput += `\nError al iniciar proceso: ${err.message}\nVerifica que Python esté instalado y en el PATH o configurado en .env`;
+        
+        // Si el error es ENOENT o 9009, es muy probable que la ruta de Python sea incorrecta.
+        if (err.code === 'ENOENT' || err.errno === 'ENOENT' || err.code === 9009) {
+             console.error(`⚠️ La ruta de Python falló: ${pythonExecutable}`);
+             // Opcional: Podríamos intentar limpiar la variable de entorno si falla, pero es arriesgado automáticamente.
+        }
     });
 
     let output = '';
@@ -910,17 +928,10 @@ app.post('/api/properties/update', async (req, res) => {
         console.log(`   📄 Archivo temporal creado: ${tempUrlsFile}`);
 
          // 2. Ejecutar scraper con el archivo de URLs
-        // Determinar el ejecutable de Python
-        let defaultPython = 'python';
-        if (process.platform !== 'win32') {
-            defaultPython = 'python3';
-        } else {
-             if (!process.env.PYTHON_PATH) {
-                  const detected = findPythonOnWindows();
-                  if (detected) defaultPython = detected;
-             }
-        }
-        const pythonExecutable = process.env.PYTHON_PATH || defaultPython;
+        // Determinar el ejecutable de Python usando la función centralizada
+        const pythonExecutable = getPythonExecutable();
+        
+        console.log(`🚀 Iniciando Update Scraper con: ${pythonExecutable}`);
 
         const pythonProcess = spawn(pythonExecutable, [UPDATE_SCRAPER, tempUrlsFile], {
             env: { ...process.env, PYTHONIOENCODING: 'utf-8', USER_DATA_PATH: BASE_PATH },
