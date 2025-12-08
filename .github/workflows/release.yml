@@ -51,6 +51,10 @@ jobs:
       - name: Install Root Dependencies
         run: npm install
 
+      - name: Setup Portable Python Environment
+        if: matrix.os == 'windows-latest'
+        run: node backend/install_python.js
+
       - name: Build/Release Electron App
         uses: samuelmeuli/action-electron-builder@v1
         with:
