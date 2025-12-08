@@ -57,22 +57,29 @@ def setup_driver(headless=True):
     driver_path = os.path.abspath(driver_path)
 
     if not os.path.exists(driver_path):
-        # Fallback a ruta absoluta original por si acaso
+        # Fallback a ruta absoluta original por si acaso (solo dev)
         fallback_path = r"d:\Trabajo\Alex Automatización\inmobiliaria\driver\msedgedriver.exe"
         if os.path.exists(fallback_path):
             driver_path = fallback_path
             
     print(f"Iniciando WebDriver con: {driver_path}")
-    service = EdgeService(executable_path=driver_path)
-    # Suppress logs
-    service.creation_flags = 0x08000000 # CREATE_NO_WINDOW
     
-    driver = webdriver.Edge(service=service, options=edge_options)
-    
-    # Modificar navigator.webdriver para que no sea detectable
-    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-    
-    return driver
+    try:
+        service = EdgeService(executable_path=driver_path)
+        # Suppress logs
+        service.creation_flags = 0x08000000 # CREATE_NO_WINDOW
+        
+        driver = webdriver.Edge(service=service, options=edge_options)
+        
+        # Modificar navigator.webdriver para que no sea detectable
+        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        
+        return driver
+    except Exception as e:
+        print(f"❌ Error fatal iniciando WebDriver: {e}")
+        print(f"Ruta intentada: {driver_path}")
+        print("Asegúrate de que msedgedriver.exe existe y es compatible con tu versión de Edge.")
+        sys.exit(1)
 
 def handle_push_alert_modal(driver):
     """Cierra el modal de 'recibir alertas' si aparece."""

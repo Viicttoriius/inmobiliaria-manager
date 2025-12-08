@@ -17,8 +17,19 @@ def main():
     
     if properties:
         # Guardar los datos en un archivo JSON en la carpeta de datos
-        # Usar variable de entorno o fallback hardcoded (para dev)
-        output_dir = os.environ.get("PROPERTIES_OUTPUT_DIR", r"d:\Trabajo\Alex Automatización\inmobiliaria\data\properties")
+        # Usar variable de entorno o fallback relativo (para prod/dev)
+        default_output_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "properties")
+        output_dir = os.environ.get("PROPERTIES_OUTPUT_DIR", default_output_dir)
+        
+        # Asegurar que existe el directorio
+        if not os.path.exists(output_dir):
+            try:
+                os.makedirs(output_dir)
+            except Exception as e:
+                print(f"⚠️ No se pudo crear directorio {output_dir}: {e}")
+                # Fallback a directorio actual
+                output_dir = "."
+                
         save_to_json(properties, property_type="viviendas", location="varios", output_dir=output_dir)
         print(f"Se han guardado {len(properties)} propiedades.")
     else:
