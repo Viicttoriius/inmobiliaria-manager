@@ -30,116 +30,44 @@ const savePythonPathToEnv = (newPath) => {
 
 // Función para buscar Python Bundled (Portable)
 const getBundledPythonPath = () => {
-    // 1. Desarrollo: backend/python_env/python.exe
-    const devPath = path.join(__dirname, 'python_env', 'python.exe');
-    if (fs.existsSync(devPath)) return devPath;
+    const potentialPaths = [];
 
-    // 2. Producción (Electron): resources/backend/python_env/python.exe
-    // Cuando estamos en production, process.resourcesPath suele estar definido
+    // 1. Producción (Electron): resources/backend/python_env/python.exe
     if (process.resourcesPath) {
-        const prodPath = path.join(process.resourcesPath, 'backend', 'python_env', 'python.exe');
-        if (fs.existsSync(prodPath)) return prodPath;
+        potentialPaths.push(path.join(process.resourcesPath, 'backend', 'python_env', 'python.exe'));
     }
 
+    // 2. Desarrollo / Relativo: backend/python_env/python.exe
+    potentialPaths.push(path.join(__dirname, 'python_env', 'python.exe'));
+    
+    // 3. Fallback: Intentar subir un nivel si estamos en backend/
+    potentialPaths.push(path.join(__dirname, '..', 'backend', 'python_env', 'python.exe'));
+
+    console.log('🔍 Buscando Python Portable en:', potentialPaths);
+
+    for (const p of potentialPaths) {
+        if (fs.existsSync(p)) {
+            console.log(`✨ Python Portable ENCONTRADO y VALIDADO en: ${p}`);
+            return p;
+        }
+    }
+
+    console.warn('⚠️ Python Portable NO encontrado en ninguna de las rutas esperadas.');
     return null;
 };
 
-// Función para buscar Python en rutas comunes de Windows
+// Función simplificada para buscar Python (Prioriza Portable)
 const findPythonOnWindows = () => {
     // 0. Primero buscar si tenemos el Python Portable incluido
     const bundledPath = getBundledPythonPath();
     if (bundledPath) {
-        console.log(`✨ Python Portable detectado en: ${bundledPath}`);
         return bundledPath;
     }
-
-    console.log('🔍 Buscando instalación de Python en Windows...');
-    const candidates = new Set();
-
-    // 1. Intentar buscar con 'py' launcher (Python Launcher for Windows)
-    try {
-        const stdout = execSync('py --list-paths', { encoding: 'utf8', stdio: 'pipe' });
-        // Formato salida: -V: C:\Path\To\python.exe
-        const lines = stdout.split('\r\n');
-        for (const line of lines) {
-             const match = line.match(/:\s*(.*python\.exe)/);
-             if (match && match[1]) {
-                 candidates.add(match[1].trim());
-             }
-        }
-    } catch (e) { /* ignore */ }
-
-    // 2. Intentar buscar con 'where python'
-    try {
-        const stdout = execSync('where python', { encoding: 'utf8', stdio: 'pipe' });
-        const paths = stdout.split('\r\n').filter(p => p.trim() !== '');
-        paths.forEach(p => candidates.add(p.trim()));
-    } catch (e) { /* ignore */ }
-
-    // 3. Buscar en Registro (HKLM y HKCU)
-    const regKeys = [
-        'HKLM\\SOFTWARE\\Python\\PythonCore',
-        'HKCU\\SOFTWARE\\Python\\PythonCore'
-    ];
-    for (const key of regKeys) {
-        try {
-            // Obtener versiones
-            const stdout = execSync(`reg query "${key}"`, { encoding: 'utf8', stdio: 'pipe' });
-            const versions = stdout.split('\r\n').filter(l => l.includes(key) && l !== key);
-            
-            for (const verKey of versions) {
-                try {
-                    // Obtener InstallPath
-                    const installPathOut = execSync(`reg query "${verKey}\\InstallPath" /ve`, { encoding: 'utf8', stdio: 'pipe' });
-                    // Output looks like: (Default)    REG_SZ    C:\Path\
-                    const match = installPathOut.match(/REG_SZ\s+(.*)/);
-                    if (match && match[1]) {
-                        const fullPath = path.join(match[1].trim(), 'python.exe');
-                        candidates.add(fullPath);
-                    }
-                } catch (e) { /* ignore */ }
-            }
-        } catch (e) { /* ignore */ }
-    }
-
-    // 4. Buscar en rutas comunes
-    const commonPaths = [
-        'C:\\Python314\\python.exe', 'C:\\Python313\\python.exe', 
-        'C:\\Python312\\python.exe', 'C:\\Python311\\python.exe',
-        'C:\\Python310\\python.exe', 'C:\\Python39\\python.exe',
-        'C:\\Program Files\\Python314\\python.exe', 'C:\\Program Files\\Python313\\python.exe',
-        'C:\\Program Files\\Python312\\python.exe', 'C:\\Program Files\\Python311\\python.exe',
-        'C:\\Program Files\\Python310\\python.exe', 'C:\\Program Files\\Python39\\python.exe',
-        path.join(process.env.LOCALAPPDATA || '', 'Programs\\Python\\Python314\\python.exe'),
-        path.join(process.env.LOCALAPPDATA || '', 'Programs\\Python\\Python313\\python.exe'),
-        path.join(process.env.LOCALAPPDATA || '', 'Programs\\Python\\Python312\\python.exe'),
-        path.join(process.env.LOCALAPPDATA || '', 'Programs\\Python\\Python311\\python.exe'),
-        path.join(process.env.LOCALAPPDATA || '', 'Programs\\Python\\Python310\\python.exe'),
-    ];
-    commonPaths.forEach(p => candidates.add(p));
-
-    console.log('   Candidatos encontrados:', Array.from(candidates));
-
-    // Validar candidatos
-    for (const p of candidates) {
-        if (p.includes('WindowsApps')) continue; // Saltar shim de WindowsApps que suele fallar
-        try {
-            if (fs.existsSync(p)) {
-                // Verificar que se puede ejecutar
-                execSync(`"${p}" --version`, { stdio: 'ignore' });
-                return p;
-            }
-        } catch (e) { /* invalido */ }
-    }
-
-    // Fallback a WindowsApps si no hay nada mejor, pero con cautela
-    for (const p of candidates) {
-        if (fs.existsSync(p)) return p;
-    }
-
-    // 5. Si no encontramos nada, devolvemos 'python'
-    return 'python';
+    
+    // Si no hay portable, devolvemos null para que decida getPythonExecutable
+    return null;
 };
+
 
 // Función para normalizar el comando para spawn con shell:false
 const prepareSpawnCommand = (cmd, args) => {
@@ -212,30 +140,32 @@ if (ROOT_ENV_FILE !== ENV_FILE) {
 
 // --- VERIFICACIÓN DE DEPENDENCIAS PYTHON ---
 const getPythonExecutable = () => {
-    // 1. Si está configurado en ENV y no es 'python' (default), verificar si existe y respetarlo
+    // 1. PRIORIDAD ABSOLUTA: Buscar Python Portable (Bundled)
+    // Siempre intentamos usar la versión empaquetada primero para evitar errores de sistema (Error 9009)
+    if (process.platform === 'win32') {
+        const detected = findPythonOnWindows();
+        if (detected) {
+            console.log(`💡 Usando Python Portable detectado: ${detected}`);
+            // Actualizar ENV en memoria para consistencia
+            if (process.env.PYTHON_PATH !== detected) {
+                process.env.PYTHON_PATH = detected;
+            }
+            return detected;
+        }
+    }
+
+    // 2. Si no hay portable, verificar configuración manual en ENV
     if (process.env.PYTHON_PATH && process.env.PYTHON_PATH !== 'python') {
         if (fs.existsSync(process.env.PYTHON_PATH)) {
             console.log(`💡 Usando Python configurado en ENV: ${process.env.PYTHON_PATH}`);
             return process.env.PYTHON_PATH;
         } else {
-            console.warn(`⚠️ Ruta PYTHON_PATH configurada no existe: ${process.env.PYTHON_PATH}. Buscando alternativa...`);
+            console.warn(`⚠️ Ruta PYTHON_PATH configurada no existe: ${process.env.PYTHON_PATH}.`);
         }
     }
     
-    // 2. Intentar buscar (Bundled > Sistema)
-    if (process.platform === 'win32') {
-        const detected = findPythonOnWindows();
-        if (detected) {
-            // Guardar automáticamente la ruta detectada válida para futuras ejecuciones
-            if (process.env.PYTHON_PATH !== detected) {
-                console.log(`💾 Guardando ruta de Python detectada en .env: ${detected}`);
-                savePythonPathToEnv(detected);
-            }
-            return detected;
-        }
-    }
-    
-    // 3. Fallback Linux/Mac o si todo falla
+    // 3. Fallback: Sistema
+    console.warn('⚠️ No se encontró Python Portable ni configuración válida. Usando "python" del sistema.');
     return process.platform === 'win32' ? 'python' : 'python3';
 };
 
