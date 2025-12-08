@@ -300,7 +300,7 @@ app.post('/api/config/whatsapp/logout', async (req, res) => {
 // Rutas a los archivos
 const PROPERTIES_DIR = path.join(DATA_DIR, 'properties');
 
-const IDEALISTA_SCRAPER = path.join(__dirname, '../scrapers/idealista/run_idealista_scraper.py');
+const IDEALISTA_SCRAPER = path.join(__dirname, 'scrapers/idealista/run_idealista_scraper.py');
 const CLIENTS_FILE = path.join(DATA_DIR, 'clients/clients.json');
 
 const PROPERTIES_JSON_FILE = path.join(DATA_DIR, 'properties.json');
@@ -493,7 +493,7 @@ const runPythonScraper = (scraperPath, res) => {
             });
 
             // Lógica de consolidación
-            const mainPropertiesFile = path.join(__dirname, '../data/properties.json');
+            const mainPropertiesFile = path.join(DATA_DIR, 'properties.json');
 
             // Encontrar el último archivo JSON generado
             const files = fs.readdirSync(PROPERTIES_DIR)
@@ -620,6 +620,9 @@ app.post('/api/scraper/fotocasa/run', (req, res) => {
 
 // Ejecutar el scraper de Idealista
 app.post('/api/scraper/idealista/run', (req, res) => {
+    if (!fs.existsSync(IDEALISTA_SCRAPER)) {
+        return res.status(404).json({ success: false, error: 'El scraper de Idealista no está instalado o no se encuentra el archivo.' });
+    }
     runPythonScraper(IDEALISTA_SCRAPER, res);
 });
 
@@ -753,7 +756,7 @@ app.post('/api/properties/update', async (req, res) => {
             console.error("Error parseando salida del scraper:", e);
             // Fallback: buscar el último archivo en data/update
             try {
-                const updateDir = path.join(__dirname, '../data/update');
+                const updateDir = path.join(DATA_DIR, 'update');
                 if (fs.existsSync(updateDir)) {
                     const files = fs.readdirSync(updateDir)
                         .filter(f => f.startsWith('update_batch_'))

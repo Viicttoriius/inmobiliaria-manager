@@ -17,7 +17,18 @@ def main():
     
     if properties:
         # Guardar los datos en un archivo JSON en la carpeta de datos
-        output_dir = os.environ.get("PROPERTIES_OUTPUT_DIR", r"d:\Trabajo\Alex Automatización\inmobiliaria\data\properties")
+        # Construir ruta relativa dinámica: ../../../data/properties
+        default_output_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "properties")
+        output_dir = os.environ.get("PROPERTIES_OUTPUT_DIR", default_output_dir)
+        
+        # Asegurar que el directorio existe
+        if not os.path.exists(output_dir):
+            try:
+                os.makedirs(output_dir)
+            except Exception as e:
+                print(f"⚠️ No se pudo crear directorio {output_dir}: {e}")
+                output_dir = "." # Fallback al directorio actual
+
         save_to_json(properties, property_type="viviendas", location="varios", output_dir=output_dir)
         print(f"Se han guardado {len(properties)} propiedades.")
     else:

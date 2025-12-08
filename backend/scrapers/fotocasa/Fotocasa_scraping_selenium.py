@@ -53,12 +53,14 @@ def setup_driver(headless=True):
     current_dir = os.path.dirname(os.path.abspath(__file__))
     # Subir 3 niveles: fotocasa -> scrapers -> backend -> root (donde está driver/)
     # En prod: resources/backend/scrapers/fotocasa -> ... -> resources/driver
-    driver_path = os.path.join(current_dir, "..", "..", "..", "driver", "msedgedriver.exe")
+    
+    driver_name = "msedgedriver.exe" if os.name == 'nt' else "msedgedriver"
+    driver_path = os.path.join(current_dir, "..", "..", "..", "driver", driver_name)
     driver_path = os.path.abspath(driver_path)
 
     if not os.path.exists(driver_path):
         # Fallback a ruta absoluta original por si acaso (solo dev)
-        fallback_path = r"d:\Trabajo\Alex Automatización\inmobiliaria\driver\msedgedriver.exe"
+        fallback_path = os.path.join(r"d:\Trabajo\Alex Automatización\inmobiliaria\driver", driver_name)
         if os.path.exists(fallback_path):
             driver_path = fallback_path
             
@@ -66,8 +68,9 @@ def setup_driver(headless=True):
     
     try:
         service = EdgeService(executable_path=driver_path)
-        # Suppress logs
-        service.creation_flags = 0x08000000 # CREATE_NO_WINDOW
+        # Suppress logs (Windows only)
+        if os.name == 'nt':
+            service.creation_flags = 0x08000000 # CREATE_NO_WINDOW
         
         driver = webdriver.Edge(service=service, options=edge_options)
         
