@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, exec } = require('child_process');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcodeTerminal = require('qrcode-terminal');
 const QRCode = require('qrcode'); // Para generar QR en frontend
@@ -39,6 +39,32 @@ try {
 // --- MIGRATION LOGIC END ---
 
 require('dotenv').config({ path: ENV_FILE });
+
+// --- VERIFICACIÓN DE DEPENDENCIAS PYTHON ---
+const checkPythonDependencies = () => {
+    const requirementsPath = path.join(__dirname, 'requirements.txt');
+    if (fs.existsSync(requirementsPath)) {
+        console.log('📦 Verificando dependencias de Python...');
+        
+        let defaultPython = 'python';
+        if (process.platform !== 'win32') defaultPython = 'python3';
+        const pythonExecutable = process.env.PYTHON_PATH || defaultPython;
+
+        // Intentar instalar dependencias
+        exec(`${pythonExecutable} -m pip install -r "${requirementsPath}"`, (error, stdout, stderr) => {
+            if (error) {
+                console.warn('⚠️ No se pudieron instalar las dependencias de Python automáticamente.');
+                console.warn('Si el scraper falla, asegúrate de tener instalado: selenium, beautifulsoup4');
+                console.warn('Error:', error.message);
+            } else {
+                console.log('✅ Dependencias de Python verificadas/instaladas.');
+            }
+        });
+    }
+};
+
+// Ejecutar verificación en segundo plano al iniciar
+checkPythonDependencies();
 
 const app = express();
 const PORT = 3001;
