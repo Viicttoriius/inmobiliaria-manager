@@ -538,13 +538,13 @@ function App() {
       
       clearTimeout(timeoutId);
 
-      if (!response.ok) {
-          throw new Error(`Error del servidor: ${response.status} ${response.statusText}`);
-      }
+              const data = await response.json();
 
-      const data = await response.json()
+              if (!response.ok) {
+                  throw new Error(data.error || `Error del servidor: ${response.status} ${response.statusText}`);
+              }
 
-      if (data.success) {
+              if (data.success) {
         setScrapingLog(prev => prev + `\n✅ Scraper de ${scraperName}${propertyType ? ` (${propertyType})` : ''} completado!\n` + (data.output || ''))
         await loadProperties()
       } else {

@@ -40,7 +40,16 @@ const findPythonOnWindows = () => {
             return p;
         }
     }
-    return null;
+
+    // 3. Si no encontramos nada, devolvemos 'python'
+    return 'python';
+};
+
+// Función para normalizar el comando para spawn con shell:false
+const prepareSpawnCommand = (cmd, args) => {
+    // Si cmd tiene espacios y NO estamos usando shell, NO necesitamos comillas.
+    // Spawn maneja los argumentos con espacios correctamente.
+    return { cmd, args };
 };
 
 const { Client, LocalAuth } = require('whatsapp-web.js');
@@ -552,32 +561,23 @@ const runPythonScraper = (scraperPath, res) => {
     // Si llegamos aquí y defaultPython sigue siendo 'python' (sin path absoluto) en Windows,
     // significa que no lo encontramos. Podríamos intentar usar 'python' tal cual, pero
     // spawn con shell: false fallará si no está en PATH.
-    // Con shell: true, 'python' podría funcionar si está en PATH.
     
     console.log(`🚀 Iniciando scraper desde ${scraperPath}...`);
     console.log(`🐍 Usando intérprete Python: ${pythonExecutable}`);
 
-    // Si el ejecutable es solo 'python' o 'python3' (sin ruta absoluta), o si estamos en Windows
-    // y queremos asegurar compatibilidad con shims, usamos shell: true pero con cuidado con las comillas.
-    const useShell = process.platform === 'win32';
-    
-    // Preparar argumentos y comando según el modo shell
-    let spawnCmd = pythonExecutable;
-    let spawnArgs = [scraperPath];
-    
-    if (useShell && pythonExecutable.includes(' ')) {
-        // Si usamos shell y hay espacios, envolvemos en comillas
-        spawnCmd = `"${pythonExecutable}"`;
-    }
-
-    const pythonProcess = spawn(spawnCmd, spawnArgs, {
+    const pythonProcess = spawn(pythonExecutable, [scraperPath], {
         env: { 
             ...process.env, 
             PYTHONIOENCODING: 'utf-8',
             PROPERTIES_OUTPUT_DIR: PROPERTIES_DIR
         },
-        shell: useShell, // Usar shell en Windows para mejor resolución de PATH y shims
-        windowsVerbatimArguments: useShell // Importante en Windows si usamos comillas
+        shell: false // IMPORTANTE: shell:false evita problemas con espacios en rutas en Windows si pasamos el ejecutable directo
+    });
+
+    // Manejo explícito de errores de spawn (ej. ejecutable no encontrado)
+    pythonProcess.on('error', (err) => {
+        console.error('❌ Error CRÍTICO al iniciar proceso Python:', err);
+        errorOutput += `\nError al iniciar proceso: ${err.message}\nVerifica que Python esté instalado y en el PATH o configurado en .env`;
     });
 
     let output = '';
@@ -823,16 +823,14 @@ app.post('/api/properties/update', async (req, res) => {
         }
         const pythonExecutable = process.env.PYTHON_PATH || defaultPython;
 
-        const useShell = process.platform === 'win32';
-        let spawnCmd = pythonExecutable;
-        if (useShell && pythonExecutable.includes(' ')) {
-            spawnCmd = `"${pythonExecutable}"`;
-        }
-
-        const pythonProcess = spawn(spawnCmd, [UPDATE_SCRAPER, tempUrlsFile], {
+        const pythonProcess = spawn(pythonExecutable, [UPDATE_SCRAPER, tempUrlsFile], {
             env: { ...process.env, PYTHONIOENCODING: 'utf-8', USER_DATA_PATH: BASE_PATH },
-            shell: useShell,
-            windowsVerbatimArguments: useShell
+            shell: false
+        });
+
+        pythonProcess.on('error', (err) => {
+             console.error('❌ Error CRÍTICO al iniciar update scraper:', err);
+             // No podemos hacer mucho más aquí ya que es un proceso detached/async en este contexto
         });
 
         let rawData = '';
@@ -1473,19 +1471,14 @@ const runAutoScrapers = async () => {
             console.log(`   ▶ Running ${scraperScript}...`);
              // We use a promise wrapper around spawn to await completion
             await new Promise((resolve) => {
-                const useShell = process.platform === 'win32';
-                let spawnCmd = pythonExecutable;
-                if (useShell && pythonExecutable.includes(' ')) {
-                    spawnCmd = `"${pythonExecutable}"`;
-                }
-                const process = spawn(spawnCmd, [scraperPath], {
+                const process = spawn(pythonExecutable, [scraperPath], {
                     env: { 
                         ...process.env, 
                         PROPERTIES_OUTPUT_DIR: PROPERTIES_DIR
                     },
-                    shell: useShell,
-                    windowsVerbatimArguments: useShell
+                    shell: false
                 });
+                process.on('error', (err) => console.error(`[${type}] Error spawn:`, err));
                 process.stdout.on('data', (data) => console.log(`[${type}] ${data}`));
                 process.stderr.on('data', (data) => console.error(`[${type} ERROR] ${data}`));
                 process.on('close', (code) => {
