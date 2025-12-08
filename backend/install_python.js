@@ -4,97 +4,140 @@ const { execSync } = require('child_process');
 
 const DEST_DIR = path.join(__dirname, 'python_env');
 
-// Asegurar que el directorio existe para evitar errores en electron-builder (extraResources)
+// Asegurar que el directorio existe para evitar errores en electron-builder
 if (!fs.existsSync(DEST_DIR)) {
-    fs.mkdirSync(DEST_DIR);
+    fs.mkdirSync(DEST_DIR, { recursive: true });
 }
 
-if (process.platform !== 'win32') {
-    console.log('ℹ️ No estamos en Windows. Creando marcador de posición para evitar errores de build.');
-    fs.writeFileSync(path.join(DEST_DIR, 'placeholder.txt'), 'Python environment is handled by the system on non-Windows platforms.');
-    process.exit(0);
+// Configuración de versiones
+const CONFIG = {
+    win32: {
+        url: 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip',
+        filename: 'python.zip',
+        extractCmd: (src, dest) => `powershell -command "Expand-Archive -Path '${src}' -DestinationPath '${dest}' -Force"`,
+        postInstall: (dest) => {
+            // Habilitar pip en python._pth
+            const pthFile = path.join(dest, 'python311._pth');
+            if (fs.existsSync(pthFile)) {
+                let content = fs.readFileSync(pthFile, 'utf8');
+                content = content.replace('#import site', 'import site');
+                fs.writeFileSync(pthFile, content);
+            }
+        }
+    },
+    linux: {
+        // Python 3.11.14 Standalone
+        url: 'https://github.com/indygreg/python-build-standalone/releases/download/20251010/cpython-3.11.14+20251010-x86_64-unknown-linux-gnu-install_only.tar.gz',
+        filename: 'python.tar.gz',
+        extractCmd: (src, dest) => `tar -xzf "${src}" -C "${dest}" --strip-components=1`, // --strip-components=1 porque suele venir en carpeta 'python'
+        postInstall: () => {}
+    },
+    darwin: {
+        // Python 3.11.14 Standalone (x86_64 para compatibilidad Intel/Rosetta)
+        // Nota: Si se requiere soporte nativo M1 sin Rosetta, se necesitaría lógica extra, pero x86_64 funciona en ambos.
+        url: 'https://github.com/indygreg/python-build-standalone/releases/download/20251010/cpython-3.11.14+20251010-x86_64-apple-darwin-install_only.tar.gz',
+        filename: 'python.tar.gz',
+        extractCmd: (src, dest) => `tar -xzf "${src}" -C "${dest}" --strip-components=1`,
+        postInstall: () => {}
+    }
+};
+
+const currentConfig = CONFIG[process.platform];
+
+if (!currentConfig) {
+    console.error(`❌ Plataforma no soportada para Python Portable: ${process.platform}`);
+    process.exit(1);
 }
 
-const PYTHON_VERSION = '3.11.9';
-const PYTHON_URL = `https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-embed-amd64.zip`;
-const ZIP_FILE = path.join(__dirname, 'python.zip');
+const DOWNLOAD_FILE = path.join(__dirname, currentConfig.filename);
 const GET_PIP_URL = 'https://bootstrap.pypa.io/get-pip.py';
 const GET_PIP_FILE = path.join(DEST_DIR, 'get-pip.py');
 
-console.log('🚀 Iniciando instalación automática de Python Portable...');
+console.log(`🚀 Iniciando instalación automática de Python Portable para ${process.platform}...`);
 
 try {
-    // 1. Limpiar directorio si existe (para asegurar instalación limpia en Windows)
+    // 1. Limpiar directorio
     if (fs.existsSync(DEST_DIR)) {
-         console.log('ℹ️ Limpiando directorio para instalación limpia...');
-         // En Windows, fs.rmSync puede fallar si hay archivos bloqueados, pero en CI debería estar bien
-         try {
+        console.log('ℹ️ Limpiando directorio anterior...');
+        try {
             fs.rmSync(DEST_DIR, { recursive: true, force: true });
-         } catch(e) { console.warn('No se pudo borrar completamente, intentando continuar...'); }
-         fs.mkdirSync(DEST_DIR, { recursive: true });
-    } else {
+        } catch(e) { /* ignore windows lock */ }
         fs.mkdirSync(DEST_DIR, { recursive: true });
     }
 
-    // 2. Descargar Python ZIP
-    console.log(`⬇️ Descargando Python ${PYTHON_VERSION}...`);
-    // Usar curl.exe si está disponible (Windows 10+ lo trae), si no fallback a PowerShell
+    // 2. Descargar Python
+    console.log(`⬇️ Descargando Python desde ${currentConfig.url}...`);
     try {
-        execSync(`curl -L "${PYTHON_URL}" -o "${ZIP_FILE}"`, { stdio: 'inherit' });
+        execSync(`curl -L "${currentConfig.url}" -o "${DOWNLOAD_FILE}"`, { stdio: 'inherit' });
     } catch (e) {
-        console.log('⚠️ curl falló, intentando con PowerShell...');
-        execSync(`powershell -command "Invoke-WebRequest -Uri '${PYTHON_URL}' -OutFile '${ZIP_FILE}'"`, { stdio: 'inherit' });
+        if (process.platform === 'win32') {
+             execSync(`powershell -command "Invoke-WebRequest -Uri '${currentConfig.url}' -OutFile '${DOWNLOAD_FILE}'"`, { stdio: 'inherit' });
+        } else {
+            throw e;
+        }
     }
 
     // 3. Descomprimir
     console.log('📦 Descomprimiendo...');
-    execSync(`powershell -command "Expand-Archive -Path '${ZIP_FILE}' -DestinationPath '${DEST_DIR}' -Force"`, { stdio: 'inherit' });
-
-    // 4. Eliminar ZIP
-    if (fs.existsSync(ZIP_FILE)) fs.unlinkSync(ZIP_FILE);
-
-    // 5. Configurar ._pth para permitir pip (import site)
-    // El nombre del archivo depende de la versión, ej python311._pth
-    const pthFileName = `python${PYTHON_VERSION.split('.').slice(0,2).join('')}._pth`;
-    const pthFile = path.join(DEST_DIR, pthFileName);
-    
-    console.log(`⚙️ Configurando ${pthFileName}...`);
-    if (fs.existsSync(pthFile)) {
-        let content = fs.readFileSync(pthFile, 'utf8');
-        // Descomentar 'import site'
-        content = content.replace('#import site', 'import site');
-        fs.writeFileSync(pthFile, content);
-    } else {
-        console.error(`❌ No se encontró el archivo ${pthFileName}. Pip podría fallar.`);
-    }
-
-    // 6. Descargar get-pip.py
-    console.log('⬇️ Descargando get-pip.py...');
     try {
-        execSync(`curl -L "${GET_PIP_URL}" -o "${GET_PIP_FILE}"`, { stdio: 'inherit' });
-    } catch (e) {
-         execSync(`powershell -command "Invoke-WebRequest -Uri '${GET_PIP_URL}' -OutFile '${GET_PIP_FILE}'"`, { stdio: 'inherit' });
+        execSync(currentConfig.extractCmd(DOWNLOAD_FILE, DEST_DIR), { stdio: 'inherit' });
+    } catch(e) {
+        console.error('Error descomprimiendo:', e);
+        throw e;
     }
 
-    // 7. Instalar pip
-    console.log('🔧 Instalando pip...');
-    const pythonExe = path.join(DEST_DIR, 'python.exe');
-    execSync(`"${pythonExe}" "${GET_PIP_FILE}"`, { stdio: 'inherit' });
+    // 4. Limpieza ZIP/Tar
+    if (fs.existsSync(DOWNLOAD_FILE)) fs.unlinkSync(DOWNLOAD_FILE);
 
-    // 8. Instalar dependencias
-    const reqFile = path.join(__dirname, 'requirements.txt');
-    if (fs.existsSync(reqFile)) {
-        console.log('📚 Instalando dependencias desde requirements.txt...');
-        execSync(`"${pythonExe}" -m pip install -r "${reqFile}"`, { stdio: 'inherit' });
+    // 5. Post-instalación específica (ej. .pth en windows)
+    currentConfig.postInstall(DEST_DIR);
+
+    // 6. Instalar PIP (Solo si no viene incluido, standalone builds suelen traerlo pero windows embed no)
+    // En Windows siempre lo instalamos. En Linux/Mac standalone builds a veces ya traen pip.
+    // Vamos a intentar instalarlo siempre para asegurar.
+    
+    console.log('⬇️ Descargando/Verificando pip...');
+    // Determinar ejecutable
+    let pythonExe;
+    if (process.platform === 'win32') {
+        pythonExe = path.join(DEST_DIR, 'python.exe');
+    } else {
+        pythonExe = path.join(DEST_DIR, 'bin', 'python3');
+        // Dar permisos de ejecución en unix
+        execSync(`chmod +x "${pythonExe}"`);
     }
 
-    // Limpieza final
-    if (fs.existsSync(GET_PIP_FILE)) fs.unlinkSync(GET_PIP_FILE);
+    if (fs.existsSync(pythonExe)) {
+        try {
+            execSync(`curl -L "${GET_PIP_URL}" -o "${GET_PIP_FILE}"`, { stdio: 'inherit' });
+        } catch (e) {
+            if (process.platform === 'win32') {
+                 execSync(`powershell -command "Invoke-WebRequest -Uri '${GET_PIP_URL}' -OutFile '${GET_PIP_FILE}'"`, { stdio: 'inherit' });
+            }
+        }
 
-    console.log('\n✅✅✅ INSTALACIÓN COMPLETADA EXITOSAMENTE ✅✅✅');
-    console.log(`Python Portable listo en: ${DEST_DIR}`);
+        console.log('🔧 Instalando pip...');
+        execSync(`"${pythonExe}" "${GET_PIP_FILE}"`, { stdio: 'inherit' });
+
+        // 7. Instalar dependencias
+        const reqFile = path.join(__dirname, 'requirements.txt');
+        if (fs.existsSync(reqFile)) {
+            console.log('📚 Instalando dependencias...');
+            execSync(`"${pythonExe}" -m pip install -r "${reqFile}"`, { stdio: 'inherit' });
+        }
+        
+        // Limpieza pip
+        if (fs.existsSync(GET_PIP_FILE)) fs.unlinkSync(GET_PIP_FILE);
+        
+        console.log('\n✅✅✅ INSTALACIÓN COMPLETADA ✅✅✅');
+        console.log(`Python Portable instalado en: ${DEST_DIR}`);
+    } else {
+        console.error(`❌ No se encontró el ejecutable de Python en ${pythonExe}`);
+        process.exit(1);
+    }
 
 } catch (error) {
     console.error('\n❌ ERROR CRÍTICO durante la instalación:', error.message);
     process.exit(1);
 }
+

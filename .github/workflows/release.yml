@@ -52,7 +52,6 @@ jobs:
         run: npm install
 
       - name: Setup Portable Python Environment
-        if: matrix.os == 'windows-latest'
         run: node backend/install_python.js
 
       - name: Build/Release Electron App

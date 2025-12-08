@@ -31,17 +31,19 @@ const savePythonPathToEnv = (newPath) => {
 // Función para buscar Python Bundled (Portable)
 const getBundledPythonPath = () => {
     const potentialPaths = [];
+    const isWin = process.platform === 'win32';
+    const binaryName = isWin ? 'python.exe' : path.join('bin', 'python3');
 
-    // 1. Producción (Electron): resources/backend/python_env/python.exe
+    // 1. Producción (Electron): resources/backend/python_env/...
     if (process.resourcesPath) {
-        potentialPaths.push(path.join(process.resourcesPath, 'backend', 'python_env', 'python.exe'));
+        potentialPaths.push(path.join(process.resourcesPath, 'backend', 'python_env', binaryName));
     }
 
-    // 2. Desarrollo / Relativo: backend/python_env/python.exe
-    potentialPaths.push(path.join(__dirname, 'python_env', 'python.exe'));
+    // 2. Desarrollo / Relativo: backend/python_env/...
+    potentialPaths.push(path.join(__dirname, 'python_env', binaryName));
     
     // 3. Fallback: Intentar subir un nivel si estamos en backend/
-    potentialPaths.push(path.join(__dirname, '..', 'backend', 'python_env', 'python.exe'));
+    potentialPaths.push(path.join(__dirname, '..', 'backend', 'python_env', binaryName));
 
     console.log('🔍 Buscando Python Portable en:', potentialPaths);
 
@@ -57,7 +59,7 @@ const getBundledPythonPath = () => {
 };
 
 // Función simplificada para buscar Python (Prioriza Portable)
-const findPythonOnWindows = () => {
+const findBundledPython = () => {
     // 0. Primero buscar si tenemos el Python Portable incluido
     const bundledPath = getBundledPythonPath();
     if (bundledPath) {
@@ -142,16 +144,15 @@ if (ROOT_ENV_FILE !== ENV_FILE) {
 const getPythonExecutable = () => {
     // 1. PRIORIDAD ABSOLUTA: Buscar Python Portable (Bundled)
     // Siempre intentamos usar la versión empaquetada primero para evitar errores de sistema (Error 9009)
-    if (process.platform === 'win32') {
-        const detected = findPythonOnWindows();
-        if (detected) {
-            console.log(`💡 Usando Python Portable detectado: ${detected}`);
-            // Actualizar ENV en memoria para consistencia
-            if (process.env.PYTHON_PATH !== detected) {
-                process.env.PYTHON_PATH = detected;
-            }
-            return detected;
+    // Ahora funciona en Windows, Mac y Linux
+    const detected = findBundledPython();
+    if (detected) {
+        console.log(`💡 Usando Python Portable detectado: ${detected}`);
+        // Actualizar ENV en memoria para consistencia
+        if (process.env.PYTHON_PATH !== detected) {
+            process.env.PYTHON_PATH = detected;
         }
+        return detected;
     }
 
     // 2. Si no hay portable, verificar configuración manual en ENV
