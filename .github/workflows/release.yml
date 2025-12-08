@@ -54,6 +54,10 @@ jobs:
       - name: Setup Portable Python Environment
         run: node backend/install_python.js
 
+      - name: Clean Output Directory
+        run: rm -rf release
+        shell: bash
+
       - name: Build/Release Electron App
         uses: samuelmeuli/action-electron-builder@v1
         with:

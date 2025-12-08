@@ -1,6 +1,6 @@
 {
   "name": "inmobiliaria-manager",
-  "version": "1.1.27",
+  "version": "1.1.28",
   "description": "Sistema de Gestión Inmobiliaria con Automatización",
   "main": "electron/main.js",
   "author": "Victor Muñoz Lopez",
@@ -38,7 +38,8 @@
           "!test",
           "!tests",
           "!.wwebjs_auth",
-          "!.wwebjs_cache"
+          "!.wwebjs_cache",
+          "!python_env"
         ]
       },
       {
