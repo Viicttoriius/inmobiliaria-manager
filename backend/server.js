@@ -77,7 +77,16 @@ const whatsappClient = new Client({
     }),
     puppeteer: {
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        args: [
+            '--no-sandbox', 
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            // '--single-process', // Descomentar si sigue fallando, pero puede ser inestable
+        ]
     }
 });
 
@@ -98,6 +107,10 @@ whatsappClient.on('qr', (qr) => {
             currentQR = url;
         }
     });
+});
+
+whatsappClient.on('loading_screen', (percent, message) => {
+    console.log(`⏳ WhatsApp Cargando: ${percent}% - ${message}`);
 });
 
 whatsappClient.on('ready', () => {
