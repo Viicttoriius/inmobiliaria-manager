@@ -28,8 +28,31 @@ const savePythonPathToEnv = (newPath) => {
     }
 };
 
+// Función para buscar Python Bundled (Portable)
+const getBundledPythonPath = () => {
+    // 1. Desarrollo: backend/python_env/python.exe
+    const devPath = path.join(__dirname, 'python_env', 'python.exe');
+    if (fs.existsSync(devPath)) return devPath;
+
+    // 2. Producción (Electron): resources/backend/python_env/python.exe
+    // Cuando estamos en production, process.resourcesPath suele estar definido
+    if (process.resourcesPath) {
+        const prodPath = path.join(process.resourcesPath, 'backend', 'python_env', 'python.exe');
+        if (fs.existsSync(prodPath)) return prodPath;
+    }
+
+    return null;
+};
+
 // Función para buscar Python en rutas comunes de Windows
 const findPythonOnWindows = () => {
+    // 0. Primero buscar si tenemos el Python Portable incluido
+    const bundledPath = getBundledPythonPath();
+    if (bundledPath) {
+        console.log(`✨ Python Portable detectado en: ${bundledPath}`);
+        return bundledPath;
+    }
+
     console.log('🔍 Buscando instalación de Python en Windows...');
     const candidates = new Set();
 
@@ -131,6 +154,26 @@ const QRCode = require('qrcode'); // Para generar QR en frontend
 const nodemailer = require('nodemailer');
 const notifier = require('node-notifier');
 
+// Función para detectar navegador del sistema (Edge/Chrome) para Puppeteer
+const getSystemBrowserPath = () => {
+    if (process.platform !== 'win32') return null;
+    
+    const commonPaths = [
+        'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+        'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
+    ];
+    
+    for (const p of commonPaths) {
+        if (fs.existsSync(p)) {
+            console.log(`🌐 Navegador detectado para WhatsApp: ${p}`);
+            return p;
+        }
+    }
+    return undefined;
+};
+
 // Determine base path for data
 const BASE_PATH = process.env.USER_DATA_PATH || path.join(__dirname, '..');
 const DATA_DIR = path.join(BASE_PATH, 'data');
@@ -168,28 +211,33 @@ if (ROOT_ENV_FILE !== ENV_FILE) {
 }
 
 // --- VERIFICACIÓN DE DEPENDENCIAS PYTHON ---
+const getPythonExecutable = () => {
+    // 1. Si está configurado en ENV y no es 'python' (default), respetarlo
+    if (process.env.PYTHON_PATH && process.env.PYTHON_PATH !== 'python') {
+        return process.env.PYTHON_PATH;
+    }
+    
+    // 2. Intentar buscar (Bundled > Sistema)
+    if (process.platform === 'win32') {
+        const detected = findPythonOnWindows();
+        if (detected) return detected;
+    }
+    
+    // 3. Fallback Linux/Mac o si todo falla
+    return process.platform === 'win32' ? 'python' : 'python3';
+};
+
 const checkPythonDependencies = () => {
     const requirementsPath = path.join(__dirname, 'requirements.txt');
     if (fs.existsSync(requirementsPath)) {
-        console.log('📦 Verificando dependencias de Python...');
+        console.log('� Verificando dependencias de Python...');
         
-        let defaultPython = 'python';
-    if (process.platform !== 'win32') {
-        defaultPython = 'python3';
-    } else {
-        // En Windows, si 'python' no funciona (se puede asumir si process.env.PYTHON_PATH no está), intentamos buscar
-        if (!process.env.PYTHON_PATH) {
-            const detected = findPythonOnWindows();
-            if (detected) {
-                console.log(`🔍 Python detectado automáticamente en: ${detected}`);
-                defaultPython = detected;
-                // Guardar automáticamente en .env para persistir la solución
-                savePythonPathToEnv(detected);
-            }
-        }
-    }
-    const pythonExecutable = process.env.PYTHON_PATH || defaultPython;
+        const pythonExecutable = getPythonExecutable();
+        console.log(`🔍 Usando Python para dependencias: ${pythonExecutable}`);
 
+        // Si es el bundled, quizás no necesitemos instalar dependencias si ya vienen pre-instaladas,
+        // pero verificarlas no hace daño y asegura que estén.
+        
         // Intentar instalar dependencias
         // Asegurar que el path de python esté entre comillas si tiene espacios
         const safePythonExec = pythonExecutable.includes(' ') ? `"${pythonExecutable}"` : pythonExecutable;
@@ -231,6 +279,7 @@ const whatsappClient = new Client({
     authTimeoutMs: 60000, // Aumentar tiempo de espera de autenticación
     qrMaxRetries: 0, // Reintentos infinitos de QR
     puppeteer: {
+        executablePath: getSystemBrowserPath(), // Usar navegador del sistema si existe
         headless: true,
         args: [
             '--no-sandbox', 
@@ -596,24 +645,7 @@ app.get('/api/properties', (req, res) => {
 // Función auxiliar para ejecutar un scraper de Python
 const runPythonScraper = (scraperPath, res) => {
     // Determinar el ejecutable de Python
-    // 1. Usar PYTHON_PATH del .env si existe
-    // 2. Si no, determinar por plataforma: 'python' en Win, 'python3' en Mac/Linux
-    let defaultPython = 'python';
-    if (process.platform !== 'win32') {
-        defaultPython = 'python3';
-    } else {
-        // En Windows, intentar autodetectar si no hay path manual
-        if (!process.env.PYTHON_PATH) {
-             const detected = findPythonOnWindows();
-             if (detected) defaultPython = detected;
-        }
-    }
-    
-    const pythonExecutable = process.env.PYTHON_PATH || defaultPython;
-    
-    // Si llegamos aquí y defaultPython sigue siendo 'python' (sin path absoluto) en Windows,
-    // significa que no lo encontramos. Podríamos intentar usar 'python' tal cual, pero
-    // spawn con shell: false fallará si no está en PATH.
+    const pythonExecutable = getPythonExecutable();
     
     console.log(`🚀 Iniciando scraper desde ${scraperPath}...`);
     console.log(`🐍 Usando intérprete Python: ${pythonExecutable}`);

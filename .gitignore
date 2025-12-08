@@ -52,6 +52,7 @@ backend/.wwebjs_cache/
 # Scrapers data
 scrapers/*/data/
 *.zip
+backend/python_env/
 
 # Electron
-build/
+# build/
