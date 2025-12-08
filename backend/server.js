@@ -9,7 +9,12 @@ const QRCode = require('qrcode'); // Para generar QR en frontend
 const nodemailer = require('nodemailer');
 const notifier = require('node-notifier');
 
-require('dotenv').config();
+// Determine base path for data
+const BASE_PATH = process.env.USER_DATA_PATH || path.join(__dirname, '..');
+const DATA_DIR = path.join(BASE_PATH, 'data');
+const ENV_FILE = path.join(BASE_PATH, '.env');
+
+require('dotenv').config({ path: ENV_FILE });
 
 const app = express();
 const PORT = 3001;
@@ -17,7 +22,9 @@ const PORT = 3001;
 // --- CONFIGURACIÓN WHATSAPP LOCAL ---
 console.log('🔄 Inicializando cliente de WhatsApp...');
 const whatsappClient = new Client({
-    authStrategy: new LocalAuth(),
+    authStrategy: new LocalAuth({
+        dataPath: DATA_DIR
+    }),
     puppeteer: {
         headless: true,
         args: ['--no-sandbox', '--disable-setuid-sandbox']
@@ -122,7 +129,7 @@ app.post('/api/config/email', (req, res) => {
 
     // Persistir en .env (básico, reemplazando líneas)
     try {
-        const envPath = path.join(__dirname, '.env');
+        const envPath = ENV_FILE;
         let envContent = '';
 
         if (fs.existsSync(envPath)) {
@@ -189,17 +196,21 @@ app.post('/api/config/whatsapp/logout', async (req, res) => {
 });
 
 // Rutas a los archivos
-const PROPERTIES_DIR = path.join(__dirname, '../data/properties');
+const PROPERTIES_DIR = path.join(DATA_DIR, 'properties');
 
 const IDEALISTA_SCRAPER = path.join(__dirname, '../scrapers/idealista/run_idealista_scraper.py');
-const CLIENTS_FILE = path.join(__dirname, '../data/clients/clients.json');
+const CLIENTS_FILE = path.join(DATA_DIR, 'clients/clients.json');
 
-const PROPERTIES_JSON_FILE = path.join(__dirname, '../data/properties.json');
+const PROPERTIES_JSON_FILE = path.join(DATA_DIR, 'properties.json');
 
 // Asegurar que existen las carpetas y el archivo de clientes
-const dataDir = path.join(__dirname, '../data/clients');
-if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
+if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+const dataClientsDir = path.join(DATA_DIR, 'clients');
+if (!fs.existsSync(dataClientsDir)) {
+    fs.mkdirSync(dataClientsDir, { recursive: true });
 }
 if (!fs.existsSync(CLIENTS_FILE)) {
     fs.writeFileSync(CLIENTS_FILE, JSON.stringify([], null, 2));
@@ -317,7 +328,11 @@ const runPythonScraper = (scraperPath, res) => {
     console.log(`🚀 Iniciando scraper desde ${scraperPath}...`);
 
     const pythonProcess = spawn('python', [scraperPath], {
-        env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+        env: { 
+            ...process.env, 
+            PYTHONIOENCODING: 'utf-8',
+            PROPERTIES_OUTPUT_DIR: PROPERTIES_DIR
+        }
     });
 
     let output = '';
@@ -481,8 +496,8 @@ app.post('/api/scraper/idealista/run', (req, res) => {
 // Limpiar archivos temporales
 app.post('/api/config/cleanup', (req, res) => {
     try {
-        const updateDir = path.join(__dirname, '../data/update');
-        const propertiesDir = path.join(__dirname, '../data/properties');
+        const updateDir = path.join(DATA_DIR, 'update');
+        const propertiesDir = PROPERTIES_DIR;
         
         let deletedCount = 0;
         let errors = [];
@@ -539,7 +554,7 @@ app.post('/api/properties/update', async (req, res) => {
 
     try {
         // 1. Crear archivo temporal con las URLs en la carpeta data/update para evitar reinicios por watchers
-        const updateDir = path.join(__dirname, '../data/update');
+        const updateDir = path.join(DATA_DIR, 'update');
         if (!fs.existsSync(updateDir)) {
             fs.mkdirSync(updateDir, { recursive: true });
         }
@@ -549,7 +564,7 @@ app.post('/api/properties/update', async (req, res) => {
 
         // 2. Ejecutar scraper con el archivo de URLs
         const pythonProcess = spawn('python', [UPDATE_SCRAPER, tempUrlsFile], {
-            env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+            env: { ...process.env, PYTHONIOENCODING: 'utf-8', USER_DATA_PATH: BASE_PATH }
         });
 
         let rawData = '';
@@ -1144,7 +1159,7 @@ app.post('/api/support', async (req, res) => {
 });
 
 // ============ CONFIGURACIÓN DE SCRAPER AUTOMÁTICO ============
-const SCRAPER_CONFIG_FILE = path.join(__dirname, '../data/scraper_config.json');
+const SCRAPER_CONFIG_FILE = path.join(DATA_DIR, 'scraper_config.json');
 let autoScraperInterval = null;
 
 // Ensure config file exists
@@ -1177,7 +1192,12 @@ const runAutoScrapers = async () => {
             console.log(`   ▶ Running ${scraperScript}...`);
              // We use a promise wrapper around spawn to await completion
             await new Promise((resolve) => {
-                const process = spawn('python', [scraperPath]);
+                const process = spawn('python', [scraperPath], {
+                    env: { 
+                        ...process.env, 
+                        PROPERTIES_OUTPUT_DIR: PROPERTIES_DIR
+                    }
+                });
                 process.stdout.on('data', (data) => console.log(`[${type}] ${data}`));
                 process.stderr.on('data', (data) => console.error(`[${type} ERROR] ${data}`));
                 process.on('close', (code) => {

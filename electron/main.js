@@ -49,11 +49,18 @@ function startBackend() {
 
   console.log('Iniciando Backend desde:', scriptPath);
 
+  const userDataPath = app.getPath('userData');
+  console.log('User Data Path:', userDataPath);
+
   // Usar fork para lanzar el backend como un proceso hijo independiente
   // Esto usa el binario de Node.js integrado en Electron
   backendProcess = fork(scriptPath, [], {
     stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
-    env: { ...process.env, PORT: 3001 }
+    env: { 
+      ...process.env, 
+      PORT: 3001,
+      USER_DATA_PATH: userDataPath
+    }
   });
 
   backendProcess.stdout.on('data', (data) => {

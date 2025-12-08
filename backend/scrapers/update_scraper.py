@@ -40,8 +40,14 @@ def save_client_from_property(property_data):
     Intenta completar datos faltantes usando properties.json existente.
     """
     try:
-        clients_file = os.path.join(current_dir, "../../data/clients/clients.json")
-        properties_file = os.path.join(current_dir, "../../data/properties.json")
+        # Usar variable de entorno o fallback para dev
+        base_data_path = os.environ.get("USER_DATA_PATH")
+        if base_data_path:
+             clients_file = os.path.join(base_data_path, "data/clients/clients.json")
+             properties_file = os.path.join(base_data_path, "data/properties.json")
+        else:
+             clients_file = os.path.join(current_dir, "../../data/clients/clients.json")
+             properties_file = os.path.join(current_dir, "../../data/properties.json")
         
         # Asegurar que el directorio de clientes existe
         os.makedirs(os.path.dirname(clients_file), exist_ok=True)
@@ -304,7 +310,13 @@ def scrape_single_url(driver, url):
     except Exception as e:
         # Guardar HTML para depuración
         try:
-            debug_dir = os.path.join(current_dir, "../../data/debug")
+            # Usar variable de entorno o fallback para dev
+            base_data_path = os.environ.get("USER_DATA_PATH")
+            if base_data_path:
+                debug_dir = os.path.join(base_data_path, "data/debug")
+            else:
+                debug_dir = os.path.join(current_dir, "../../data/debug")
+
             if not os.path.exists(debug_dir):
                 os.makedirs(debug_dir)
             

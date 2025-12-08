@@ -17,7 +17,7 @@ def main():
     
     if properties:
         # Guardar los datos en un archivo JSON en la carpeta de datos
-        output_dir = r"d:\Trabajo\Alex Automatización\inmobiliaria\data\properties"
+        output_dir = os.environ.get("PROPERTIES_OUTPUT_DIR", r"d:\Trabajo\Alex Automatización\inmobiliaria\data\properties")
         save_to_json(properties, property_type="terrenos", location="varios", output_dir=output_dir)
         print(f"Se han guardado {len(properties)} propiedades.")
     else:
