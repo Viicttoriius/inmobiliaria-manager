@@ -26,15 +26,15 @@ const CONFIG = {
         }
     },
     linux: {
-        // Python 3.11.14 Standalone
-        url: 'https://github.com/astral-sh/python-build-standalone/releases/download/20251010/cpython-3.11.14+20251010-x86_64-unknown-linux-gnu-install_only.tar.gz',
+        // Python 3.11.8 Standalone (Release 20240224 - Known stable)
+        url: 'https://github.com/astral-sh/python-build-standalone/releases/download/20240224/cpython-3.11.8+20240224-x86_64-unknown-linux-gnu-install_only.tar.gz',
         filename: 'python.tar.gz',
         extractCmd: (src, dest) => `tar -xzf "${src}" -C "${dest}" --strip-components=1`, 
         postInstall: () => {}
     },
     darwin: {
-        // Python 3.11.14 Standalone
-        url: 'https://github.com/astral-sh/python-build-standalone/releases/download/20251010/cpython-3.11.14+20251010-x86_64-apple-darwin-install_only.tar.gz',
+        // Python 3.11.8 Standalone (Release 20240224 - Known stable)
+        url: 'https://github.com/astral-sh/python-build-standalone/releases/download/20240224/cpython-3.11.8+20240224-x86_64-apple-darwin-install_only.tar.gz',
         filename: 'python.tar.gz',
         extractCmd: (src, dest) => `tar -xzf "${src}" -C "${dest}" --strip-components=1`,
         postInstall: () => {}
@@ -103,6 +103,8 @@ try {
             pythonExe = path.join(binDir, 'python3');
         } else if (fs.existsSync(path.join(binDir, 'python3.11'))) {
             pythonExe = path.join(binDir, 'python3.11');
+        } else if (fs.existsSync(path.join(binDir, 'python'))) {
+            pythonExe = path.join(binDir, 'python');
         } else {
             // Fallback checking
             console.log('⚠️ No se encontró python3 ni python3.11 en bin. Listando contenido de bin:');
