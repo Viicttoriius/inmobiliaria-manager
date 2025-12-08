@@ -4,44 +4,117 @@ const fs = require('fs');
 const path = require('path');
 const { spawn, exec, execSync } = require('child_process');
 
+// Función para guardar la ruta de Python en .env
+const savePythonPathToEnv = (newPath) => {
+    if (!newPath) return;
+    process.env.PYTHON_PATH = newPath;
+    try {
+        let envContent = '';
+        if (fs.existsSync(ENV_FILE)) {
+            envContent = fs.readFileSync(ENV_FILE, 'utf8');
+        }
+        
+        // Reemplazar o agregar PYTHON_PATH
+        if (envContent.includes('PYTHON_PATH=')) {
+             envContent = envContent.replace(/^PYTHON_PATH=.*$/m, `PYTHON_PATH=${newPath}`);
+        } else {
+             envContent += `\nPYTHON_PATH=${newPath}`;
+        }
+        
+        fs.writeFileSync(ENV_FILE, envContent);
+        console.log(`✅ Ruta de Python guardada en .env: ${newPath}`);
+    } catch (err) {
+        console.error('❌ Error guardando configuración de Python:', err);
+    }
+};
+
 // Función para buscar Python en rutas comunes de Windows
 const findPythonOnWindows = () => {
-    // 1. Intentar buscar con 'where python'
+    console.log('🔍 Buscando instalación de Python en Windows...');
+    const candidates = new Set();
+
+    // 1. Intentar buscar con 'py' launcher (Python Launcher for Windows)
+    try {
+        const stdout = execSync('py --list-paths', { encoding: 'utf8', stdio: 'pipe' });
+        // Formato salida: -V: C:\Path\To\python.exe
+        const lines = stdout.split('\r\n');
+        for (const line of lines) {
+             const match = line.match(/:\s*(.*python\.exe)/);
+             if (match && match[1]) {
+                 candidates.add(match[1].trim());
+             }
+        }
+    } catch (e) { /* ignore */ }
+
+    // 2. Intentar buscar con 'where python'
     try {
         const stdout = execSync('where python', { encoding: 'utf8', stdio: 'pipe' });
         const paths = stdout.split('\r\n').filter(p => p.trim() !== '');
-        if (paths.length > 0) {
-            // Preferir el que no sea de WindowsApps si es posible, ya que suele ser un shim problemático
-            const nonStorePath = paths.find(p => !p.includes('WindowsApps'));
-            if (nonStorePath) return nonStorePath.trim();
-            return paths[0].trim();
-        }
-    } catch (e) {
-        // Ignorar error si 'where' falla
+        paths.forEach(p => candidates.add(p.trim()));
+    } catch (e) { /* ignore */ }
+
+    // 3. Buscar en Registro (HKLM y HKCU)
+    const regKeys = [
+        'HKLM\\SOFTWARE\\Python\\PythonCore',
+        'HKCU\\SOFTWARE\\Python\\PythonCore'
+    ];
+    for (const key of regKeys) {
+        try {
+            // Obtener versiones
+            const stdout = execSync(`reg query "${key}"`, { encoding: 'utf8', stdio: 'pipe' });
+            const versions = stdout.split('\r\n').filter(l => l.includes(key) && l !== key);
+            
+            for (const verKey of versions) {
+                try {
+                    // Obtener InstallPath
+                    const installPathOut = execSync(`reg query "${verKey}\\InstallPath" /ve`, { encoding: 'utf8', stdio: 'pipe' });
+                    // Output looks like: (Default)    REG_SZ    C:\Path\
+                    const match = installPathOut.match(/REG_SZ\s+(.*)/);
+                    if (match && match[1]) {
+                        const fullPath = path.join(match[1].trim(), 'python.exe');
+                        candidates.add(fullPath);
+                    }
+                } catch (e) { /* ignore */ }
+            }
+        } catch (e) { /* ignore */ }
     }
 
-    // 2. Buscar en rutas comunes
+    // 4. Buscar en rutas comunes
     const commonPaths = [
-        'C:\\Python314\\python.exe',
-        'C:\\Python313\\python.exe',
-        'C:\\Python312\\python.exe',
-        'C:\\Python311\\python.exe',
-        'C:\\Python310\\python.exe',
-        'C:\\Python39\\python.exe',
+        'C:\\Python314\\python.exe', 'C:\\Python313\\python.exe', 
+        'C:\\Python312\\python.exe', 'C:\\Python311\\python.exe',
+        'C:\\Python310\\python.exe', 'C:\\Python39\\python.exe',
+        'C:\\Program Files\\Python314\\python.exe', 'C:\\Program Files\\Python313\\python.exe',
+        'C:\\Program Files\\Python312\\python.exe', 'C:\\Program Files\\Python311\\python.exe',
+        'C:\\Program Files\\Python310\\python.exe', 'C:\\Program Files\\Python39\\python.exe',
         path.join(process.env.LOCALAPPDATA || '', 'Programs\\Python\\Python314\\python.exe'),
         path.join(process.env.LOCALAPPDATA || '', 'Programs\\Python\\Python313\\python.exe'),
         path.join(process.env.LOCALAPPDATA || '', 'Programs\\Python\\Python312\\python.exe'),
         path.join(process.env.LOCALAPPDATA || '', 'Programs\\Python\\Python311\\python.exe'),
         path.join(process.env.LOCALAPPDATA || '', 'Programs\\Python\\Python310\\python.exe'),
     ];
+    commonPaths.forEach(p => candidates.add(p));
 
-    for (const p of commonPaths) {
-        if (fs.existsSync(p)) {
-            return p;
-        }
+    console.log('   Candidatos encontrados:', Array.from(candidates));
+
+    // Validar candidatos
+    for (const p of candidates) {
+        if (p.includes('WindowsApps')) continue; // Saltar shim de WindowsApps que suele fallar
+        try {
+            if (fs.existsSync(p)) {
+                // Verificar que se puede ejecutar
+                execSync(`"${p}" --version`, { stdio: 'ignore' });
+                return p;
+            }
+        } catch (e) { /* invalido */ }
     }
 
-    // 3. Si no encontramos nada, devolvemos 'python'
+    // Fallback a WindowsApps si no hay nada mejor, pero con cautela
+    for (const p of candidates) {
+        if (fs.existsSync(p)) return p;
+    }
+
+    // 5. Si no encontramos nada, devolvemos 'python'
     return 'python';
 };
 
@@ -110,6 +183,8 @@ const checkPythonDependencies = () => {
             if (detected) {
                 console.log(`🔍 Python detectado automáticamente en: ${detected}`);
                 defaultPython = detected;
+                // Guardar automáticamente en .env para persistir la solución
+                savePythonPathToEnv(detected);
             }
         }
     }
@@ -285,32 +360,10 @@ app.post('/api/config/python', (req, res) => {
         return res.status(400).json({ error: 'Ruta de Python requerida' });
     }
 
-    // Actualizar variable en memoria
-    process.env.PYTHON_PATH = pythonPath;
-
-    // Persistir en .env
-    try {
-        const envPath = ENV_FILE;
-        let envContent = '';
-
-        if (fs.existsSync(envPath)) {
-            envContent = fs.readFileSync(envPath, 'utf8');
-        }
-
-        // Reemplazar o agregar PYTHON_PATH
-        if (envContent.includes('PYTHON_PATH=')) {
-            envContent = envContent.replace(/PYTHON_PATH=.*/g, `PYTHON_PATH=${pythonPath}`);
-        } else {
-            envContent += `\nPYTHON_PATH=${pythonPath}`;
-        }
-
-        fs.writeFileSync(envPath, envContent);
-        console.log(`✅ Ruta de Python actualizada a: ${pythonPath}`);
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Error guardando .env:', error);
-        res.status(500).json({ error: 'Error guardando configuración' });
-    }
+    // Usar la función helper para guardar y actualizar variable en memoria
+    savePythonPathToEnv(pythonPath);
+    
+    res.json({ success: true });
 });
 
 // Actualizar credenciales de Email
