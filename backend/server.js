@@ -705,7 +705,21 @@ const runPythonScraper = (scraperPath, res) => {
               wait: false
             });
 
-            res.status(500).json({ success: false, error: 'Error ejecutando scraper', output: errorOutput });
+            // Construir un mensaje de error más útil
+            let errorMessage = 'Error ejecutando scraper';
+            if (code === 9009 || (errorOutput && errorOutput.includes('not recognized'))) {
+                errorMessage = 'Python no encontrado en el sistema (Error 9009). Por favor, instala Python y agrégalo al PATH, o configúralo en el menú de ajustes.';
+            } else if (errorOutput) {
+                errorMessage = `Error del script: ${errorOutput.slice(0, 300)}...`; // Limitar longitud
+            }
+            
+            res.status(500).json({ 
+                success: false, 
+                error: errorMessage, 
+                output: output,
+                errorDetails: errorOutput,
+                pythonUsed: pythonExecutable
+            });
         }
     });
 
