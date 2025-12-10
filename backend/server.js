@@ -356,16 +356,22 @@ const app = express();
 const PORT = 3001;
 
 // --- CONFIGURACIÓN WHATSAPP LOCAL ---
+// --- CONFIGURACIÓN WHATSAPP LOCAL ---
 console.log('🔄 Inicializando cliente de WhatsApp...');
+
+// Debug Browser Path
+const browserPath = getSystemBrowserPath();
+console.log(`🐛 [DEBUG] Browser Path para Puppeteer: ${browserPath || 'NO DETECTADO (Usando Chrome descargado si existe)'}`);
+
 const whatsappClient = new Client({
     authStrategy: new LocalAuth({
         dataPath: DATA_DIR
     }),
-    authTimeoutMs: 60000, // Aumentar tiempo de espera de autenticación
-    qrMaxRetries: 0, // Reintentos infinitos de QR
+    authTimeoutMs: 60000,
+    qrMaxRetries: 0,
     puppeteer: {
-        executablePath: getSystemBrowserPath(), // Usar navegador del sistema si existe
-        headless: true,
+        executablePath: browserPath,
+        headless: true, // Si hay problemas, cambiar a false para ver qué pasa
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -374,8 +380,10 @@ const whatsappClient = new Client({
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--disable-extensions', // Deshabilitar extensiones
-            // '--single-process', // Descomentar si sigue fallando, pero puede ser inestable
+            '--disable-extensions',
+            // Añadir estos flags para mejorar compatibilidad Windows
+            '--disable-software-rasterizer',
+            '--disable-gl-drawing-for-tests'
         ]
     },
     webVersionCache: {
@@ -616,6 +624,53 @@ app.post('/api/config/whatsapp/logout', async (req, res) => {
     }
 });
 
+// Resetear WhatsApp (Borrar sesión y reiniciar) - Útil si se queda trabado o corrupto
+app.post('/api/config/whatsapp/reset', async (req, res) => {
+    try {
+        console.log('🔄 Solicitud de RESET COMPLETO de WhatsApp recibida...');
+
+        // 1. Destruir cliente actual
+        try {
+            await whatsappClient.destroy();
+            console.log('Cliente destruido.');
+        } catch (e) { }
+
+        isWhatsAppReady = false;
+        currentQR = null;
+        whatsappState = 'INITIALIZING';
+
+        // 2. Borrar carpeta de sesión
+        const sessionPath = path.join(DATA_DIR, '.wwebjs_auth');
+        console.log(`🗑️ Eliminando datos de sesión en: ${sessionPath}`);
+        if (fs.existsSync(sessionPath)) {
+            // Reintentos para borrar en Windows si el archivo está en uso
+            try {
+                fs.rmSync(sessionPath, { recursive: true, force: true });
+                console.log('✅ Datos de sesión eliminados.');
+            } catch (rmError) {
+                console.error("Error borrando carpeta de sesión (posiblemente bloqueada):", rmError);
+                // Si falla, intentamos renombrarla para que no moleste en el siguiente arranque
+                try {
+                    fs.renameSync(sessionPath, path.join(DATA_DIR, `.wwebjs_auth_bak_${Date.now()}`));
+                    console.log('⚠️ Carpeta renombrada en lugar de borrada.');
+                } catch (renError) { }
+            }
+        }
+
+        // 3. Reiniciar
+        setTimeout(() => {
+            console.log('🚀 Reiniciando cliente tras reset...');
+            initializeWhatsApp();
+        }, 3000);
+
+        res.json({ success: true, message: 'WhatsApp reseteado correctamente. Espera unos segundos al nuevo QR.' });
+
+    } catch (error) {
+        console.error('Error crítico reseteando WhatsApp:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Rutas a los archivos
 const PROPERTIES_DIR = path.join(DATA_DIR, 'properties');
 
@@ -761,11 +816,11 @@ app.get('/api/properties', (req, res) => {
 });
 
 // Función auxiliar para ejecutar un scraper de Python
-const runPythonScraper = (scraperPath, res) => {
+const runPythonScraper = (scraperPath, res, scraperId) => {
     // Determinar el ejecutable de Python
     const pythonExecutable = getPythonExecutable();
 
-    console.log(`🚀 Iniciando scraper desde ${scraperPath}...`);
+    console.log(`🚀 Iniciando scraper desde ${scraperPath} (ID: ${scraperId})...`);
     console.log(`🐍 Usando intérprete Python: ${pythonExecutable}`);
 
     const pythonProcess = spawn(pythonExecutable, [scraperPath], {
@@ -776,6 +831,11 @@ const runPythonScraper = (scraperPath, res) => {
         },
         shell: false // IMPORTANTE: shell:false evita problemas con espacios en rutas en Windows si pasamos el ejecutable directo
     });
+
+    // Guardar referencia si hay ID
+    if (scraperId) {
+        activeScrapers.set(scraperId, { process: pythonProcess, res });
+    }
 
     // Manejo explícito de errores de spawn (ej. ejecutable no encontrado)
     pythonProcess.on('error', (err) => {
@@ -805,6 +865,11 @@ const runPythonScraper = (scraperPath, res) => {
     });
 
     pythonProcess.on('close', (code) => {
+        // Limpiar del mapa si existe
+        if (scraperId && activeScrapers.has(scraperId)) {
+            activeScrapers.delete(scraperId);
+        }
+
         if (code === 0) {
             console.log(`✅ Scraper completado exitosamente`);
 
@@ -953,15 +1018,55 @@ app.post('/api/scraper/fotocasa/run', (req, res) => {
         return res.status(404).json({ success: false, error: `No se encontró el scraper para el tipo '${type}'` });
     }
 
-    runPythonScraper(scraperPath, res);
+    const scraperId = `fotocasa_${type}`;
+    runPythonScraper(scraperPath, res, scraperId);
 });
+
+// Almacén de procesos activos
+const activeScrapers = new Map(); // Clave: scraperName, Valor: { process, res }
 
 // Ejecutar el scraper de Idealista
 app.post('/api/scraper/idealista/run', (req, res) => {
     if (!fs.existsSync(IDEALISTA_SCRAPER)) {
         return res.status(404).json({ success: false, error: 'El scraper de Idealista no está instalado o no se encuentra el archivo.' });
     }
-    runPythonScraper(IDEALISTA_SCRAPER, res);
+    // Usamos 'idealista' como ID único
+    runPythonScraper(IDEALISTA_SCRAPER, res, 'idealista');
+});
+
+// Detener un scraper en ejecución
+app.post('/api/scraper/stop', (req, res) => {
+    const { name } = req.body;
+
+    if (!name) {
+        return res.status(400).json({ error: 'Nombre del scraper requerido' });
+    }
+
+    const processInfo = activeScrapers.get(name);
+    if (processInfo && processInfo.process) {
+        console.log(`🛑 Deteniendo scraper manual: ${name}`);
+
+        try {
+            // Matar el proceso y todos sus hijos (en Windows tree-kill podría ayudar, pero process.kill suele funcionar para lo básico)
+            // Usamos SIGTARM
+            processInfo.process.kill();
+
+            // Eliminar del mapa
+            activeScrapers.delete(name);
+
+            // Responder a la petición original si aún está pendiente
+            if (processInfo.res && !processInfo.res.headersSent) {
+                processInfo.res.json({ success: false, error: 'Scraper detenido manualmente por el usuario.', stopped: true });
+            }
+
+            res.json({ success: true, message: `Scraper ${name} detenido.` });
+        } catch (e) {
+            console.error(`Error deteniendo proceso ${name}:`, e);
+            res.status(500).json({ error: `Error al detener proceso: ${e.message}` });
+        }
+    } else {
+        res.status(404).json({ error: 'No hay escraper activo con ese nombre' });
+    }
 });
 
 // Limpiar archivos temporales

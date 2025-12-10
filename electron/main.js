@@ -2,6 +2,12 @@ const { app, BrowserWindow, ipcMain, Notification } = require('electron');
 const path = require('path');
 const { fork } = require('child_process');
 const { autoUpdater } = require('electron-updater');
+const Sentry = require('@sentry/electron');
+
+Sentry.init({
+  dsn: "https://424600effbaf13df1282427b2575537a@o4510509929857024.ingest.de.sentry.io/4510509938311248",
+  debug: false
+});
 
 let mainWindow;
 let backendProcess;

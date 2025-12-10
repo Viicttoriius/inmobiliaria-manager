@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Home, Building2, MapPin, Calendar, Phone, ExternalLink, Search, Filter, Play, Users, MessageSquare, Plus, Trash2, Send, RefreshCw, Image as ImageIcon, Pencil, History, Settings, AlertCircle, CheckCircle, Info, X, Bell, LifeBuoy, Upload, Mail } from 'lucide-react'
+import { Home, Building2, MapPin, Calendar, Phone, ExternalLink, Search, Filter, Play, Users, MessageSquare, Plus, Trash2, Send, RefreshCw, Image as ImageIcon, Pencil, History, Settings, AlertCircle, CheckCircle, Info, X, Bell, LifeBuoy, Upload, Mail, Square } from 'lucide-react'
 import Papa from 'papaparse';
 import UpdateNotification from './components/UpdateNotification';
 import './App.css'
@@ -517,6 +517,35 @@ function App() {
   };
 
 
+  const handleWhatsAppReset = async () => {
+    requestConfirm({
+      title: 'Reset Total de WhatsApp',
+      message: 'Esto borrará tu sesión actual y forzará un reinicio completo. Úsalo si el QR no aparece o tienes problemas de conexión persistentes. ¿Continuar?',
+      isDanger: true,
+      confirmText: 'Sí, Resetear',
+      onConfirm: async () => {
+        try {
+          // Mostrar estado de carga inmediato
+          setConfigStatus(prev => ({ ...prev, whatsapp: { ...prev.whatsapp, ready: false, qr: null, state: 'RESETTING' } }));
+
+          const response = await fetch(`${API_URL}/config/whatsapp/reset`, { method: 'POST' });
+          const data = await response.json();
+
+          if (data.success) {
+            showNotification(data.message, 'success');
+            // Polling acelerado para ver el nuevo QR pronto
+            setTimeout(loadConfigStatus, 4000);
+          } else {
+            showNotification('Error: ' + data.error, 'error');
+          }
+        } catch (error) {
+          console.error('Error reset whatsapp:', error);
+          showNotification('Error de conexión al resetear.', 'error');
+        }
+      }
+    });
+  };
+
   const runScraper = async (scraperName, propertyType) => {
     const stateKey = propertyType ? `${scraperName}_${propertyType}` : scraperName;
     setScrapingInProgress(prev => ({ ...prev, [stateKey]: true }))
@@ -562,6 +591,31 @@ function App() {
       setScrapingInProgress(prev => ({ ...prev, [stateKey]: false }))
     }
   }
+
+  const stopScraper = async (scraperName, propertyType) => {
+    const scraperId = propertyType ? `${scraperName}_${propertyType}` : scraperName;
+
+    try {
+      const response = await fetch(`${API_URL}/scraper/stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: scraperId })
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        showNotification('Scraper detenido correctamente.', 'info');
+        // Forzar actualización de estado UI
+        setScrapingInProgress(prev => ({ ...prev, [scraperId]: false }));
+        setScrapingLog(prev => prev + '\n🛑 Scraper detenido por el usuario.\n');
+      } else {
+        showNotification('Error al detener scraper: ' + data.error, 'error');
+      }
+    } catch (error) {
+      console.error('Error stopping scraper:', error);
+      showNotification('Error de conexión al detener scraper.', 'error');
+    }
+  };
 
   const handleCleanup = async () => {
     requestConfirm({
@@ -1104,52 +1158,42 @@ function App() {
               </button>
               {showFotocasaOptions && (
                 <div className="fotocasa-options">
-                  <button
-                    onClick={() => runScraper('fotocasa', 'viviendas')}
-                    disabled={scrapingInProgress.fotocasa_viviendas}
-                    className="scraper-btn fotocasa"
-                  >
-                    {scrapingInProgress.fotocasa_viviendas ? (
-                      <><RefreshCw size={18} className="spinning" /><span>Ejecutando...</span></>
-                    ) : (
-                      <><Home size={18} /><span>Viviendas</span></>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => runScraper('fotocasa', 'locales')}
-                    disabled={scrapingInProgress.fotocasa_locales}
-                    className="scraper-btn fotocasa"
-                  >
-                    {scrapingInProgress.fotocasa_locales ? (
-                      <><RefreshCw size={18} className="spinning" /><span>Ejecutando...</span></>
-                    ) : (
-                      <><Building2 size={18} /><span>Locales</span></>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => runScraper('fotocasa', 'terrenos')}
-                    disabled={scrapingInProgress.fotocasa_terrenos}
-                    className="scraper-btn fotocasa"
-                  >
-                    {scrapingInProgress.fotocasa_terrenos ? (
-                      <><RefreshCw size={18} className="spinning" /><span>Ejecutando...</span></>
-                    ) : (
-                      <><MapPin size={18} /><span>Terrenos</span></>
-                    )}
-                  </button>
+                  {['viviendas', 'locales', 'terrenos'].map(type => {
+                    const isRunning = scrapingInProgress[`fotocasa_${type}`];
+                    return (
+                      <button
+                        key={type}
+                        onClick={() => isRunning ? stopScraper('fotocasa', type) : runScraper('fotocasa', type)}
+                        className={`scraper-btn fotocasa ${isRunning ? 'stop-btn' : ''}`}
+                        title={isRunning ? "Detener Scraper" : `Buscar ${type}`}
+                        style={isRunning ? { backgroundColor: '#dc2626', borderColor: '#b91c1c' } : {}}
+                      >
+                        {isRunning ? (
+                          <><Square size={18} fill="currentColor" /><span>Detener</span></>
+                        ) : (
+                          <>
+                            {type === 'viviendas' && <Home size={18} />}
+                            {type === 'locales' && <Building2 size={18} />}
+                            {type === 'terrenos' && <MapPin size={18} />}
+                            <span>{type.charAt(0).toUpperCase() + type.slice(1)}</span>
+                          </>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
 
             <button
-              onClick={() => runScraper('idealista')}
-              disabled={scrapingInProgress.idealista}
-              className="scraper-btn idealista"
+              onClick={() => scrapingInProgress.idealista ? stopScraper('idealista') : runScraper('idealista')}
+              className={`scraper-btn idealista ${scrapingInProgress.idealista ? 'stop-btn' : ''}`}
+              style={scrapingInProgress.idealista ? { backgroundColor: '#dc2626', borderColor: '#b91c1c' } : {}}
             >
               {scrapingInProgress.idealista ? (
                 <>
-                  <RefreshCw size={18} className="spinning" />
-                  <span>Ejecutando...</span>
+                  <Square size={18} fill="currentColor" />
+                  <span>Detener</span>
                 </>
               ) : (
                 <>
@@ -1823,9 +1867,12 @@ function App() {
 
       {/* Modal de Configuración */}
       {configModalOpen && (
-        <div className="modal-overlay">
-          <div className="modal-content config-modal">
-            <h3>Configuración de Mensajería Local</h3>
+        <div className="modal-overlay" onClick={() => setConfigModalOpen(false)}>
+          <div className="modal-content config-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header-custom" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0 }}>Configuración de Mensajería Local</h3>
+              <button onClick={() => setConfigModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text)' }}><X size={24} /></button>
+            </div>
 
             <div className="config-section">
               <h4><Phone size={20} /> WhatsApp Web Local</h4>
@@ -1854,9 +1901,18 @@ function App() {
                     <button
                       onClick={handleWhatsAppLogout}
                       className="logout-btn"
-                      style={{ background: '#f59e0b', fontSize: '0.9rem' }}
+                      style={{ background: '#f59e0b', fontSize: '0.9rem', marginRight: '0.5rem' }}
                     >
-                      <RefreshCw size={14} /> Reiniciar Servicio WhatsApp
+                      <RefreshCw size={14} /> Reiniciar Servicio
+                    </button>
+
+                    <button
+                      onClick={handleWhatsAppReset}
+                      className="logout-btn"
+                      style={{ background: '#dc2626', fontSize: '0.9rem' }}
+                      title="Usar si el QR no aparece nunca"
+                    >
+                      <Trash2 size={14} /> Reset Total
                     </button>
                   </div>
                 ) : (
@@ -1864,6 +1920,9 @@ function App() {
                     <p>WhatsApp está listo para enviar mensajes.</p>
                     <button onClick={handleWhatsAppLogout} className="logout-btn">
                       Cerrar Sesión WhatsApp
+                    </button>
+                    <button onClick={handleWhatsAppReset} className="logout-btn" style={{ background: '#ef4444', marginLeft: '10px' }}>
+                      Forzar Reset
                     </button>
                   </div>
                 )}
@@ -2023,9 +2082,12 @@ function App() {
       )}
 
       {historyModalOpen && viewingClientHistory && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '600px' }}>
-            <h3>Historial de Contacto: {viewingClientHistory.name}</h3>
+        <div className="modal-overlay" onClick={closeHistory}>
+          <div className="modal-content" style={{ maxWidth: '600px' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0 }}>Historial de Contacto: {viewingClientHistory.name}</h3>
+              <button onClick={closeHistory} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={24} /></button>
+            </div>
 
             {!viewingClientHistory.contactHistory || viewingClientHistory.contactHistory.length === 0 ? (
               <p>No hay mensajes enviados a este cliente.</p>
@@ -2063,9 +2125,12 @@ function App() {
 
       {/* Modal de Soporte Técnico */}
       {supportModalOpen && (
-        <div className="modal-overlay">
-          <div className="modal-content support-modal">
-            <h3>Soporte Técnico</h3>
+        <div className="modal-overlay" onClick={() => setSupportModalOpen(false)}>
+          <div className="modal-content support-modal" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0 }}>Soporte Técnico</h3>
+              <button onClick={() => setSupportModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={24} /></button>
+            </div>
             <p className="support-description">
               Envía un mensaje al desarrollador (viicttoriius@gmail.com) para sugerencias, errores o dudas.
             </p>
