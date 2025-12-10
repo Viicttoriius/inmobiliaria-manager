@@ -1891,17 +1891,8 @@ const loadScraperConfig = () => {
 const runAutoScrapers = async () => {
     console.log("⏰ Running auto scrapers...");
 
-    // Determinar el ejecutable de Python
-    let defaultPython = 'python';
-    if (process.platform !== 'win32') {
-        defaultPython = 'python3';
-    } else {
-        if (!process.env.PYTHON_PATH) {
-            const detected = findPythonOnWindows();
-            if (detected) defaultPython = detected;
-        }
-    }
-    const pythonExecutable = process.env.PYTHON_PATH || defaultPython;
+    // Usar la función centralizada para obtener el ejecutable de Python
+    const pythonExecutable = getPythonExecutable();
 
     const types = ['viviendas', 'terrenos', 'locales'];
     for (const type of types) {
