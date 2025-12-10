@@ -1911,17 +1911,17 @@ const runAutoScrapers = async () => {
             console.log(`   ▶ Running ${scraperScript}...`);
             // We use a promise wrapper around spawn to await completion
             await new Promise((resolve) => {
-                const process = spawn(pythonExecutable, [scraperPath], {
+                const child = spawn(pythonExecutable, [scraperPath], {
                     env: {
                         ...process.env,
                         PROPERTIES_OUTPUT_DIR: PROPERTIES_DIR
                     },
                     shell: false
                 });
-                process.on('error', (err) => console.error(`[${type}] Error spawn:`, err));
-                process.stdout.on('data', (data) => console.log(`[${type}] ${data}`));
-                process.stderr.on('data', (data) => console.error(`[${type} ERROR] ${data}`));
-                process.on('close', (code) => {
+                child.on('error', (err) => console.error(`[${type}] Error spawn:`, err));
+                child.stdout.on('data', (data) => console.log(`[${type}] ${data}`));
+                child.stderr.on('data', (data) => console.error(`[${type} ERROR] ${data}`));
+                child.on('close', (code) => {
                     console.log(`[${type}] Finished with code ${code}`);
                     resolve();
                 });
