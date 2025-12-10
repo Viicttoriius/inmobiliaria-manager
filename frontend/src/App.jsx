@@ -115,9 +115,18 @@ function App() {
     document.body.style.cursor = 'col-resize';
   };
 
-  const showNotification = (message, type = 'info') => {
+  const showNotification = (message, type = 'info', title = null) => {
     const id = Date.now();
-    const newNotification = { id, message, type, timestamp: new Date().toISOString() };
+    
+    // Título automático basado en el tipo si no se proporciona uno
+    const defaultTitle = type === 'success' ? 'Operación Exitosa' : 
+                         type === 'error' ? 'Ha ocurrido un error' : 
+                         type === 'warning' ? 'Atención' : 
+                         type === 'info' ? 'Información' : 'Notificación';
+                         
+    const finalTitle = title || defaultTitle;
+
+    const newNotification = { id, message, type, title: finalTitle, timestamp: new Date().toISOString() };
 
     // Reproducir sonido
     try {
@@ -1112,7 +1121,12 @@ function App() {
               </button>
 
               {showNotificationPanel && (
-                <div className="notification-panel">
+                <>
+                  <div 
+                    style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 998, cursor: 'default' }}
+                    onClick={() => setShowNotificationPanel(false)}
+                  />
+                  <div className="notification-panel" style={{ zIndex: 999, position: 'absolute' }}>
                   <div className="notification-header">
                     <h3>Notificaciones</h3>
                     <button onClick={clearNotificationHistory} className="clear-btn" title="Borrar todo">
@@ -2180,7 +2194,11 @@ function App() {
               {notification.type === 'warning' && <AlertCircle size={20} />}
             </div>
             <div className="notification-content">
-              {notification.message}
+              {notification.title && <strong style={{ display: 'block', marginBottom: '4px', fontSize: '0.95rem' }}>{notification.title}</strong>}
+              <div style={{ fontSize: '0.9rem', lineHeight: '1.4' }}>{notification.message}</div>
+              <small style={{ display: 'block', marginTop: '4px', opacity: 0.7, fontSize: '0.75rem' }}>
+                {new Date(notification.timestamp).toLocaleTimeString()}
+              </small>
             </div>
             <button onClick={() => removeNotification(notification.id)} className="notification-close">
               <X size={16} />
@@ -2191,8 +2209,8 @@ function App() {
 
       {/* Modal de Confirmación */}
       {confirmModal.isOpen && (
-        <div className="modal-overlay">
-          <div className="modal-content">
+        <div className="modal-overlay" onClick={closeConfirmModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h3>{confirmModal.title}</h3>
             <p>{confirmModal.message}</p>
             <div className="modal-actions">

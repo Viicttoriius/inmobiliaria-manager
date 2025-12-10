@@ -48,6 +48,7 @@ temp/
 # WhatsApp Session (Backend)
 backend/.wwebjs_auth/
 backend/.wwebjs_cache/
+backend/.cache/
 
 # Scrapers data
 scrapers/*/data/
