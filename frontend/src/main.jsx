@@ -5,8 +5,9 @@ import './index.css'
 import App from './App.jsx'
 
 Sentry.init({
-  dsn: "https://424600effbaf13df1282427b2575537a@o4510509929857024.ingest.de.sentry.io/4510509938311248",
-  debug: false
+  dsn: "https://15bf6ed890e254dc94272dd272911ddd@o4510509929857024.ingest.de.sentry.io/4510509939032144",
+  debug: false,
+  sendDefaultPii: true
 });
 
 createRoot(document.getElementById('root')).render(
