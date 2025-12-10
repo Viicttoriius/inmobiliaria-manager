@@ -1660,7 +1660,7 @@ El mensaje debe ser directo, conciso y seguir la estructura de la plantilla prop
                 'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
                 'Content-Type': 'application/json',
                 'HTTP-Referer': 'http://localhost:3001',
-                'X-Title': 'Inmobiliaria Denia'
+                'X-Title': 'Inmobiliaria Manager'
             },
             body: JSON.stringify({
                 model: model || 'openai/gpt-oss-20b:free',

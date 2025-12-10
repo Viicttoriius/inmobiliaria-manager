@@ -59,7 +59,7 @@ body {
 
 /* Header */
 .header {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  background: #7dd3fc;
   padding: 1.5rem 1rem;
   box-shadow: 0 4px 6px var(--shadow);
 }

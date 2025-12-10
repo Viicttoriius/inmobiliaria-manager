@@ -54,7 +54,10 @@ function createWindow() {
     // Configuración de ventana para mejor compatibilidad
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: process.platform === 'darwin' ? { x: 15, y: 10 } : undefined,
-    icon: path.join(__dirname, '../frontend/public/vite.svg')
+    // Icono de la aplicación
+    icon: isDev 
+      ? path.join(__dirname, '../frontend/public/icon.png') 
+      : path.join(__dirname, '../frontend/dist/icon.png')
   });
 
   // Mostrar ventana solo cuando esté lista visualmente

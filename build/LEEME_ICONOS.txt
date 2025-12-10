@@ -1,0 +1,17 @@
+INSTRUCCIONES PARA AÑADIR EL ICONO DE LA APLICACIÓN
+
+Para que la aplicación tenga tu icono personalizado, debes añadir los siguientes archivos de imagen:
+
+1. CARPETA `frontend/public/`
+   - Copia tu icono aquí con el nombre: `icon.png`
+   - Tamaño recomendado: 512x512 píxeles.
+   - Este icono se usará en la barra de título de la ventana y en modo desarrollo.
+
+2. CARPETA `build/` (esta carpeta)
+   - Copia tu icono aquí con el nombre: `icon.ico` (Para Windows)
+   - Copia tu icono aquí con el nombre: `icon.icns` (Para macOS)
+   - Copia tu icono aquí con el nombre: `icon.png` (Para Linux, tamaño 512x512 o superior)
+
+IMPORTANTE:
+- Si no añades estos archivos, el proceso de construcción (build/release) podría fallar o usar iconos por defecto.
+- Puedes usar convertidores online para crear los archivos .ico e .icns a partir de tu imagen .png.

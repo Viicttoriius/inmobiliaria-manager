@@ -1089,11 +1089,16 @@ function App() {
       <header className="header">
         <div className="header-content">
           <div className="logo">
-            <Home size={32} />
-            <div>
-              <h1>Inmobiliaria Denia</h1>
-              <p className="subtitle">Panel de Gestión Completo</p>
-            </div>
+            <img 
+              src="./icon.svg" 
+              alt="Logo" 
+              style={{ 
+                height: '80px', 
+                width: 'auto',
+                objectFit: 'contain',
+                mixBlendMode: 'multiply'
+              }} 
+            />
           </div>
 
           <div className="scraper-buttons">
@@ -1537,7 +1542,7 @@ function App() {
                   </div>
 
                   {/* Filters Row */}
-                  <div className="filters-row" style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                  <div className="filters-row" style={{ display: 'flex', alignItems: 'center', gap: '1rem', overflowX: 'auto', paddingBottom: '0.5rem', scrollbarWidth: 'thin' }}>
                     <div className="filter-group" style={{ marginBottom: 0 }}>
                       <CheckCircle size={18} style={{ color: 'var(--text-secondary)' }} />
                       <select value={clientFilters.answered} onChange={(e) => setClientFilters(prev => ({ ...prev, answered: e.target.value }))} style={{ padding: '0.5rem 2rem 0.5rem 0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', cursor: 'pointer', fontWeight: '500' }}>
