@@ -251,6 +251,56 @@ const getSystemBrowserPath = () => {
     return undefined;
 };
 
+// Función para buscar Chromium Bundled (Puppeteer)
+const getBundledChromiumPath = () => {
+    try {
+        const isWin = process.platform === 'win32';
+        // Nombres de ejecutables comunes
+        const exeNames = isWin ? ['chrome.exe', 'chromium.exe'] : ['chrome', 'chromium', 'google-chrome'];
+        
+        // Rutas base posibles donde buscar la cache de puppeteer
+        const searchPaths = [
+            path.join(__dirname, '.cache', 'puppeteer'), // Desarrollo / Local
+            path.join(process.resourcesPath || '', 'backend', '.cache', 'puppeteer') // Producción (Electron)
+        ];
+
+        // Función recursiva para buscar ejecutable
+        const findExe = (dir) => {
+            if (!fs.existsSync(dir)) return null;
+            const items = fs.readdirSync(dir, { withFileTypes: true });
+            
+            for (const item of items) {
+                const fullPath = path.join(dir, item.name);
+                if (item.isDirectory()) {
+                    // Recurse
+                    const found = findExe(fullPath);
+                    if (found) return found;
+                } else if (exeNames.includes(item.name)) {
+                    return fullPath;
+                }
+            }
+            return null;
+        };
+
+        for (const searchPath of searchPaths) {
+            if (fs.existsSync(searchPath)) {
+                console.log(`🔍 Buscando Chromium Bundled en: ${searchPath}`);
+                const found = findExe(searchPath);
+                if (found) {
+                    console.log(`✨ Chromium Bundled ENCONTRADO en: ${found}`);
+                    return found;
+                }
+            }
+        }
+        
+        console.warn('⚠️ No se encontró Chromium Bundled en ninguna ruta esperada.');
+        return null;
+    } catch (e) {
+        console.error('❌ Error buscando Chromium Bundled:', e);
+        return null;
+    }
+};
+
 // Determine base path for data
 const BASE_PATH = process.env.USER_DATA_PATH || path.join(__dirname, '..');
 const DATA_DIR = path.join(BASE_PATH, 'data');
@@ -394,8 +444,8 @@ const whatsappClient = new Client({
     authTimeoutMs: 60000,
     qrMaxRetries: 0,
     puppeteer: {
-        // Si browserPath es undefined, Puppeteer usará su versión descargada (si existe)
-        executablePath: browserPath || undefined,
+        // Si browserPath es undefined, intentamos usar el bundled
+        executablePath: browserPath || getBundledChromiumPath() || undefined,
         headless: true,
         dumpio: true, // Mostrar logs del navegador en consola
         args: [
