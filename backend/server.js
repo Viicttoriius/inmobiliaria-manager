@@ -105,6 +105,12 @@ Sentry.init({
 });
 // -------------------------------------
 
+const app = express();
+
+// Sentry Request Handler debe ser el primer middleware en la app
+app.use(Sentry.Handlers.requestHandler());
+app.use(Sentry.Handlers.tracingHandler());
+
 const getSystemBrowserPath = () => {
     const platform = process.platform;
     const homeDir = process.env.HOME || process.env.USERPROFILE || '';
@@ -371,7 +377,6 @@ process.on('unhandledRejection', (reason, promise) => {
 // Ejecutar verificación en segundo plano al iniciar
 checkPythonDependencies();
 
-const app = express();
 const PORT = 3001;
 
 // --- CONFIGURACIÓN WHATSAPP LOCAL ---
