@@ -111,6 +111,7 @@ function startBackend() {
   // Usar fork para lanzar el backend como un proceso hijo independiente
   // Esto usa el binario de Node.js integrado en Electron
   backendProcess = fork(scriptPath, [], {
+    cwd: path.dirname(scriptPath), // IMPORTANTE: Fijar directorio de trabajo
     stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
     env: {
       ...process.env,
