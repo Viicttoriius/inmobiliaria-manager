@@ -369,8 +369,9 @@ const PORT = 3001;
 console.log('🔄 Inicializando cliente de WhatsApp...');
 
 // Debug Browser Path
+// Debug Browser Path
 const browserPath = getSystemBrowserPath();
-console.log(`🐛 [DEBUG] Browser Path para Puppeteer: ${browserPath || 'NO DETECTADO (Usando Chrome descargado si existe)'}`);
+console.log(`🐛 [DEBUG] Browser Path detectado: ${browserPath || 'NINGUNO (Se intentará usar Puppeteer Bundled Chromium)'}`);
 
 const whatsappClient = new Client({
     authStrategy: new LocalAuth({
@@ -379,8 +380,10 @@ const whatsappClient = new Client({
     authTimeoutMs: 60000,
     qrMaxRetries: 0,
     puppeteer: {
-        executablePath: browserPath,
-        headless: true, // Si hay problemas, cambiar a false para ver qué pasa
+        // Si browserPath es undefined, Puppeteer usará su versión descargada (si existe)
+        executablePath: browserPath || undefined,
+        headless: true,
+        dumpio: true, // Mostrar logs del navegador en consola
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
