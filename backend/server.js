@@ -84,14 +84,8 @@ const QRCode = require('qrcode'); // Para generar QR en frontend
 const nodemailer = require('nodemailer');
 const axios = require('axios'); // Para verificar conexión y descargar updates
 const notifier = require('node-notifier'); // Para notificaciones nativas desde el backend (scrapers)
-const Sentry = require('@sentry/node');
 
-// --- INICIALIZACIÓN SENTRY BACKEND ---
-Sentry.init({
-    dsn: "https://424600effbaf13df1282427b2575537a@o4510509929857024.ingest.de.sentry.io/4510509938311248",
-    tracesSampleRate: 1.0, // Capturar el 100% de las transacciones para debug
-});
-// -------------------------------------
+// --- (Sentry eliminado para estabilidad en build) ---
 
 // Función para detectar navegador del sistema (Edge/Chrome/Brave/Chromium) para Puppeteer
 // Ampliada para mejor compatibilidad con macOS antiguos y sistemas variados
@@ -412,7 +406,9 @@ whatsappClient.on('qr', (qr) => {
     console.log('\n=============================================================');
     console.log('⚠️  ESCANEA ESTE CÓDIGO QR CON TU WHATSAPP PARA INICIAR SESIÓN:');
     console.log('=============================================================\n');
-    qrcodeTerminal.generate(qr, { small: true });
+    try {
+        qrcodeTerminal.generate(qr, { small: true });
+    } catch (e) { console.log('QR en terminal omitido (no TTY)'); }
 
     whatsappState = 'SCAN_QR';
     qrAttempts++;
