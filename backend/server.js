@@ -491,6 +491,30 @@ const initializeWhatsApp = async () => {
         await whatsappClient.initialize();
     } catch (err) {
         console.error('❌ Error fatal al inicializar WhatsApp Client:', err);
+        
+        // Intento de recuperación: Si falla con el navegador del sistema, intentar sin executablePath
+        if (err.message && err.message.includes('Failed to launch the browser process') && browserPath) {
+            console.log('⚠️ Detectado fallo al lanzar navegador del sistema. Reintentando con Puppeteer Bundled Chromium...');
+            
+            // Reiniciar cliente con executablePath undefined
+            try {
+                // Destruir cliente anterior si es posible (aunque initialize falló)
+                try { await whatsappClient.destroy(); } catch(e) {}
+                
+                // Reconfigurar puppeteer options
+                whatsappClient.options.puppeteer = {
+                    ...whatsappClient.options.puppeteer,
+                    executablePath: undefined
+                };
+                
+                console.log('🔄 Reintentando inicialización con navegador bundled...');
+                await whatsappClient.initialize();
+                return; // Éxito en el segundo intento
+            } catch (retryErr) {
+                console.error('❌ También falló el intento con navegador bundled:', retryErr);
+            }
+        }
+
         whatsappState = 'ERROR';
         // Reintentar en 10 segundos
         setTimeout(initializeWhatsApp, 10000);

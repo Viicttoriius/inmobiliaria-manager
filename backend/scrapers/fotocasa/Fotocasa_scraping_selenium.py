@@ -191,10 +191,9 @@ def setup_driver(headless=True):
                 driver_path = os.path.abspath(driver_path)
                 
                 if not os.path.exists(driver_path):
-                     # Fallback absoluto (hardcoded en original)
-                     fallback_path = os.path.join(r"d:\Trabajo\Alex Automatización\inmobiliaria\driver", driver_name)
-                     if os.path.exists(fallback_path):
-                         driver_path = fallback_path
+                    # Fallback: Check if we are in a compiled environment (PyInstaller/Electron)
+                    # or if the script is running from a different location
+                    pass 
                 
                 if not os.path.exists(driver_path):
                     raise Exception(f"No se encontró el driver en {driver_path} y webdriver_manager falló.")
