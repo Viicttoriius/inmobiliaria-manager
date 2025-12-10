@@ -1,6 +1,6 @@
 {
   "name": "backend",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -12,6 +12,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@sentry/node": "^10.29.0",
     "cors": "^2.8.5",
     "csv-parser": "^3.2.0",
     "dotenv": "^17.2.3",
