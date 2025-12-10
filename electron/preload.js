@@ -1,8 +1,12 @@
 const { contextBridge, ipcRenderer } = require('electron');
-const Sentry = require('@sentry/electron/renderer');
 
-// Inicializar Sentry en Preload
-Sentry.init();
+try {
+    const Sentry = require('@sentry/electron/renderer');
+    // Inicializar Sentry en Preload
+    Sentry.init();
+} catch (error) {
+    console.error('Failed to initialize Sentry in preload:', error);
+}
 
 contextBridge.exposeInMainWorld('electronAPI', {
     // Event listener
