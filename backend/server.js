@@ -394,39 +394,48 @@ whatsappClient.on('qr', (qr) => {
     console.log('=============================================================\n');
     qrcodeTerminal.generate(qr, { small: true });
 
+    whatsappState = 'SCAN_QR';
+    qrAttempts++;
+
     // Generar Data URL para el frontend
     QRCode.toDataURL(qr, (err, url) => {
         if (err) {
             console.error('Error generando QR para frontend:', err);
         } else {
             currentQR = url;
+            console.log('✅ QR generado correctamente para mostrar en frontend.');
         }
     });
 });
 
 whatsappClient.on('loading_screen', (percent, message) => {
     console.log(`⏳ WhatsApp Cargando: ${percent}% - ${message}`);
+    whatsappState = 'INITIALIZING';
 });
 
 whatsappClient.on('ready', () => {
     console.log('\n✅ Cliente de WhatsApp conectado y listo para enviar mensajes!\n');
     isWhatsAppReady = true;
+    whatsappState = 'CONNECTED';
     currentQR = null; // Ya no se necesita QR
 });
 
 whatsappClient.on('authenticated', () => {
     console.log('✅ WhatsApp autenticado correctamente');
+    whatsappState = 'CONNECTED';
 });
 
 whatsappClient.on('auth_failure', msg => {
     console.error('❌ Error de autenticación de WhatsApp:', msg);
     currentQR = null;
     isWhatsAppReady = false;
+    whatsappState = 'ERROR';
 });
 
 whatsappClient.on('disconnected', (reason) => {
     console.log('❌ WhatsApp desconectado:', reason);
     isWhatsAppReady = false;
+    whatsappState = 'DISCONNECTED';
     currentQR = null;
     // Reinicializar para permitir reconexión
     try {
@@ -436,14 +445,31 @@ whatsappClient.on('disconnected', (reason) => {
     }
 });
 
-// Inicialización segura
-try {
-    whatsappClient.initialize().catch(err => {
+// Variables de estado global
+let whatsappState = 'INITIALIZING'; // INITIALIZING, SCAN_QR, CONNECTED, DISCONNECTED, ERROR
+let qrAttempts = 0;
+
+// Inicialización segura con reintentos
+const initializeWhatsApp = async () => {
+    try {
+        console.log('🔄 Inicializando cliente de WhatsApp...');
+        whatsappState = 'INITIALIZING';
+        qrAttempts = 0;
+
+        await whatsappClient.initialize();
+    } catch (err) {
         console.error('❌ Error fatal al inicializar WhatsApp Client:', err);
-        // No detener el servidor si falla WhatsApp
-    });
+        whatsappState = 'ERROR';
+        // Reintentar en 10 segundos
+        setTimeout(initializeWhatsApp, 10000);
+    }
+};
+
+try {
+    initializeWhatsApp();
 } catch (error) {
     console.error('❌ Excepción síncrona al inicializar WhatsApp:', error);
+    whatsappState = 'ERROR';
 }
 
 // --- CONFIGURACIÓN EMAIL (NODEMAILER) ---
@@ -471,10 +497,17 @@ app.use(express.json());
 
 // Obtener estado de servicios y QR
 app.get('/api/config/status', (req, res) => {
+    // Si estamos en estado SCAN_QR pero no hay imagen QR, loguear para depuración
+    if (whatsappState === 'SCAN_QR' && !currentQR) {
+        console.warn('⚠️ Estado es SCAN_QR pero currentQR es null. Esperando generación...');
+    }
+
     res.json({
         whatsapp: {
             ready: isWhatsAppReady,
-            qr: currentQR
+            qr: currentQR,
+            state: whatsappState, // Nuevo campo de estado detallado
+            attempts: qrAttempts
         },
         email: {
             configured: !!(process.env.EMAIL_USER && process.env.EMAIL_PASS),
