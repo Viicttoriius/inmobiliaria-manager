@@ -1,3 +1,11 @@
+const Sentry = require('@sentry/node');
+// --- INICIALIZACIÓN SENTRY BACKEND ---
+Sentry.init({
+    dsn: "https://424600effbaf13df1282427b2575537a@o4510509929857024.ingest.de.sentry.io/4510509938311248",
+    tracesSampleRate: 1.0,
+});
+// -------------------------------------
+
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
@@ -96,20 +104,11 @@ const QRCode = require('qrcode'); // Para generar QR en frontend
 const nodemailer = require('nodemailer');
 const axios = require('axios'); // Para verificar conexión y descargar updates
 const notifier = require('node-notifier'); // Restaurado
-const Sentry = require('@sentry/node'); // Restaurado
-
-// --- INICIALIZACIÓN SENTRY BACKEND ---
-Sentry.init({
-    dsn: "https://424600effbaf13df1282427b2575537a@o4510509929857024.ingest.de.sentry.io/4510509938311248",
-    tracesSampleRate: 1.0,
-});
-// -------------------------------------
 
 const app = express();
 
-// Sentry Request Handler debe ser el primer middleware en la app
-app.use(Sentry.Handlers.requestHandler());
-app.use(Sentry.Handlers.tracingHandler());
+// Sentry Setup for Express (v8+)
+Sentry.setupExpressErrorHandler(app);
 
 const getSystemBrowserPath = () => {
     const platform = process.platform;
