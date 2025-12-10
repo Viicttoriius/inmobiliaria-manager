@@ -4,6 +4,24 @@ const fs = require('fs');
 const path = require('path');
 const { spawn, exec, execSync } = require('child_process');
 
+// DEBUG: Loguear inicio
+const LOG_FILE = path.join(process.env.USER_DATA_PATH || process.env.APPDATA || '.', 'backend_debug.log');
+const log = (msg) => {
+    try {
+        const timestamp = new Date().toISOString();
+        fs.appendFileSync(LOG_FILE, `[${timestamp}] ${msg}\n`);
+    } catch (e) { }
+};
+
+log('🚀 Backend iniciando...');
+log(`Node Version: ${process.version}`);
+log(`Platform: ${process.platform}`);
+
+process.on('uncaughtException', (err) => {
+    log(`🔥 FATAL ERROR: ${err.message}\n${err.stack}`);
+    console.error(err);
+});
+
 // Función para guardar la ruta de Python en .env
 const savePythonPathToEnv = (newPath) => {
     if (!newPath) return;
@@ -22,9 +40,9 @@ const savePythonPathToEnv = (newPath) => {
         }
 
         fs.writeFileSync(ENV_FILE, envContent);
-        console.log(`✅ Ruta de Python guardada en .env: ${newPath}`);
+        log(`✅ Ruta de Python guardada en .env: ${newPath}`);
     } catch (err) {
-        console.error('❌ Error guardando configuración de Python:', err);
+        log(`❌ Error guardando configuración de Python: ${err.message}`);
     }
 };
 
@@ -45,16 +63,16 @@ const getBundledPythonPath = () => {
     // 3. Fallback: Intentar subir un nivel si estamos en backend/
     potentialPaths.push(path.join(__dirname, '..', 'backend', 'python_env', binaryName));
 
-    console.log('🔍 Buscando Python Portable en:', potentialPaths);
+    log(`🔍 Buscando Python Portable en: ${potentialPaths.join(', ')}`);
 
     for (const p of potentialPaths) {
         if (fs.existsSync(p)) {
-            console.log(`✨ Python Portable ENCONTRADO y VALIDADO en: ${p}`);
+            log(`✨ Python Portable ENCONTRADO y VALIDADO en: ${p}`);
             return p;
         }
     }
 
-    console.warn('⚠️ Python Portable NO encontrado en ninguna de las rutas esperadas.');
+    log('⚠️ Python Portable NO encontrado en ninguna de las rutas esperadas.');
     return null;
 };
 
@@ -65,30 +83,28 @@ const findBundledPython = () => {
     if (bundledPath) {
         return bundledPath;
     }
-
-    // Si no hay portable, devolvemos null para que decida getPythonExecutable
     return null;
 };
 
-
 // Función para normalizar el comando para spawn con shell:false
 const prepareSpawnCommand = (cmd, args) => {
-    // Si cmd tiene espacios y NO estamos usando shell, NO necesitamos comillas.
-    // Spawn maneja los argumentos con espacios correctamente.
     return { cmd, args };
 };
-
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcodeTerminal = require('qrcode-terminal'); // Para terminal (legacy/debug)
 const QRCode = require('qrcode'); // Para generar QR en frontend
 const nodemailer = require('nodemailer');
 const axios = require('axios'); // Para verificar conexión y descargar updates
-const notifier = require('node-notifier'); // Para notificaciones nativas desde el backend (scrapers)
+const notifier = require('node-notifier'); // Restaurado
+const Sentry = require('@sentry/node'); // Restaurado
 
-// --- (Sentry eliminado para estabilidad en build) ---
+// --- INICIALIZACIÓN SENTRY BACKEND ---
+Sentry.init({
+    dsn: "https://424600effbaf13df1282427b2575537a@o4510509929857024.ingest.de.sentry.io/4510509938311248",
+    tracesSampleRate: 1.0,
+});
+// -------------------------------------
 
-// Función para detectar navegador del sistema (Edge/Chrome/Brave/Chromium) para Puppeteer
-// Ampliada para mejor compatibilidad con macOS antiguos y sistemas variados
 const getSystemBrowserPath = () => {
     const platform = process.platform;
     const homeDir = process.env.HOME || process.env.USERPROFILE || '';
