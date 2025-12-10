@@ -13,14 +13,14 @@ const savePythonPathToEnv = (newPath) => {
         if (fs.existsSync(ENV_FILE)) {
             envContent = fs.readFileSync(ENV_FILE, 'utf8');
         }
-        
+
         // Reemplazar o agregar PYTHON_PATH
         if (envContent.includes('PYTHON_PATH=')) {
-             envContent = envContent.replace(/^PYTHON_PATH=.*$/m, `PYTHON_PATH=${newPath}`);
+            envContent = envContent.replace(/^PYTHON_PATH=.*$/m, `PYTHON_PATH=${newPath}`);
         } else {
-             envContent += `\nPYTHON_PATH=${newPath}`;
+            envContent += `\nPYTHON_PATH=${newPath}`;
         }
-        
+
         fs.writeFileSync(ENV_FILE, envContent);
         console.log(`✅ Ruta de Python guardada en .env: ${newPath}`);
     } catch (err) {
@@ -41,7 +41,7 @@ const getBundledPythonPath = () => {
 
     // 2. Desarrollo / Relativo: backend/python_env/...
     potentialPaths.push(path.join(__dirname, 'python_env', binaryName));
-    
+
     // 3. Fallback: Intentar subir un nivel si estamos en backend/
     potentialPaths.push(path.join(__dirname, '..', 'backend', 'python_env', binaryName));
 
@@ -65,7 +65,7 @@ const findBundledPython = () => {
     if (bundledPath) {
         return bundledPath;
     }
-    
+
     // Si no hay portable, devolvemos null para que decida getPythonExecutable
     return null;
 };
@@ -84,23 +84,146 @@ const QRCode = require('qrcode'); // Para generar QR en frontend
 const nodemailer = require('nodemailer');
 const notifier = require('node-notifier');
 
-// Función para detectar navegador del sistema (Edge/Chrome) para Puppeteer
+// Función para detectar navegador del sistema (Edge/Chrome/Brave/Chromium) para Puppeteer
+// Ampliada para mejor compatibilidad con macOS antiguos y sistemas variados
 const getSystemBrowserPath = () => {
-    if (process.platform !== 'win32') return null;
-    
+    const platform = process.platform;
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+
+    if (platform === 'darwin') {
+        // macOS: Lista extendida de navegadores Chromium-based
+        // Incluye ubicaciones estándar y alternativas para sistemas legacy
+        const commonPaths = [
+            // Google Chrome
+            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+            `${homeDir}/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`,
+            // Microsoft Edge
+            '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+            `${homeDir}/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge`,
+            // Brave Browser (popular alternativa)
+            '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
+            `${homeDir}/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`,
+            // Chromium (versión open source)
+            '/Applications/Chromium.app/Contents/MacOS/Chromium',
+            `${homeDir}/Applications/Chromium.app/Contents/MacOS/Chromium`,
+            // Opera (también basado en Chromium)
+            '/Applications/Opera.app/Contents/MacOS/Opera',
+            // Vivaldi
+            '/Applications/Vivaldi.app/Contents/MacOS/Vivaldi',
+            // Arc Browser
+            '/Applications/Arc.app/Contents/MacOS/Arc',
+        ];
+
+        for (const p of commonPaths) {
+            if (fs.existsSync(p)) {
+                console.log(`🌐 Navegador detectado para WhatsApp (macOS): ${p}`);
+                return p;
+            }
+        }
+
+        // Fallback: Intentar encontrar Chrome via mdfind (Spotlight)
+        try {
+            const { execSync } = require('child_process');
+            const result = execSync('mdfind "kMDItemCFBundleIdentifier == com.google.Chrome" 2>/dev/null | head -1', { encoding: 'utf8' }).trim();
+            if (result) {
+                const chromePath = `${result}/Contents/MacOS/Google Chrome`;
+                if (fs.existsSync(chromePath)) {
+                    console.log(`🌐 Chrome encontrado via Spotlight: ${chromePath}`);
+                    return chromePath;
+                }
+            }
+        } catch (e) {
+            // Spotlight search failed, continuar sin navegador específico
+        }
+
+        console.warn('⚠️ No se encontró ningún navegador Chromium en macOS. WhatsApp puede no funcionar.');
+        return undefined;
+    }
+
+    if (platform === 'linux') {
+        // Linux: Lista extendida de navegadores
+        const commonPaths = [
+            '/usr/bin/google-chrome',
+            '/usr/bin/google-chrome-stable',
+            '/usr/bin/chromium-browser',
+            '/usr/bin/chromium',
+            '/snap/bin/chromium',
+            '/usr/bin/brave-browser',
+            '/usr/bin/microsoft-edge',
+            '/usr/bin/microsoft-edge-stable',
+            '/opt/google/chrome/chrome',
+            '/opt/brave.com/brave/brave-browser',
+            `${homeDir}/.local/bin/chrome`,
+            `${homeDir}/.local/bin/chromium`,
+        ];
+
+        for (const p of commonPaths) {
+            if (fs.existsSync(p)) {
+                console.log(`🌐 Navegador detectado para WhatsApp (Linux): ${p}`);
+                return p;
+            }
+        }
+
+        // Fallback: Intentar encontrar con 'which'
+        try {
+            const { execSync } = require('child_process');
+            for (const browser of ['google-chrome', 'chromium', 'chromium-browser', 'brave-browser']) {
+                try {
+                    const result = execSync(`which ${browser} 2>/dev/null`, { encoding: 'utf8' }).trim();
+                    if (result && fs.existsSync(result)) {
+                        console.log(`🌐 Navegador encontrado via which: ${result}`);
+                        return result;
+                    }
+                } catch (e) {
+                    // Continuar con el siguiente
+                }
+            }
+        } catch (e) {
+            // which command failed
+        }
+
+        console.warn('⚠️ No se encontró ningún navegador Chromium en Linux. WhatsApp puede no funcionar.');
+        return undefined;
+    }
+
+    if (platform !== 'win32') {
+        console.warn(`⚠️ Plataforma no reconocida: ${platform}`);
+        return undefined;
+    }
+
+    // Windows: Lista extendida incluyendo ubicaciones de usuario
+    const localAppData = process.env.LOCALAPPDATA || '';
+    const programFiles = process.env['ProgramFiles'] || 'C:\\Program Files';
+    const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+
     const commonPaths = [
+        // Edge
+        `${programFilesX86}\\Microsoft\\Edge\\Application\\msedge.exe`,
+        `${programFiles}\\Microsoft\\Edge\\Application\\msedge.exe`,
+        // Chrome
+        `${programFiles}\\Google\\Chrome\\Application\\chrome.exe`,
+        `${programFilesX86}\\Google\\Chrome\\Application\\chrome.exe`,
+        `${localAppData}\\Google\\Chrome\\Application\\chrome.exe`,
+        // Brave
+        `${programFiles}\\BraveSoftware\\Brave-Browser\\Application\\brave.exe`,
+        `${localAppData}\\BraveSoftware\\Brave-Browser\\Application\\brave.exe`,
+        // Chromium
+        `${localAppData}\\Chromium\\Application\\chrome.exe`,
+        // Fallback hardcoded
         'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
         'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
         'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
         'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
     ];
-    
+
     for (const p of commonPaths) {
         if (fs.existsSync(p)) {
-            console.log(`🌐 Navegador detectado para WhatsApp: ${p}`);
+            console.log(`🌐 Navegador detectado para WhatsApp (Windows): ${p}`);
             return p;
         }
     }
+
+    console.warn('⚠️ No se encontró ningún navegador Chromium en Windows. WhatsApp puede no funcionar.');
     return undefined;
 };
 
@@ -118,15 +241,15 @@ try {
     if (process.env.USER_DATA_PATH && fs.existsSync(LEGACY_DATA_PATH)) {
         const destClients = path.join(DATA_DIR, 'clients', 'clients.json');
         if (!fs.existsSync(destClients)) {
-             console.log('🔄 Migrando datos desde ubicación legacy:', LEGACY_DATA_PATH, '->', DATA_DIR);
-             // Crear directorio destino si no existe
-             if (!fs.existsSync(DATA_DIR)) {
-                 fs.mkdirSync(DATA_DIR, { recursive: true });
-             }
-             
-             // Copiar recursivamente (requiere Node 16.7+)
-             fs.cpSync(LEGACY_DATA_PATH, DATA_DIR, { recursive: true });
-             console.log('✅ Datos migrados correctamente.');
+            console.log('🔄 Migrando datos desde ubicación legacy:', LEGACY_DATA_PATH, '->', DATA_DIR);
+            // Crear directorio destino si no existe
+            if (!fs.existsSync(DATA_DIR)) {
+                fs.mkdirSync(DATA_DIR, { recursive: true });
+            }
+
+            // Copiar recursivamente (requiere Node 16.7+)
+            fs.cpSync(LEGACY_DATA_PATH, DATA_DIR, { recursive: true });
+            console.log('✅ Datos migrados correctamente.');
         }
     }
 } catch (error) {
@@ -164,7 +287,7 @@ const getPythonExecutable = () => {
             console.warn(`⚠️ Ruta PYTHON_PATH configurada no existe: ${process.env.PYTHON_PATH}.`);
         }
     }
-    
+
     // 3. Fallback: Sistema
     console.warn('⚠️ No se encontró Python Portable ni configuración válida. Usando "python" del sistema.');
     return process.platform === 'win32' ? 'python' : 'python3';
@@ -172,26 +295,45 @@ const getPythonExecutable = () => {
 
 const checkPythonDependencies = () => {
     const requirementsPath = path.join(__dirname, 'requirements.txt');
+    const flagFile = path.join(__dirname, '.dependencies_installed');
+
     if (fs.existsSync(requirementsPath)) {
-        console.log('� Verificando dependencias de Python...');
-        
+        // Optimización: Si el flag existe y es más reciente que requirements.txt, saltar
+        if (fs.existsSync(flagFile)) {
+            try {
+                const reqStats = fs.statSync(requirementsPath);
+                const flagStats = fs.statSync(flagFile);
+
+                if (flagStats.mtime > reqStats.mtime) {
+                    console.log('⚡ Dependencias de Python ya verificadas (caché).');
+                    return;
+                }
+            } catch (e) { }
+        }
+
+        console.log('Checking dependencies...');
+
         const pythonExecutable = getPythonExecutable();
         console.log(`🔍 Usando Python para dependencias: ${pythonExecutable}`);
 
-        // Si es el bundled, quizás no necesitemos instalar dependencias si ya vienen pre-instaladas,
-        // pero verificarlas no hace daño y asegura que estén.
-        
         // Intentar instalar dependencias
         // Asegurar que el path de python esté entre comillas si tiene espacios
         const safePythonExec = pythonExecutable.includes(' ') ? `"${pythonExecutable}"` : pythonExecutable;
-        
-        exec(`${safePythonExec} -m pip install -r "${requirementsPath}"`, (error, stdout, stderr) => {
+
+        // Usar --no-warn-script-location y --disable-pip-version-check para acelerar
+        exec(`${safePythonExec} -m pip install -r "${requirementsPath}" --disable-pip-version-check --no-warn-script-location`, (error, stdout, stderr) => {
             if (error) {
                 console.warn('⚠️ No se pudieron instalar las dependencias de Python automáticamente.');
-                console.warn('Si el scraper falla, asegúrate de tener instalado: selenium, beautifulsoup4');
+                console.warn('Si el scraper falla, asegúrate de tener instalado: selenium, beautifulsoup4, webdriver-manager');
                 console.warn('Error:', error.message);
             } else {
                 console.log('✅ Dependencias de Python verificadas/instaladas.');
+                // Crear/Actualizar flag file
+                try {
+                    fs.writeFileSync(flagFile, new Date().toISOString());
+                } catch (e) {
+                    console.error('Error escribiendo flag de dependencias:', e);
+                }
             }
         });
     }
@@ -225,7 +367,7 @@ const whatsappClient = new Client({
         executablePath: getSystemBrowserPath(), // Usar navegador del sistema si existe
         headless: true,
         args: [
-            '--no-sandbox', 
+            '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
             '--disable-gpu',
@@ -354,7 +496,7 @@ app.post('/api/config/python', (req, res) => {
 
     // Usar la función helper para guardar y actualizar variable en memoria
     savePythonPathToEnv(pythonPath);
-    
+
     res.json({ success: true });
 });
 
@@ -466,7 +608,7 @@ USER_DATA_ENV: ${process.env.USER_DATA_PATH}
 LEGACY_PATH_CHECK: ${path.join(__dirname, '..', 'data')}
 `;
     fs.writeFileSync(path.join(DATA_DIR, 'debug_paths.txt'), debugInfo);
-} catch(e) {
+} catch (e) {
     console.error('Error escribiendo debug info:', e);
 }
 
@@ -589,13 +731,13 @@ app.get('/api/properties', (req, res) => {
 const runPythonScraper = (scraperPath, res) => {
     // Determinar el ejecutable de Python
     const pythonExecutable = getPythonExecutable();
-    
+
     console.log(`🚀 Iniciando scraper desde ${scraperPath}...`);
     console.log(`🐍 Usando intérprete Python: ${pythonExecutable}`);
 
     const pythonProcess = spawn(pythonExecutable, [scraperPath], {
-        env: { 
-            ...process.env, 
+        env: {
+            ...process.env,
             PYTHONIOENCODING: 'utf-8',
             PROPERTIES_OUTPUT_DIR: PROPERTIES_DIR
         },
@@ -606,11 +748,11 @@ const runPythonScraper = (scraperPath, res) => {
     pythonProcess.on('error', (err) => {
         console.error('❌ Error CRÍTICO al iniciar proceso Python:', err);
         errorOutput += `\nError al iniciar proceso: ${err.message}\nVerifica que Python esté instalado y en el PATH o configurado en .env`;
-        
+
         // Si el error es ENOENT o 9009, es muy probable que la ruta de Python sea incorrecta.
         if (err.code === 'ENOENT' || err.errno === 'ENOENT' || err.code === 9009) {
-             console.error(`⚠️ La ruta de Python falló: ${pythonExecutable}`);
-             // Opcional: Podríamos intentar limpiar la variable de entorno si falla, pero es arriesgado automáticamente.
+            console.error(`⚠️ La ruta de Python falló: ${pythonExecutable}`);
+            // Opcional: Podríamos intentar limpiar la variable de entorno si falla, pero es arriesgado automáticamente.
         }
     });
 
@@ -632,13 +774,13 @@ const runPythonScraper = (scraperPath, res) => {
     pythonProcess.on('close', (code) => {
         if (code === 0) {
             console.log(`✅ Scraper completado exitosamente`);
-            
+
             // Notificación de ÉXITO
             notifier.notify({
-              title: 'Scraper Finalizado',
-              message: `El proceso de scraping terminó correctamente.`,
-              sound: 'Glass', // Sonido en Windows/macOS
-              wait: false
+                title: 'Scraper Finalizado',
+                message: `El proceso de scraping terminó correctamente.`,
+                sound: 'Glass', // Sonido en Windows/macOS
+                wait: false
             });
 
             // Lógica de consolidación
@@ -685,12 +827,12 @@ const runPythonScraper = (scraperPath, res) => {
             // Verificar que newPropertiesArray es un array antes de combinar
             if (!Array.isArray(newPropertiesArray)) {
                 console.error('El archivo del scraper no contiene un array de propiedades válido.');
-                
+
                 notifier.notify({
-                  title: 'Error en Scraper',
-                  message: 'Datos inválidos generados.',
-                  sound: 'Basso',
-                  wait: false
+                    title: 'Error en Scraper',
+                    message: 'Datos inválidos generados.',
+                    sound: 'Basso',
+                    wait: false
                 });
 
                 // No se puede continuar sin un array, así que se finaliza la respuesta.
@@ -716,13 +858,13 @@ const runPythonScraper = (scraperPath, res) => {
 
             // Detectar cuántas nuevas se añadieron realmente
             const actuallyAddedCount = uniqueProperties.length - existingProperties.length;
-            
+
             if (actuallyAddedCount > 0) {
-                 notifier.notify({
-                  title: 'Nuevas Propiedades',
-                  message: `Se han encontrado ${actuallyAddedCount} nuevas propiedades.`,
-                  sound: 'Ping', // Sonido diferente para nuevos items
-                  wait: false
+                notifier.notify({
+                    title: 'Nuevas Propiedades',
+                    message: `Se han encontrado ${actuallyAddedCount} nuevas propiedades.`,
+                    sound: 'Ping', // Sonido diferente para nuevos items
+                    wait: false
                 });
             }
 
@@ -731,12 +873,12 @@ const runPythonScraper = (scraperPath, res) => {
 
         } else {
             console.error(`❌ Scraper falló con código ${code}`);
-            
+
             notifier.notify({
-              title: 'Error Fatal en Scraper',
-              message: `El proceso falló con código ${code}`,
-              sound: 'Sosumi',
-              wait: false
+                title: 'Error Fatal en Scraper',
+                message: `El proceso falló con código ${code}`,
+                sound: 'Sosumi',
+                wait: false
             });
 
             // Construir un mensaje de error más útil
@@ -746,10 +888,10 @@ const runPythonScraper = (scraperPath, res) => {
             } else if (errorOutput) {
                 errorMessage = `Error del script: ${errorOutput.slice(0, 300)}...`; // Limitar longitud
             }
-            
-            res.status(500).json({ 
-                success: false, 
-                error: errorMessage, 
+
+            res.status(500).json({
+                success: false,
+                error: errorMessage,
                 output: output,
                 errorDetails: errorOutput,
                 pythonUsed: pythonExecutable
@@ -794,7 +936,7 @@ app.post('/api/config/cleanup', (req, res) => {
     try {
         const updateDir = path.join(DATA_DIR, 'update');
         const propertiesDir = PROPERTIES_DIR;
-        
+
         let deletedCount = 0;
         let errors = [];
 
@@ -858,10 +1000,10 @@ app.post('/api/properties/update', async (req, res) => {
         fs.writeFileSync(tempUrlsFile, JSON.stringify(urls));
         console.log(`   📄 Archivo temporal creado: ${tempUrlsFile}`);
 
-         // 2. Ejecutar scraper con el archivo de URLs
+        // 2. Ejecutar scraper con el archivo de URLs
         // Determinar el ejecutable de Python usando la función centralizada
         const pythonExecutable = getPythonExecutable();
-        
+
         console.log(`🚀 Iniciando Update Scraper con: ${pythonExecutable}`);
 
         const pythonProcess = spawn(pythonExecutable, [UPDATE_SCRAPER, tempUrlsFile], {
@@ -870,8 +1012,8 @@ app.post('/api/properties/update', async (req, res) => {
         });
 
         pythonProcess.on('error', (err) => {
-             console.error('❌ Error CRÍTICO al iniciar update scraper:', err);
-             // No podemos hacer mucho más aquí ya que es un proceso detached/async en este contexto
+            console.error('❌ Error CRÍTICO al iniciar update scraper:', err);
+            // No podemos hacer mucho más aquí ya que es un proceso detached/async en este contexto
         });
 
         let rawData = '';
@@ -1121,11 +1263,11 @@ app.post('/api/clients/batch', (req, res) => {
             if (existingIndex !== -1) {
                 // ACTUALIZAR (Upsert) - Solo campos relevantes del CSV, preservando datos locales
                 const existing = clients[existingIndex];
-                
+
                 // Campos que permitimos actualizar desde el CSV si tienen valor
                 const fieldsToUpdate = [
-                    'name', 'contactName', 'location', 'adLink', 'status', 
-                    'propertyType', 'whatsappLink', 'answered', 'response', 
+                    'name', 'contactName', 'location', 'adLink', 'status',
+                    'propertyType', 'whatsappLink', 'answered', 'response',
                     'date', 'appointmentDate', 'phone'
                 ];
 
@@ -1163,12 +1305,12 @@ app.post('/api/clients/batch', (req, res) => {
 
         fs.writeFileSync(CLIENTS_FILE, JSON.stringify(clients, null, 2));
 
-        res.json({ 
-            success: true, 
-            count: addedCount, 
+        res.json({
+            success: true,
+            count: addedCount,
             updatedCount: updatedCount,
             totalProcessed: addedCount + updatedCount,
-            message: `Importación: ${addedCount} nuevos, ${updatedCount} actualizados.` 
+            message: `Importación: ${addedCount} nuevos, ${updatedCount} actualizados.`
         });
     } catch (error) {
         console.error('Error importando clientes masivamente:', error);
@@ -1491,30 +1633,30 @@ const loadScraperConfig = () => {
 
 const runAutoScrapers = async () => {
     console.log("⏰ Running auto scrapers...");
-    
+
     // Determinar el ejecutable de Python
     let defaultPython = 'python';
     if (process.platform !== 'win32') {
         defaultPython = 'python3';
     } else {
-         if (!process.env.PYTHON_PATH) {
-              const detected = findPythonOnWindows();
-              if (detected) defaultPython = detected;
-         }
+        if (!process.env.PYTHON_PATH) {
+            const detected = findPythonOnWindows();
+            if (detected) defaultPython = detected;
+        }
     }
     const pythonExecutable = process.env.PYTHON_PATH || defaultPython;
-    
+
     const types = ['viviendas', 'terrenos', 'locales'];
     for (const type of types) {
         const scraperScript = `run_${type}_auto.py`;
         const scraperPath = path.join(__dirname, `scrapers/fotocasa/${scraperScript}`);
         if (fs.existsSync(scraperPath)) {
             console.log(`   ▶ Running ${scraperScript}...`);
-             // We use a promise wrapper around spawn to await completion
+            // We use a promise wrapper around spawn to await completion
             await new Promise((resolve) => {
                 const process = spawn(pythonExecutable, [scraperPath], {
-                    env: { 
-                        ...process.env, 
+                    env: {
+                        ...process.env,
                         PROPERTIES_OUTPUT_DIR: PROPERTIES_DIR
                     },
                     shell: false
@@ -1543,7 +1685,7 @@ const setupAutoScraper = () => {
     if (config.fotocasa && config.fotocasa.enabled) {
         const minutes = parseInt(config.fotocasa.interval);
         console.log(`⏰ Setting up auto scraper every ${minutes} minutes.`);
-        
+
         autoScraperInterval = setInterval(runAutoScrapers, minutes * 60 * 1000);
     } else {
         console.log("⏰ Auto scraper is disabled.");

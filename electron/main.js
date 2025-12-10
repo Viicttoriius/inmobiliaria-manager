@@ -9,16 +9,66 @@ let backendProcess;
 // Detectar si estamos en modo desarrollo
 const isDev = !app.isPackaged;
 
+// Detectar si estamos en macOS antiguo (para ajustes de compatibilidad)
+const isMacOSLegacy = () => {
+  if (process.platform !== 'darwin') return false;
+  try {
+    const release = require('os').release();
+    const majorVersion = parseInt(release.split('.')[0], 10);
+    // Darwin 18.x = macOS 10.14 Mojave, Darwin 17.x = 10.13 High Sierra
+    return majorVersion < 19; // Menor a Catalina (10.15)
+  } catch (e) {
+    return false;
+  }
+};
+
+// Aplicar configuraciones de compatibilidad para sistemas legacy
+if (isMacOSLegacy()) {
+  console.log('🍎 macOS legacy detectado, aplicando configuraciones de compatibilidad...');
+  app.commandLine.appendSwitch('disable-gpu');
+  app.commandLine.appendSwitch('disable-software-rasterizer');
+  app.commandLine.appendSwitch('disable-gpu-compositing');
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
+    show: false, // Optimización: No mostrar hasta que esté listo para evitar pantallazo blanco
+    backgroundColor: '#1a1a2e', // Color de fondo oscuro inicial (mejor UX)
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
+      backgroundThrottling: false, // Evitar que se congele en segundo plano
+      // Configuraciones de compatibilidad
+      webgl: !isMacOSLegacy(),
+      offscreen: false,
     },
+    // Configuración de ventana para mejor compatibilidad
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    trafficLightPosition: process.platform === 'darwin' ? { x: 15, y: 10 } : undefined,
     icon: path.join(__dirname, '../frontend/public/vite.svg')
+  });
+
+  // Mostrar ventana solo cuando esté lista visualmente
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+    // En macOS, asegurar que la ventana esté en primer plano
+    if (process.platform === 'darwin') {
+      mainWindow.focus();
+    }
+  });
+
+  // Manejar errores de renderer para evitar pantallas blancas
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error(`Error cargando contenido: ${errorDescription} (${errorCode})`);
+    // Reintentar carga en 2 segundos
+    if (!isDev) {
+      setTimeout(() => {
+        mainWindow.loadFile(path.join(__dirname, '../frontend/dist/index.html'));
+      }, 2000);
+    }
   });
 
   // Cargar la aplicación
@@ -39,7 +89,7 @@ function createWindow() {
 
 function startBackend() {
   let scriptPath;
-  
+
   if (isDev) {
     scriptPath = path.join(__dirname, '..', 'backend', 'server.js');
   } else {
@@ -56,8 +106,8 @@ function startBackend() {
   // Esto usa el binario de Node.js integrado en Electron
   backendProcess = fork(scriptPath, [], {
     stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
-    env: { 
-      ...process.env, 
+    env: {
+      ...process.env,
       PORT: 3001,
       USER_DATA_PATH: userDataPath
     }

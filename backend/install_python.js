@@ -9,7 +9,28 @@ if (!fs.existsSync(DEST_DIR)) {
     fs.mkdirSync(DEST_DIR, { recursive: true });
 }
 
-// Configuración de versiones
+// Detectar arquitectura en macOS
+const getMacArch = () => {
+    try {
+        const arch = execSync('uname -m').toString().trim();
+        return arch === 'arm64' ? 'arm64' : 'x86_64';
+    } catch (e) {
+        return 'x86_64'; // Fallback a Intel
+    }
+};
+
+// Obtener versión de macOS
+const getMacOSVersion = () => {
+    try {
+        const version = execSync('sw_vers -productVersion').toString().trim();
+        const [major, minor] = version.split('.').map(Number);
+        return { major, minor, full: version };
+    } catch (e) {
+        return { major: 10, minor: 15, full: '10.15' }; // Fallback
+    }
+};
+
+// Configuración de versiones con soporte para macOS antiguos y Apple Silicon
 const CONFIG = {
     win32: {
         url: 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip',
@@ -26,18 +47,53 @@ const CONFIG = {
         }
     },
     linux: {
-        // Python 3.11.14 Standalone (Release 20251010)
-        url: 'https://github.com/astral-sh/python-build-standalone/releases/download/20251010/cpython-3.11.14+20251010-x86_64-unknown-linux-gnu-install_only.tar.gz',
+        // Python 3.11.9 Standalone - Versión estable con mejor compatibilidad
+        url: 'https://github.com/astral-sh/python-build-standalone/releases/download/20240415/cpython-3.11.9+20240415-x86_64-unknown-linux-gnu-install_only.tar.gz',
         filename: 'python.tar.gz',
         extractCmd: (src, dest) => `tar -xzf "${src}" -C "${dest}" --strip-components=1`, 
         postInstall: () => {}
     },
     darwin: {
-        // Python 3.11.14 Standalone (Release 20251010)
-        url: 'https://github.com/astral-sh/python-build-standalone/releases/download/20251010/cpython-3.11.14+20251010-x86_64-apple-darwin-install_only.tar.gz',
+        // Se selecciona dinámicamente según arquitectura y versión de macOS
+        getUrl: () => {
+            const arch = getMacArch();
+            const osVersion = getMacOSVersion();
+            
+            console.log(`🍎 macOS ${osVersion.full} detectado (${arch})`);
+            
+            // Para macOS < 10.15 (Catalina), usar versión más antigua de Python
+            // Python 3.9 tiene mejor compatibilidad con sistemas legacy
+            if (osVersion.major < 10 || (osVersion.major === 10 && osVersion.minor < 15)) {
+                console.log('⚠️ macOS antiguo detectado, usando Python 3.9 para mejor compatibilidad');
+                return 'https://github.com/astral-sh/python-build-standalone/releases/download/20230116/cpython-3.9.16+20230116-x86_64-apple-darwin-install_only.tar.gz';
+            }
+            
+            // macOS 10.15+ 
+            if (arch === 'arm64') {
+                // Apple Silicon (M1/M2/M3)
+                return 'https://github.com/astral-sh/python-build-standalone/releases/download/20240415/cpython-3.11.9+20240415-aarch64-apple-darwin-install_only.tar.gz';
+            } else {
+                // Intel Mac
+                return 'https://github.com/astral-sh/python-build-standalone/releases/download/20240415/cpython-3.11.9+20240415-x86_64-apple-darwin-install_only.tar.gz';
+            }
+        },
+        get url() {
+            return this.getUrl();
+        },
         filename: 'python.tar.gz',
         extractCmd: (src, dest) => `tar -xzf "${src}" -C "${dest}" --strip-components=1`,
-        postInstall: () => {}
+        postInstall: (dest) => {
+            // Dar permisos de ejecución a todos los binarios en macOS
+            try {
+                const binDir = path.join(dest, 'bin');
+                if (fs.existsSync(binDir)) {
+                    execSync(`chmod -R +x "${binDir}"`);
+                    console.log('✅ Permisos de ejecución aplicados a binarios');
+                }
+            } catch (e) {
+                console.warn('⚠️ No se pudieron aplicar permisos de ejecución:', e.message);
+            }
+        }
     }
 };
 

@@ -28,61 +28,190 @@ except AttributeError:
 
 from selenium.webdriver.edge.options import Options as EdgeOptions
 from selenium.webdriver.edge.service import Service as EdgeService
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.chrome.service import Service as ChromeService
+from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.microsoft import EdgeChromiumDriverManager
+import platform
 
 def setup_driver(headless=True):
-    """Configura y retorna el driver de Selenium para Microsoft Edge."""
-    edge_options = EdgeOptions()
-    if headless:
-        edge_options.add_argument('--headless')
-        edge_options.add_argument('--window-size=1920,1080')  # Forzar tamaño de ventana en headless
+    """
+    Configura y retorna el driver de Selenium.
+    - macOS/Linux: Chrome (con fallback a Brave/Chromium)
+    - Windows: Edge (con fallback a Chrome)
     
-    # Opciones generales y de modo invitado
-    edge_options.add_argument('--no-sandbox')
-    edge_options.add_argument('--disable-dev-shm-usage')
-    edge_options.add_argument('--start-maximized')
-    edge_options.add_argument('--guest') # Usar modo invitado
+    Incluye detección de versión del sistema para mejor compatibilidad.
+    """
+    system = platform.system()
+    machine = platform.machine()  # Detectar arquitectura (x86_64, arm64)
     
-    # Opciones Anti-Detección
-    edge_options.add_argument('--disable-blink-features=AutomationControlled')
-    edge_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    edge_options.add_experimental_option('useAutomationExtension', False)
-    
-    edge_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0')
-    
-    # Ruta al driver dinámica
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    # Subir 3 niveles: fotocasa -> scrapers -> backend -> root (donde está driver/)
-    # En prod: resources/backend/scrapers/fotocasa -> ... -> resources/driver
-    
-    driver_name = "msedgedriver.exe" if os.name == 'nt' else "msedgedriver"
-    driver_path = os.path.join(current_dir, "..", "..", "..", "driver", driver_name)
-    driver_path = os.path.abspath(driver_path)
-
-    if not os.path.exists(driver_path):
-        # Fallback a ruta absoluta original por si acaso (solo dev)
-        fallback_path = os.path.join(r"d:\Trabajo\Alex Automatización\inmobiliaria\driver", driver_name)
-        if os.path.exists(fallback_path):
-            driver_path = fallback_path
-            
-    print(f"Iniciando WebDriver con: {driver_path}")
-    
+    # Obtener versión del sistema operativo
     try:
-        service = EdgeService(executable_path=driver_path)
-        # Suppress logs (Windows only)
-        if os.name == 'nt':
-            service.creation_flags = 0x08000000 # CREATE_NO_WINDOW
-        
-        driver = webdriver.Edge(service=service, options=edge_options)
-        
-        # Modificar navigator.webdriver para que no sea detectable
-        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-        
-        return driver
+        if system == 'Darwin':
+            mac_ver = platform.mac_ver()[0]  # Ej: "10.15.7" o "14.0"
+            os_version = mac_ver
+            os_major = int(mac_ver.split('.')[0]) if mac_ver else 10
+            print(f"📱 macOS {mac_ver} detectado ({machine})")
+        else:
+            os_version = platform.release()
+            os_major = 0
     except Exception as e:
-        print(f"❌ Error fatal iniciando WebDriver: {e}")
-        print(f"Ruta intentada: {driver_path}")
-        print("Asegúrate de que msedgedriver.exe existe y es compatible con tu versión de Edge.")
-        sys.exit(1)
+        os_version = "unknown"
+        os_major = 0
+        print(f"⚠️ No se pudo detectar versión del sistema: {e}")
+    
+    if system == 'Darwin' or system == 'Linux':
+        print(f"Detectado sistema {system}. Configurando navegador...")
+        
+        # Seleccionar User Agent apropiado según versión de macOS
+        if system == 'Darwin':
+            if os_major >= 11:  # Big Sur y posteriores
+                user_agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            else:  # Catalina y anteriores
+                user_agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
+        else:
+            user_agent = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        
+        options = ChromeOptions()
+        if headless:
+            options.add_argument('--headless=new')  # Nuevo modo headless más compatible
+            options.add_argument('--window-size=1920,1080')
+        
+        # Argumentos de compatibilidad
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--start-maximized')
+        options.add_argument('--disable-gpu')  # Mejor compatibilidad con sistemas antiguos
+        
+        # Para macOS antiguos, deshabilitar características problemáticas
+        if system == 'Darwin' and os_major < 11:
+            options.add_argument('--disable-features=VizDisplayCompositor')
+            options.add_argument('--disable-software-rasterizer')
+        
+        # Anti-Detección
+        options.add_argument('--disable-blink-features=AutomationControlled')
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option('useAutomationExtension', False)
+        options.add_argument(f'user-agent={user_agent}')
+
+        # Lista de navegadores a intentar
+        browsers_to_try = []
+        
+        if system == 'Darwin':
+            # macOS: Lista de navegadores en orden de preferencia
+            home_dir = os.path.expanduser('~')
+            browsers_to_try = [
+                ('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', 'Chrome'),
+                (f'{home_dir}/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', 'Chrome (User)'),
+                ('/Applications/Brave Browser.app/Contents/MacOS/Brave Browser', 'Brave'),
+                ('/Applications/Chromium.app/Contents/MacOS/Chromium', 'Chromium'),
+                ('/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge', 'Edge'),
+            ]
+        else:
+            # Linux
+            browsers_to_try = [
+                ('/usr/bin/google-chrome', 'Chrome'),
+                ('/usr/bin/google-chrome-stable', 'Chrome Stable'),
+                ('/usr/bin/chromium-browser', 'Chromium'),
+                ('/usr/bin/chromium', 'Chromium'),
+                ('/snap/bin/chromium', 'Chromium Snap'),
+                ('/usr/bin/brave-browser', 'Brave'),
+            ]
+
+        # Intentar con cada navegador disponible
+        for browser_path, browser_name in browsers_to_try:
+            if os.path.exists(browser_path):
+                print(f"🌐 Intentando usar {browser_name}...")
+                try:
+                    options.binary_location = browser_path
+                    service = ChromeService(ChromeDriverManager().install())
+                    driver = webdriver.Chrome(service=service, options=options)
+                    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+                    print(f"✅ {browser_name} iniciado correctamente")
+                    return driver
+                except Exception as e:
+                    print(f"⚠️ {browser_name} falló: {e}")
+                    continue
+        
+        # Fallback: Intentar sin especificar binario (usar el del sistema)
+        print("🔄 Intentando con navegador por defecto del sistema...")
+        try:
+            # Resetear binary_location
+            options = ChromeOptions()
+            if headless:
+                options.add_argument('--headless=new')
+                options.add_argument('--window-size=1920,1080')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-blink-features=AutomationControlled')
+            options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            options.add_experimental_option('useAutomationExtension', False)
+            options.add_argument(f'user-agent={user_agent}')
+            
+            service = ChromeService(ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=service, options=options)
+            driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            return driver
+        except Exception as e:
+            print(f"❌ Error iniciando Chrome Driver: {e}")
+            sys.exit(1)
+            
+    else:
+        # Windows (o otros): Usar Edge (Prioridad original)
+        print(f"Detectado sistema {system}. Usando Edge...")
+        edge_options = EdgeOptions()
+        if headless:
+            edge_options.add_argument('--headless=new')
+            edge_options.add_argument('--window-size=1920,1080')
+        
+        edge_options.add_argument('--no-sandbox')
+        edge_options.add_argument('--disable-dev-shm-usage')
+        edge_options.add_argument('--start-maximized')
+        edge_options.add_argument('--guest')
+        
+        edge_options.add_argument('--disable-blink-features=AutomationControlled')
+        edge_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        edge_options.add_experimental_option('useAutomationExtension', False)
+        
+        edge_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0')
+        
+        try:
+            # Intentar usar webdriver_manager primero
+            try:
+                print("Intentando descargar EdgeDriver con webdriver_manager...")
+                service = EdgeService(EdgeChromiumDriverManager().install())
+            except Exception as e:
+                print(f"⚠️ Falló webdriver_manager para Edge: {e}")
+                print("Intentando usar driver local...")
+                
+                # Fallback a ruta local (Lógica original)
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                driver_name = "msedgedriver.exe" if os.name == 'nt' else "msedgedriver"
+                driver_path = os.path.join(current_dir, "..", "..", "..", "driver", driver_name)
+                driver_path = os.path.abspath(driver_path)
+                
+                if not os.path.exists(driver_path):
+                     # Fallback absoluto (hardcoded en original)
+                     fallback_path = os.path.join(r"d:\Trabajo\Alex Automatización\inmobiliaria\driver", driver_name)
+                     if os.path.exists(fallback_path):
+                         driver_path = fallback_path
+                
+                if not os.path.exists(driver_path):
+                    raise Exception(f"No se encontró el driver en {driver_path} y webdriver_manager falló.")
+                    
+                service = EdgeService(executable_path=driver_path)
+
+            # Suppress logs (Windows only)
+            if os.name == 'nt':
+                service.creation_flags = 0x08000000 
+            
+            driver = webdriver.Edge(service=service, options=edge_options)
+            driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            return driver
+            
+        except Exception as e:
+            print(f"❌ Error fatal iniciando Edge WebDriver: {e}")
+            sys.exit(1)
 
 def handle_push_alert_modal(driver):
     """Cierra el modal de 'recibir alertas' si aparece."""

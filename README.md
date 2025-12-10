@@ -24,9 +24,31 @@ Sistema integral de automatización inmobiliaria con web scraping, gestión de c
 
 ## 🛠️ Requisitos Previos
 
-- **Node.js** (v16 o superior)
-- **Python 3.8+** (para ejecutar los scrapers)
-- **Google Chrome** (para Selenium y Puppeteer)
+### Requisitos de Software
+- **Node.js** (v18 o superior recomendado, v16 mínimo)
+- **Python 3.8+** (incluido automáticamente en la versión empaquetada)
+- **Navegador Chromium** (Chrome, Edge, Brave, o Chromium)
+
+### Compatibilidad por Plataforma
+
+| Plataforma | Versión Mínima | Navegador Recomendado |
+|------------|---------------|----------------------|
+| **Windows** | Windows 10+ | Microsoft Edge |
+| **macOS** | 10.13 High Sierra | Google Chrome |
+| **macOS (Apple Silicon)** | 11.0 Big Sur | Google Chrome |
+| **Linux** | Ubuntu 18.04+ / Debian 10+ | Chromium |
+
+### Notas sobre macOS
+- **macOS 10.13-10.14**: Funcionalidad completa con Chrome 108+
+- **macOS 10.15+**: Funcionalidad completa con Chrome/Edge actuales
+- **Apple Silicon (M1/M2/M3)**: Soporte nativo incluido
+
+### Requisitos de Navegador (para WhatsApp y Scrapers)
+La aplicación requiere un navegador basado en Chromium instalado. Soporta:
+- Google Chrome (preferido)
+- Microsoft Edge
+- Brave Browser
+- Chromium
 
 ## 📁 Estructura del Proyecto
 
