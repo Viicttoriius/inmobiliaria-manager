@@ -603,6 +603,23 @@ let emailTransporter = createTransporter();
 app.use(cors());
 app.use(express.json());
 
+// Ruta raíz para verificación simple
+app.get('/', (req, res) => {
+    res.json({
+        status: 'online',
+        message: 'Inmobiliaria Manager Backend is running',
+        version: require('./package.json').version
+    });
+});
+
+// Rutas GET de ayuda para endpoints que requieren POST (evita confusión "Cannot GET")
+app.get('/api/scraper/fotocasa/run', (req, res) => {
+    res.status(405).json({ error: 'Method Not Allowed', message: 'This endpoint requires a POST request. Use the application interface to run scrapers.' });
+});
+app.get('/api/scraper/idealista/run', (req, res) => {
+    res.status(405).json({ error: 'Method Not Allowed', message: 'This endpoint requires a POST request. Use the application interface to run scrapers.' });
+});
+
 // ============ RUTAS DE CONFIGURACIÓN ============
 
 // Obtener estado de servicios y QR
