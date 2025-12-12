@@ -461,6 +461,11 @@ const whatsappClient = new Client({
     }),
     authTimeoutMs: 120000,
     qrMaxRetries: 0,
+    // Fix: Forzar versión de WhatsApp Web para evitar bucles de QR o incompatibilidades
+    webVersionCache: {
+        type: 'remote',
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+    },
     puppeteer: {
         // Si browserPath es undefined, intentamos usar el bundled
         executablePath: browserPath || getBundledChromiumPath() || undefined,
