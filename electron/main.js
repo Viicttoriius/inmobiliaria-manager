@@ -60,7 +60,11 @@ function createWindow() {
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: process.platform === 'darwin' ? { x: 15, y: 10 } : undefined,
     // Icono de la aplicación
-    icon: path.join(__dirname, 'icon.png')
+    icon: process.platform === 'win32' 
+      ? path.join(__dirname, 'assets/icon.ico')
+      : process.platform === 'darwin'
+        ? path.join(__dirname, 'assets/icon.icns')
+        : path.join(__dirname, 'assets/icon.png')
   });
 
   // Mostrar ventana solo cuando esté lista visualmente
@@ -204,7 +208,11 @@ function createSplashWindow() {
       nodeIntegration: true,
       contextIsolation: false
     },
-    icon: path.join(__dirname, 'icon.png')
+    icon: process.platform === 'win32' 
+      ? path.join(__dirname, 'assets/icon.ico')
+      : process.platform === 'darwin'
+        ? path.join(__dirname, 'assets/icon.icns')
+        : path.join(__dirname, 'assets/icon.png')
   });
   splashWindow.loadFile(path.join(__dirname, 'splash.html'));
 }

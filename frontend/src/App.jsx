@@ -469,15 +469,30 @@ function App() {
     }
 
     // Ordenación
+    const parseDate = (dateStr) => {
+      if (!dateStr) return 0;
+      // Try YYYY-MM-DD
+      let d = new Date(dateStr);
+      if (!isNaN(d.getTime())) return d.getTime();
+      
+      // Try DD/MM/YYYY
+      const parts = dateStr.split('/');
+      if (parts.length === 3) {
+        // Assume DD/MM/YYYY
+        return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`).getTime();
+      }
+      return 0;
+    };
+
     result.sort((a, b) => {
       if (sortBy === 'name_asc') {
         return (a.name || '').trim().toLowerCase().localeCompare((b.name || '').trim().toLowerCase());
       } else if (sortBy === 'name_desc') {
         return (b.name || '').trim().toLowerCase().localeCompare((a.name || '').trim().toLowerCase());
       } else if (sortBy === 'date_asc') {
-        return new Date(a.date || 0) - new Date(b.date || 0);
+        return parseDate(a.date) - parseDate(b.date);
       } else { // date_desc (default)
-        return new Date(b.date || 0) - new Date(a.date || 0);
+        return parseDate(b.date) - parseDate(a.date);
       }
     });
 

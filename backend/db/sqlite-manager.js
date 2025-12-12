@@ -443,11 +443,20 @@ function getClientByPhone(phone) {
     }
 
     // Normal phone lookup
+    // Remove all non-numeric characters for comparison
     const cleanPhone = phone.replace(/\D/g, '');
     if (!cleanPhone) return null;
 
-    const stmt = db.prepare('SELECT * FROM clients WHERE REPLACE(phone, " ", "") LIKE ?');
-    const client = stmt.get(`%${cleanPhone}%`);
+    // Strategy 1: Try exact match on cleaned phone (stripping DB phone of non-digits)
+    // We use a custom function or just REPLACE common separators
+    // Since SQLite doesn't have REGEXP_REPLACE by default without extensions, we use LIKE for partials
+    // or we try to match the last 9 digits which is common for mobile phones
+    
+    const last9 = cleanPhone.slice(-9);
+    
+    // Search for any phone that ends with the last 9 digits of the provided phone
+    const stmt = db.prepare('SELECT * FROM clients WHERE REPLACE(REPLACE(REPLACE(phone, " ", ""), "-", ""), "+", "") LIKE ?');
+    let client = stmt.get(`%${last9}`);
 
     if (client) {
         client.contactHistory = client.contact_history ? JSON.parse(client.contact_history) : [];
