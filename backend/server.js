@@ -995,6 +995,116 @@ app.get('/api/stats', (req, res) => {
     }
 });
 
+// Función para procesar un archivo JSON de propiedades de forma segura (evitando condiciones de carrera)
+const processJsonFile = (filePath) => {
+    const fileName = path.basename(filePath);
+    const processingPath = filePath + '.processing';
+
+    try {
+        // Intentar renombrar para bloquear el archivo (atomic operation)
+        fs.renameSync(filePath, processingPath);
+    } catch (e) {
+        // Si falla el renombrado, es que otro proceso (watcher o api) ya lo tomó
+        return null;
+    }
+
+    try {
+        console.log(`🔄 Procesando archivo de propiedades: ${fileName}`);
+        const content = fs.readFileSync(processingPath, 'utf-8');
+        
+        // Validar JSON vacío
+        if (!content.trim()) {
+            fs.unlinkSync(processingPath);
+            return { inserted: 0, updated: 0, error: 'Archivo vacío' };
+        }
+
+        const data = JSON.parse(content);
+        
+        // Normalizar estructura
+        let propertiesArray = [];
+        let source = 'Importado';
+        let propertyType = 'vivienda';
+
+        if (Array.isArray(data)) {
+            propertiesArray = data;
+        } else if (data.properties && Array.isArray(data.properties)) {
+            propertiesArray = data.properties;
+            source = data.source || source;
+            propertyType = data.property_type || propertyType;
+        }
+
+        let result = { inserted: 0, updated: 0 };
+
+        if (propertiesArray.length > 0) {
+             // Mapear
+             const toInsert = propertiesArray.map(prop => ({
+                ...prop,
+                property_type: prop.property_type || propertyType,
+                source: prop.source || source,
+                scrape_date: prop.scrape_date || data.scrape_date || new Date().toISOString()
+            }));
+
+            result = sqliteManager.bulkInsertProperties(toInsert);
+            console.log(`   ✅ [Import] ${fileName}: ${result.inserted} insertadas, ${result.updated} actualizadas`);
+        }
+
+        // Eliminar archivo procesado
+        fs.unlinkSync(processingPath);
+        return result;
+
+    } catch (err) {
+        console.error(`❌ Error procesando ${fileName}:`, err);
+        // Mover a carpeta de error
+        try {
+            const errorDir = path.join(PROPERTIES_DIR, 'errors');
+            if (!fs.existsSync(errorDir)) fs.mkdirSync(errorDir);
+            fs.renameSync(processingPath, path.join(errorDir, fileName));
+        } catch (e) {}
+        return { inserted: 0, updated: 0, error: err.message };
+    }
+};
+
+// Función para escanear y consolidar carpeta de propiedades
+const consolidatePropertiesFolder = () => {
+    if (!fs.existsSync(PROPERTIES_DIR)) return { inserted: 0, updated: 0, filesProcessed: 0 };
+
+    const files = fs.readdirSync(PROPERTIES_DIR)
+        .filter(file => file.endsWith('.json') && (file.startsWith('fotocasa') || file.startsWith('idealista')));
+    
+    let totalInserted = 0;
+    let totalUpdated = 0;
+    let filesProcessed = 0;
+
+    for (const file of files) {
+        const result = processJsonFile(path.join(PROPERTIES_DIR, file));
+        if (result) {
+            totalInserted += result.inserted;
+            totalUpdated += result.updated;
+            filesProcessed++;
+        }
+    }
+
+    if (totalInserted > 0) {
+        notifier.notify({
+            title: 'Nuevas Propiedades',
+            message: `Se han importado ${totalInserted} nuevas propiedades automáticamente.`,
+            sound: 'Ping',
+            wait: false
+        });
+    }
+
+    return { inserted: totalInserted, updated: totalUpdated, filesProcessed };
+};
+
+// Watcher: Intervalo de chequeo automático (cada 15 segundos)
+setInterval(() => {
+    try {
+        consolidatePropertiesFolder();
+    } catch (e) {
+        console.error('Error en watcher de propiedades:', e);
+    }
+}, 15000);
+
 // Función auxiliar para ejecutar un scraper de Python
 const runPythonScraper = (scraperPath, res, scraperId) => {
     // Determinar el ejecutable de Python
@@ -1061,70 +1171,9 @@ const runPythonScraper = (scraperPath, res, scraperId) => {
                 wait: false
             });
 
-            // Lógica de consolidación - Leer archivo generado por scraper
-            const files = fs.readdirSync(PROPERTIES_DIR)
-                .filter(file => file.startsWith('fotocasa') && file.endsWith('.json'))
-                .map(file => ({ file, mtime: fs.statSync(path.join(PROPERTIES_DIR, file)).mtime }))
-                .sort((a, b) => b.mtime - a.mtime);
-
-            if (files.length === 0) {
-                return res.json({ success: true, message: 'Scraper completado, pero no se encontraron nuevos datos para consolidar.', output });
-            }
-
-            const latestScraperFile = path.join(PROPERTIES_DIR, files[0].file);
-            const newPropertiesData = JSON.parse(fs.readFileSync(latestScraperFile, 'utf-8'));
-
-            // Extraer el tipo de propiedad y la fuente del objeto principal
-            const propertyType = newPropertiesData.property_type;
-            const source = newPropertiesData.source || 'Fotocasa';
-            const newPropertiesArray = newPropertiesData.properties.map(prop => ({
-                ...prop,
-                property_type: propertyType,
-                source: source,
-                scrape_date: prop.scrape_date || newPropertiesData.scrape_date || new Date().toISOString()
-            }));
-
-            // Verificar que newPropertiesArray es un array válido
-            if (!Array.isArray(newPropertiesArray)) {
-                console.error('El archivo del scraper no contiene un array de propiedades válido.');
-                notifier.notify({
-                    title: 'Error en Scraper',
-                    message: 'Datos inválidos generados.',
-                    sound: 'Basso',
-                    wait: false
-                });
-                return res.json({ success: true, message: 'Scraper completado, pero los datos generados no tienen el formato correcto.', output });
-            }
-
-            // ========== INSERTAR EN SQLITE ==========
-            let sqliteResult = { inserted: 0, updated: 0 };
-            try {
-                console.log(`📦 Insertando ${newPropertiesArray.length} propiedades en SQLite...`);
-                sqliteResult = sqliteManager.bulkInsertProperties(newPropertiesArray);
-                console.log(`   ✅ SQLite: ${sqliteResult.inserted} insertadas, ${sqliteResult.updated} actualizadas`);
-                
-                // CLEANUP: Eliminar el archivo JSON temporal después de una inserción exitosa
-                try {
-                    fs.unlinkSync(latestScraperFile);
-                    console.log(`   🗑️ Archivo temporal eliminado: ${path.basename(latestScraperFile)}`);
-                } catch (unlinkError) {
-                    console.warn(`   ⚠️ No se pudo eliminar archivo temporal: ${unlinkError.message}`);
-                }
-
-            } catch (sqliteError) {
-                console.error('   ❌ Error insertando en SQLite:', sqliteError.message);
-                return res.status(500).json({ success: false, error: 'Error guardando en base de datos', details: sqliteError.message });
-            }
-
-            // Notificar si hay nuevas propiedades
-            if (sqliteResult.inserted > 0) {
-                notifier.notify({
-                    title: 'Nuevas Propiedades',
-                    message: `Se han encontrado ${sqliteResult.inserted} nuevas propiedades.`,
-                    sound: 'Ping',
-                    wait: false
-                });
-            }
+            // Lógica de consolidación unificada
+            // Intentamos procesar inmediatamente para dar respuesta al usuario
+            const stats = consolidatePropertiesFolder();
 
             console.log(`✅ Consolidación completada: ${sqliteManager.getPropertiesCount()} propiedades en SQLite.`);
             res.json({
@@ -1132,8 +1181,8 @@ const runPythonScraper = (scraperPath, res, scraperId) => {
                 message: 'Scraper y consolidación completados',
                 output,
                 stats: {
-                    inserted: sqliteResult.inserted,
-                    updated: sqliteResult.updated,
+                    inserted: stats.inserted,
+                    updated: stats.updated,
                     total: sqliteManager.getPropertiesCount()
                 }
             });

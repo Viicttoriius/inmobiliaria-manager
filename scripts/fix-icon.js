@@ -22,7 +22,11 @@ async function fixIcon() {
     console.log(`   ICONO: ${iconPath}`);
 
     try {
-        await rcedit(exePath, {
+        const rceditFunc = typeof rcedit === 'function' ? rcedit : rcedit.rcedit;
+        if (typeof rceditFunc !== 'function') {
+             throw new Error(`rcedit is not a function. It is: ${typeof rcedit}`);
+        }
+        await rceditFunc(exePath, {
             'icon': iconPath,
             'version-string': {
                 'FileDescription': 'Inmobiliaria Manager',

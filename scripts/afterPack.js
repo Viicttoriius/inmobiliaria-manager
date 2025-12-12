@@ -24,7 +24,23 @@ exports.default = async function(context) {
     console.log(`🔨 [Hook] Usando rcedit para parchear icono en: ${exePath}`);
 
     try {
-        await rcedit(exePath, {
+        // rcedit es un ejecutable, no una función directa en todas las versiones.
+        // Si la librería falla al importarse como función, usamos child_process para llamarla o intentamos require alternativo.
+        // En versiones recientes de rcedit npm wrapper, a veces es necesario llamar al binario.
+        // Pero intentemos primero verificar la importación.
+        
+        // Fix: rcedit v3+ returns a promise directly, but sometimes it needs to be imported differently depending on environment
+        // Vamos a usar una forma más robusta invocando el ejecutable si la función falla, o arreglando el require.
+        
+        // Intento directo con la librería
+        // Fix for rcedit returning an object in some versions
+        const rceditFunc = typeof rcedit === 'function' ? rcedit : rcedit.rcedit;
+        
+        if (typeof rceditFunc !== 'function') {
+             throw new Error(`rcedit is not a function. It is: ${typeof rcedit}`);
+        }
+
+        await rceditFunc(exePath, {
             'icon': iconPath,
             'version-string': {
                 'FileDescription': 'Inmobiliaria Manager',
@@ -34,6 +50,7 @@ exports.default = async function(context) {
         });
         console.log('✅ [Hook] Icono parcheado correctamente antes de empaquetar.');
     } catch (error) {
-        console.error(`❌ [Hook] Error parcheando icono: ${error.message}`);
+        // Fallback: Si rcedit function falla, intentamos no romper el build
+        console.error(`❌ [Hook] Error parcheando icono: ${error.message}. Intentando continuar...`);
     }
 }
