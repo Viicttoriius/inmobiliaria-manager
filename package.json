@@ -1,6 +1,6 @@
 {
   "name": "inmobiliaria-manager",
-  "version": "1.2.26",
+  "version": "1.2.27",
   "description": "Sistema de Gestión Inmobiliaria con Automatización",
   "main": "electron/main.js",
   "author": "Victor Muñoz Lopez",
@@ -11,7 +11,9 @@
     "electron:dev": "concurrently -k \"cross-env BROWSER=none npm run dev --prefix frontend\" \"npm run dev --prefix backend\" \"wait-on http://localhost:5173 && electron .\"",
     "prebuild": "npm install --prefix frontend && npm run build --prefix frontend && npm install --prefix backend",
     "dist": "electron-builder",
-    "release": "electron-builder --publish always"
+    "release": "electron-builder --publish always",
+    "rebuild-backend": "cd backend && npm rebuild better-sqlite3 --runtime=electron --target=39.2.6 --dist-url=https://electronjs.org/headers --build-from-source",
+    "postinstall": "electron-builder install-app-deps && npm run rebuild-backend"
   },
   "build": {
     "appId": "com.victormunoz.inmobiliaria",

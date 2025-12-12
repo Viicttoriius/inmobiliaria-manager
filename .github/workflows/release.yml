@@ -58,6 +58,9 @@ jobs:
         run: rm -rf release
         shell: bash
 
+      - name: Rebuild Native Modules
+        run: npm run rebuild-backend
+
       - name: Build/Release Electron App
         uses: samuelmeuli/action-electron-builder@v1
         with:
