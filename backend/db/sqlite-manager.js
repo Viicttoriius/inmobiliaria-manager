@@ -427,10 +427,25 @@ function getClientById(id) {
 }
 
 /**
- * Get client by phone
+ * Get client by phone (or ID-based phone)
  */
 function getClientByPhone(phone) {
+    if (!phone) return null;
+    
+    // Check if it's a generated ID (starts with ID_)
+    if (phone.startsWith('ID_')) {
+        const stmt = db.prepare('SELECT * FROM clients WHERE phone = ?');
+        const client = stmt.get(phone);
+        if (client) {
+             client.contactHistory = client.contact_history ? JSON.parse(client.contact_history) : [];
+        }
+        return client;
+    }
+
+    // Normal phone lookup
     const cleanPhone = phone.replace(/\D/g, '');
+    if (!cleanPhone) return null;
+
     const stmt = db.prepare('SELECT * FROM clients WHERE REPLACE(phone, " ", "") LIKE ?');
     const client = stmt.get(`%${cleanPhone}%`);
 
@@ -602,6 +617,8 @@ function bulkUpsertClients(clients) {
                 const existing = getClientByPhone(client.phone);
 
                 if (existing) {
+                    // Avoid overwriting with older/empty data if possible, or just update
+                    // For now, we update, but we might want to be careful about blanking out fields
                     updateClient(existing.id, client);
                     updated++;
                 } else {
@@ -615,9 +632,11 @@ function bulkUpsertClients(clients) {
         }
 
         console.log(`✅ Importación finalizada. Agregados: ${added}, Actualizados: ${updated}`);
+        // Ensure we return the transaction result
         return { added, updated };
     });
-
+    
+    // Execute the transaction
     return upsertMany(clients);
 }
 
