@@ -36,21 +36,38 @@ def main():
     properties = scrape_fotocasa_selenium(start_url, property_type="viviendas", sort_by="publicationDate", max_pages=1)
     
     if properties:
-        # Guardar los datos en un archivo JSON en la carpeta de datos
-        # Construir ruta relativa dinámica: ../../../data/properties
-        default_output_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "properties")
-        output_dir = os.environ.get("PROPERTIES_OUTPUT_DIR", default_output_dir)
-        
-        # Asegurar que el directorio existe
-        if not os.path.exists(output_dir):
-            try:
-                os.makedirs(output_dir)
-            except Exception as e:
-                print(f"⚠️ No se pudo crear directorio {output_dir}: {e}")
-                output_dir = "." # Fallback al directorio actual
-
-        save_to_json(properties, property_type="viviendas", location="varios", output_dir=output_dir)
-        print(f"Se han guardado {len(properties)} propiedades.")
+        # Enviar datos a la API del backend
+        try:
+            import requests
+            api_url = "http://localhost:3001/api/properties/import"
+            
+            payload = {
+                "properties": properties,
+                "source": "Fotocasa Auto",
+                "type": "viviendas"
+            }
+            
+            print(f"📤 Enviando {len(properties)} propiedades al backend...")
+            response = requests.post(api_url, json=payload, timeout=30)
+            
+            if response.status_code == 200:
+                result = response.json()
+                print(f"✅ Éxito: {result.get('stats', {}).get('inserted', 0)} insertadas, {result.get('stats', {}).get('updated', 0)} actualizadas.")
+            else:
+                print(f"❌ Error en API ({response.status_code}): {response.text}")
+                
+        except ImportError:
+            # Fallback a JSON si requests no está instalado (raro, pero posible)
+            print("⚠️ 'requests' no instalado. Guardando en JSON como fallback...")
+            default_output_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "properties")
+            save_to_json(properties, property_type="viviendas", location="varios", output_dir=default_output_dir)
+            
+        except Exception as e:
+            print(f"❌ Error enviando a API: {e}")
+            # Intentar fallback local
+            default_output_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "properties")
+            save_to_json(properties, property_type="viviendas", location="varios", output_dir=default_output_dir)
+            
     else:
         print("No se encontraron propiedades de particulares para guardar.")
     

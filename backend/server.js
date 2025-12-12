@@ -8,8 +8,12 @@ Sentry.init({
 
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression'); // Para comprimir respuestas HTTP
 const fs = require('fs');
 const path = require('path');
+
+// SQLite Database Manager
+const sqliteManager = require('./db/sqlite-manager');
 const { spawn, exec, execSync } = require('child_process');
 
 // DEBUG: Loguear inicio
@@ -257,7 +261,7 @@ const getBundledChromiumPath = () => {
         const isWin = process.platform === 'win32';
         // Nombres de ejecutables comunes
         const exeNames = isWin ? ['chrome.exe', 'chromium.exe'] : ['chrome', 'chromium', 'google-chrome'];
-        
+
         // Rutas base posibles donde buscar la cache de puppeteer
         const searchPaths = [
             path.join(__dirname, '.cache', 'puppeteer'), // Desarrollo / Local
@@ -268,7 +272,7 @@ const getBundledChromiumPath = () => {
         const findExe = (dir) => {
             if (!fs.existsSync(dir)) return null;
             const items = fs.readdirSync(dir, { withFileTypes: true });
-            
+
             for (const item of items) {
                 const fullPath = path.join(dir, item.name);
                 if (item.isDirectory()) {
@@ -292,7 +296,7 @@ const getBundledChromiumPath = () => {
                 }
             }
         }
-        
+
         console.warn('⚠️ No se encontró Chromium Bundled en ninguna ruta esperada.');
         return null;
     } catch (e) {
@@ -545,22 +549,22 @@ const initializeWhatsApp = async () => {
         await whatsappClient.initialize();
     } catch (err) {
         console.error('❌ Error fatal al inicializar WhatsApp Client:', err);
-        
+
         // Intento de recuperación: Si falla con el navegador del sistema, intentar sin executablePath
         if (err.message && err.message.includes('Failed to launch the browser process') && browserPath) {
             console.log('⚠️ Detectado fallo al lanzar navegador del sistema. Reintentando con Puppeteer Bundled Chromium...');
-            
+
             // Reiniciar cliente con executablePath undefined
             try {
                 // Destruir cliente anterior si es posible (aunque initialize falló)
-                try { await whatsappClient.destroy(); } catch(e) {}
-                
+                try { await whatsappClient.destroy(); } catch (e) { }
+
                 // Reconfigurar puppeteer options
                 whatsappClient.options.puppeteer = {
                     ...whatsappClient.options.puppeteer,
                     executablePath: undefined
                 };
-                
+
                 console.log('🔄 Reintentando inicialización con navegador bundled...');
                 await whatsappClient.initialize();
                 return; // Éxito en el segundo intento
@@ -600,8 +604,9 @@ const createTransporter = () => {
 let emailTransporter = createTransporter();
 
 // Middleware
+app.use(compression()); // Comprimir todas las respuestas HTTP
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' })); // Aumentar límite para importaciones masivas
 
 // Ruta raíz para verificación simple
 app.get('/', (req, res) => {
@@ -893,44 +898,90 @@ const calculatePublicationDetails = (scrapeDate, timeago) => {
 
 // ============ RUTAS DE PROPIEDADES ============
 
-// Obtener todas las propiedades del archivo JSON consolidado
+// Obtener todas las propiedades desde SQLite
 app.get('/api/properties', (req, res) => {
     try {
-        const fileContent = fs.readFileSync(PROPERTIES_JSON_FILE, 'utf8');
-        let properties = JSON.parse(fileContent);
-        let modified = false;
+        // Extraer parámetros de paginación y filtros
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 500; // Default alto para compatibilidad
+        const filters = {};
 
-        // Migración on-the-fly: Asegurar que todos tengan scrape_date
-        properties = properties.map(prop => {
-            if (!prop.scrape_date) {
-                modified = true;
-                return {
-                    ...prop,
-                    scrape_date: prop.lastUpdated || new Date().toISOString()
-                };
-            }
-            return prop;
-        });
+        if (req.query.property_type) filters.property_type = req.query.property_type;
+        if (req.query.source) filters.source = req.query.source;
+        if (req.query.location) filters.location = req.query.location;
+        if (req.query.minPrice) filters.minPrice = parseInt(req.query.minPrice);
+        if (req.query.maxPrice) filters.maxPrice = parseInt(req.query.maxPrice);
+        if (req.query.search) filters.search = req.query.search;
 
-        if (modified) {
-            fs.writeFileSync(PROPERTIES_JSON_FILE, JSON.stringify(properties, null, 2));
-            console.log('🔄 Propiedades migradas: se añadió scrape_date a registros antiguos.');
-        }
+        // Obtener propiedades desde SQLite
+        const result = sqliteManager.getAllProperties({ page, limit, filters });
 
-        // Aunque los datos ya están consolidados, aún necesitamos calcular el timeago dinámico
-        const propertiesWithDetails = properties.map(prop => {
-            const { publicationDate, displayTimeago } = calculatePublicationDetails(prop.scrape_date, prop.Timeago);
+        // Calcular timeago dinámico y mapear campos al formato del frontend
+        const propertiesWithDetails = result.properties.map(prop => {
+            const { publicationDate, displayTimeago } = calculatePublicationDetails(
+                prop.scrape_date,
+                prop.timeago
+            );
+
+            // Parsear extra_data para obtener campos adicionales
+            const extraData = prop.extra_data || {};
+
             return {
-                ...prop,
-                publicationDate: publicationDate, // Fecha ISO para ordenar
-                Timeago: displayTimeago, // Timeago actualizado para mostrar
+                // ID y URL (fundamentales)
+                id: prop.id,
+                url: prop.url,
+
+                // Campos con nombres que espera el frontend
+                Title: prop.title || extraData.Title || '',
+                Price: prop.price || extraData.Price || 'A consultar',
+                Description: prop.description || extraData.Description || '',
+                imgurl: prop.image_url || extraData.imgurl || 'None',
+
+                // Detalles de la propiedad
+                hab: prop.habitaciones || extraData.hab || 'None',
+                m2: prop.metros || extraData.m2 || 'None',
+                Municipality: prop.location || prop.direccion || extraData.Municipality || '',
+                Advertiser: extraData.Advertiser || '',
+                Phone: prop.phone || extraData.Phone || 'None',
+
+                // Metadatos
+                property_type: prop.property_type || '',
+                source: prop.source || 'Fotocasa',
+                Timeago: displayTimeago,
+                publicationDate: publicationDate,
+                scrape_date: prop.scrape_date,
+                lastUpdated: prop.last_updated,
+
+                // Campos adicionales para compatibilidad total
+                features: prop.features || [],
+                ...extraData // Incluir cualquier otro campo que venga de extra_data
             };
         });
 
-        res.json(propertiesWithDetails);
+        // Si se solicita paginación explícita, devolver con metadatos
+        if (req.query.page || req.query.limit) {
+            res.json({
+                properties: propertiesWithDetails,
+                pagination: result.pagination
+            });
+        } else {
+            // Compatibilidad: devolver solo el array
+            res.json(propertiesWithDetails);
+        }
     } catch (error) {
-        console.error('Error leyendo JSON de propiedades consolidado:', error);
+        console.error('Error obteniendo propiedades desde SQLite:', error);
         res.status(500).json({ error: 'Error leyendo propiedades' });
+    }
+});
+
+// Obtener estadísticas de la base de datos
+app.get('/api/stats', (req, res) => {
+    try {
+        const stats = sqliteManager.getDatabaseStats();
+        res.json(stats);
+    } catch (error) {
+        console.error('Error obteniendo estadísticas:', error);
+        res.status(500).json({ error: 'Error obteniendo estadísticas' });
     }
 });
 
@@ -1000,10 +1051,7 @@ const runPythonScraper = (scraperPath, res, scraperId) => {
                 wait: false
             });
 
-            // Lógica de consolidación
-            const mainPropertiesFile = path.join(DATA_DIR, 'properties.json');
-
-            // Encontrar el último archivo JSON generado
+            // Lógica de consolidación - Leer archivo generado por scraper
             const files = fs.readdirSync(PROPERTIES_DIR)
                 .filter(file => file.startsWith('fotocasa') && file.endsWith('.json'))
                 .map(file => ({ file, mtime: fs.statSync(path.join(PROPERTIES_DIR, file)).mtime }))
@@ -1014,79 +1062,62 @@ const runPythonScraper = (scraperPath, res, scraperId) => {
             }
 
             const latestScraperFile = path.join(PROPERTIES_DIR, files[0].file);
-
-            // Leer los datos existentes y los nuevos
-            let existingProperties = [];
-            if (fs.existsSync(mainPropertiesFile)) {
-                try {
-                    const existingData = JSON.parse(fs.readFileSync(mainPropertiesFile, 'utf-8'));
-                    // Asegurarse de que los datos existentes son un array
-                    if (Array.isArray(existingData)) {
-                        existingProperties = existingData;
-                    }
-                } catch (e) {
-                    console.error('Error al parsear el archivo de propiedades principal, se tratará como vacío.', e);
-                    existingProperties = [];
-                }
-            }
-
             const newPropertiesData = JSON.parse(fs.readFileSync(latestScraperFile, 'utf-8'));
 
-            // Extraer el tipo de propiedad y la fuente del objeto principal y añadirlo a cada propiedad
+            // Extraer el tipo de propiedad y la fuente del objeto principal
             const propertyType = newPropertiesData.property_type;
-            const source = newPropertiesData.source || 'Fotocasa'; // Default to Fotocasa if missing
+            const source = newPropertiesData.source || 'Fotocasa';
             const newPropertiesArray = newPropertiesData.properties.map(prop => ({
                 ...prop,
                 property_type: propertyType,
-                source: source
+                source: source,
+                scrape_date: prop.scrape_date || newPropertiesData.scrape_date || new Date().toISOString()
             }));
 
-            // Verificar que newPropertiesArray es un array antes de combinar
+            // Verificar que newPropertiesArray es un array válido
             if (!Array.isArray(newPropertiesArray)) {
                 console.error('El archivo del scraper no contiene un array de propiedades válido.');
-
                 notifier.notify({
                     title: 'Error en Scraper',
                     message: 'Datos inválidos generados.',
                     sound: 'Basso',
                     wait: false
                 });
-
-                // No se puede continuar sin un array, así que se finaliza la respuesta.
                 return res.json({ success: true, message: 'Scraper completado, pero los datos generados no tienen el formato correcto.', output });
             }
 
+            // ========== INSERTAR EN SQLITE ==========
+            let sqliteResult = { inserted: 0, updated: 0 };
+            try {
+                console.log(`📦 Insertando ${newPropertiesArray.length} propiedades en SQLite...`);
+                sqliteResult = sqliteManager.bulkInsertProperties(newPropertiesArray);
+                console.log(`   ✅ SQLite: ${sqliteResult.inserted} insertadas, ${sqliteResult.updated} actualizadas`);
+            } catch (sqliteError) {
+                console.error('   ❌ Error insertando en SQLite:', sqliteError.message);
+                return res.status(500).json({ success: false, error: 'Error guardando en base de datos', details: sqliteError.message });
+            }
 
-            // Combinar y eliminar duplicados
-            const allProperties = [...existingProperties, ...newPropertiesArray];
-            const uniqueProperties = allProperties.reduce((acc, current) => {
-                // Asegurarse de que el item actual tiene una URL para evitar errores
-                if (current && current.url && !acc.find(item => item.url === current.url)) {
-                    acc.push(current);
-                }
-                return acc;
-            }, []);
-
-            // Guardar los datos consolidados
-            fs.writeFileSync(mainPropertiesFile, JSON.stringify(uniqueProperties, null, 2));
-
-            // (Opcional) Eliminar el archivo temporal
-            // fs.unlinkSync(latestScraperFile);
-
-            // Detectar cuántas nuevas se añadieron realmente
-            const actuallyAddedCount = uniqueProperties.length - existingProperties.length;
-
-            if (actuallyAddedCount > 0) {
+            // Notificar si hay nuevas propiedades
+            if (sqliteResult.inserted > 0) {
                 notifier.notify({
                     title: 'Nuevas Propiedades',
-                    message: `Se han encontrado ${actuallyAddedCount} nuevas propiedades.`,
-                    sound: 'Ping', // Sonido diferente para nuevos items
+                    message: `Se han encontrado ${sqliteResult.inserted} nuevas propiedades.`,
+                    sound: 'Ping',
                     wait: false
                 });
             }
 
-            console.log(`✅ Consolidación completada: ${uniqueProperties.length} propiedades únicas.`);
-            res.json({ success: true, message: 'Scraper y consolidación completados', output });
+            console.log(`✅ Consolidación completada: ${sqliteManager.getPropertiesCount()} propiedades en SQLite.`);
+            res.json({
+                success: true,
+                message: 'Scraper y consolidación completados',
+                output,
+                stats: {
+                    inserted: sqliteResult.inserted,
+                    updated: sqliteResult.updated,
+                    total: sqliteManager.getPropertiesCount()
+                }
+            });
 
         } else {
             console.error(`❌ Scraper falló con código ${code}`);
@@ -1121,6 +1152,50 @@ const runPythonScraper = (scraperPath, res, scraperId) => {
         res.status(500).json({ success: false, error: 'Error iniciando scraper: ' + error.message });
     });
 };
+
+/**
+ * IMPORTANTE: Nueva ruta para recibir datos de scrapers externos (auto)
+ * Permite que scripts Python envíen datos directamente a SQLite
+ */
+app.post('/api/properties/import', (req, res) => {
+    const { properties, source, type } = req.body;
+
+    if (!properties || !Array.isArray(properties) || properties.length === 0) {
+        return res.status(400).json({ success: false, error: 'No se recibieron propiedades válidas' });
+    }
+
+    console.log(`📥 Importando ${properties.length} propiedades externas (${source || 'Desconocido'} - ${type || 'Varios'})...`);
+
+    // Normalizar datos
+    const propertiesToInsert = properties.map(p => ({
+        ...p,
+        source: source || p.source || 'Importado',
+        property_type: type || p.property_type || 'vivienda',
+        scrape_date: p.scrape_date || new Date().toISOString()
+    }));
+
+    try {
+        const result = sqliteManager.bulkInsertProperties(propertiesToInsert);
+        console.log(`   ✅ Importación completada: ${result.inserted} nuevas, ${result.updated} actualizadas`);
+
+        // Notificar si hay nuevas
+        if (result.inserted > 0) {
+            notifier.notify({
+                title: 'Propiedades Importadas',
+                message: `Se han importado ${result.inserted} nuevas propiedades.`,
+                sound: 'Ping'
+            });
+        }
+
+        res.json({
+            success: true,
+            stats: result
+        });
+    } catch (error) {
+        console.error('❌ Error importando propiedades:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 
 // Ruta unificada para ejecutar los scrapers de Fotocasa
 app.post('/api/scraper/fotocasa/run', (req, res) => {
@@ -1465,13 +1540,32 @@ app.post('/api/properties/update', async (req, res) => {
 
 // ============ RUTAS DE CLIENTES ============
 
-// Obtener todos los clientes
+// Obtener todos los clientes desde SQLite
 app.get('/api/clients', (req, res) => {
     try {
-        const clients = JSON.parse(fs.readFileSync(CLIENTS_FILE, 'utf8'));
-        res.json(clients);
+        // Soportar paginación y filtros opcionales
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 1000; // Default alto para compatibilidad
+        const filters = {};
+
+        if (req.query.status) filters.status = req.query.status;
+        if (req.query.property_type) filters.property_type = req.query.property_type;
+        if (req.query.search) filters.search = req.query.search;
+
+        // Si se piden con paginación explícita
+        if (req.query.page || req.query.limit) {
+            const result = sqliteManager.getAllClients({ page, limit, filters });
+            res.json({
+                clients: result.clients,
+                pagination: result.pagination
+            });
+        } else {
+            // Compatibilidad: devolver array simple
+            const clients = sqliteManager.getAllClientsSimple();
+            res.json(clients);
+        }
     } catch (error) {
-        console.error('Error leyendo clientes:', error);
+        console.error('Error obteniendo clientes desde SQLite:', error);
         res.status(500).json({ error: 'Error leyendo clientes' });
     }
 });
@@ -1479,16 +1573,7 @@ app.get('/api/clients', (req, res) => {
 // Agregar un nuevo cliente
 app.post('/api/clients', (req, res) => {
     try {
-        const clients = JSON.parse(fs.readFileSync(CLIENTS_FILE, 'utf8'));
-        const newClient = {
-            id: Date.now().toString(),
-            ...req.body,
-            createdAt: new Date().toISOString()
-        };
-
-        clients.push(newClient);
-        fs.writeFileSync(CLIENTS_FILE, JSON.stringify(clients, null, 2));
-
+        const newClient = sqliteManager.insertClient(req.body);
         res.json(newClient);
     } catch (error) {
         console.error('Error añadiendo cliente:', error);
@@ -1496,78 +1581,24 @@ app.post('/api/clients', (req, res) => {
     }
 });
 
-// Importar clientes masivamente
+// Importar clientes masivamente usando SQLite
 app.post('/api/clients/batch', (req, res) => {
     try {
-        const clients = JSON.parse(fs.readFileSync(CLIENTS_FILE, 'utf8'));
         const newClients = req.body;
 
         if (!Array.isArray(newClients)) {
             return res.status(400).json({ error: 'El cuerpo debe ser un array de clientes' });
         }
 
-        let addedCount = 0;
-        let updatedCount = 0;
-        const cleanPhone = (p) => (p || '').replace(/\D/g, '');
-
-        newClients.forEach(newClient => {
-            const newClientPhone = cleanPhone(newClient.phone);
-            if (!newClientPhone) return;
-
-            // Buscar si ya existe un cliente con este teléfono (comparando versiones limpias)
-            const existingIndex = clients.findIndex(c => cleanPhone(c.phone) === newClientPhone);
-
-            if (existingIndex !== -1) {
-                // ACTUALIZAR (Upsert) - Solo campos relevantes del CSV, preservando datos locales
-                const existing = clients[existingIndex];
-
-                // Campos que permitimos actualizar desde el CSV si tienen valor
-                const fieldsToUpdate = [
-                    'name', 'contactName', 'location', 'adLink', 'status',
-                    'propertyType', 'whatsappLink', 'answered', 'response',
-                    'date', 'appointmentDate', 'phone'
-                ];
-
-                const updatedFields = {};
-                fieldsToUpdate.forEach(field => {
-                    if (newClient[field]) {
-                        updatedFields[field] = newClient[field];
-                    }
-                });
-
-                clients[existingIndex] = {
-                    ...existing,
-                    ...updatedFields,
-                    // Asegurar que no sobrescribimos ID o historial
-                    id: existing.id,
-                    createdAt: existing.createdAt,
-                    contactHistory: existing.contactHistory || [],
-                    // Preservar email e intereses si el CSV no trae nuevos datos válidos
-                    email: (newClient.email && newClient.email.length > 0) ? newClient.email : existing.email,
-                    interest: (newClient.interest && newClient.interest !== 'Comprar') ? newClient.interest : existing.interest,
-                    preferences: (newClient.preferences && newClient.preferences.length > 0) ? newClient.preferences : existing.preferences
-                };
-                updatedCount++;
-            } else {
-                // INSERTAR NUEVO
-                clients.push({
-                    id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-                    ...newClient,
-                    createdAt: new Date().toISOString(),
-                    contactHistory: []
-                });
-                addedCount++;
-            }
-        });
-
-        fs.writeFileSync(CLIENTS_FILE, JSON.stringify(clients, null, 2));
+        // Usar la función de bulk upsert de SQLite
+        const result = sqliteManager.bulkUpsertClients(newClients);
 
         res.json({
             success: true,
-            count: addedCount,
-            updatedCount: updatedCount,
-            totalProcessed: addedCount + updatedCount,
-            message: `Importación: ${addedCount} nuevos, ${updatedCount} actualizados.`
+            count: result.added,
+            updatedCount: result.updated,
+            totalProcessed: result.added + result.updated,
+            message: `Importación: ${result.added} nuevos, ${result.updated} actualizados.`
         });
     } catch (error) {
         console.error('Error importando clientes masivamente:', error);
@@ -1578,17 +1609,17 @@ app.post('/api/clients/batch', (req, res) => {
 // Actualizar un cliente
 app.put('/api/clients/:id', (req, res) => {
     try {
-        const clients = JSON.parse(fs.readFileSync(CLIENTS_FILE, 'utf8'));
-        const index = clients.findIndex(c => c.id === req.params.id);
+        const client = sqliteManager.getClientById(req.params.id);
 
-        if (index === -1) {
+        if (!client) {
             return res.status(404).json({ error: 'Cliente no encontrado' });
         }
 
-        clients[index] = { ...clients[index], ...req.body };
-        fs.writeFileSync(CLIENTS_FILE, JSON.stringify(clients, null, 2));
+        sqliteManager.updateClient(req.params.id, req.body);
 
-        res.json(clients[index]);
+        // Obtener el cliente actualizado
+        const updatedClient = sqliteManager.getClientById(req.params.id);
+        res.json(updatedClient);
     } catch (error) {
         console.error('Error actualizando cliente:', error);
         res.status(500).json({ error: 'Error actualizando cliente' });
@@ -1598,10 +1629,11 @@ app.put('/api/clients/:id', (req, res) => {
 // Eliminar un cliente
 app.delete('/api/clients/:id', (req, res) => {
     try {
-        let clients = JSON.parse(fs.readFileSync(CLIENTS_FILE, 'utf8'));
-        clients = clients.filter(c => c.id !== req.params.id);
+        const result = sqliteManager.deleteClient(req.params.id);
 
-        fs.writeFileSync(CLIENTS_FILE, JSON.stringify(clients, null, 2));
+        if (result.changes === 0) {
+            return res.status(404).json({ error: 'Cliente no encontrado' });
+        }
 
         res.json({ success: true });
     } catch (error) {
@@ -1799,15 +1831,12 @@ app.post('/api/messages/send', async (req, res) => {
         // Guardar en historial si al menos uno se envió
         if (clientId && success) {
             try {
-                const clients = JSON.parse(fs.readFileSync(CLIENTS_FILE, 'utf8'));
-                const clientIndex = clients.findIndex(c => c.id === clientId);
+                // Obtener el cliente y su historial actual
+                const client = sqliteManager.getClientById(clientId);
 
-                if (clientIndex !== -1) {
-                    if (!clients[clientIndex].contactHistory) {
-                        clients[clientIndex].contactHistory = [];
-                    }
-
-                    clients[clientIndex].contactHistory.push({
+                if (client) {
+                    const contactHistory = client.contactHistory || [];
+                    contactHistory.push({
                         date: new Date().toISOString(),
                         propertyUrl: propertyUrl || 'Multiple/General',
                         channel: channels,
@@ -1815,7 +1844,12 @@ app.post('/api/messages/send', async (req, res) => {
                         status: results
                     });
 
-                    fs.writeFileSync(CLIENTS_FILE, JSON.stringify(clients, null, 2));
+                    // Actualizar el cliente con el nuevo historial
+                    sqliteManager.updateClient(clientId, { contactHistory });
+
+                    // También guardar en la tabla de mensajes para mejor tracking
+                    sqliteManager.saveMessage(clientId, channels, message, 'sent');
+
                     console.log(`   📝 Historial actualizado para cliente ${clientId}`);
                 }
             } catch (err) {

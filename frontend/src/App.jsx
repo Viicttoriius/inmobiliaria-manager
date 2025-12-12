@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Home, Building2, MapPin, Calendar, Phone, ExternalLink, Search, Filter, Play, Users, MessageSquare, Plus, Trash2, Send, RefreshCw, Image as ImageIcon, Pencil, History, Settings, AlertCircle, CheckCircle, Info, X, Bell, LifeBuoy, Upload, Mail, Square } from 'lucide-react'
 import Papa from 'papaparse';
 import UpdateNotification from './components/UpdateNotification';
@@ -6,6 +6,46 @@ import './App.css'
 
 const API_URL = 'http://localhost:3001/api';
 const NOTIFICATION_SOUND_URL = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+    this.setState({ errorInfo });
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '2rem', color: '#ff6b6b', background: '#1a1a1a', height: '100vh', overflow: 'auto', fontFamily: 'sans-serif' }}>
+          <h1>⚠️ Algo salió mal en la aplicación</h1>
+          <div style={{ background: '#333', padding: '1rem', borderRadius: '8px', margin: '1rem 0' }}>
+            <h2 style={{ color: 'white', marginTop: 0 }}>{this.state.error && this.state.error.toString()}</h2>
+            <details style={{ whiteSpace: 'pre-wrap', marginTop: '1rem', color: '#aaa' }}>
+              <summary style={{ cursor: 'pointer', marginBottom: '0.5rem' }}>Ver detalles técnicos</summary>
+              {this.state.errorInfo && this.state.errorInfo.componentStack}
+            </details>
+          </div>
+          <button
+            onClick={() => window.location.reload()}
+            style={{ marginTop: '1rem', padding: '0.75rem 1.5rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem' }}
+          >
+            Recargar Página
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function App() {
   const [properties, setProperties] = useState([])
@@ -24,6 +64,20 @@ function App() {
   const prevClientsRef = useRef(null);
   const prevPropertiesRef = useRef(null);
   const audioRef = useRef(new Audio(NOTIFICATION_SOUND_URL));
+
+  // Helpers de formato
+  const capitalizeName = (name) => {
+    if (!name) return '';
+    return String(name).toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  };
+
+  const formatAnswered = (val) => {
+    if (val === 1 || val === true || String(val).toLowerCase() === 'si' || String(val) === '1') return 'Si';
+    if (val === 0 || val === false || String(val).toLowerCase() === 'no' || String(val) === '0') return 'No';
+    if (!val || val === 'null' || val === 'undefined') return 'Pendiente';
+    return String(val);
+  };
+
 
   // Estados para Modal de Configuración
   const [configModalOpen, setConfigModalOpen] = useState(false);
@@ -117,13 +171,13 @@ function App() {
 
   const showNotification = (message, type = 'info', title = null) => {
     const id = Date.now();
-    
+
     // Título automático basado en el tipo si no se proporciona uno
-    const defaultTitle = type === 'success' ? 'Operación Exitosa' : 
-                         type === 'error' ? 'Ha ocurrido un error' : 
-                         type === 'warning' ? 'Atención' : 
-                         type === 'info' ? 'Información' : 'Notificación';
-                         
+    const defaultTitle = type === 'success' ? 'Operación Exitosa' :
+      type === 'error' ? 'Ha ocurrido un error' :
+        type === 'warning' ? 'Atención' :
+          type === 'info' ? 'Información' : 'Notificación';
+
     const finalTitle = title || defaultTitle;
 
     const newNotification = { id, message, type, title: finalTitle, timestamp: new Date().toISOString() };
@@ -307,8 +361,8 @@ function App() {
     if (clientFilters.search) {
       const search = clientFilters.search.toLowerCase();
       result = result.filter(c =>
-        c.name.toLowerCase().includes(search) ||
-        c.phone.includes(search) ||
+        (c.name && c.name.toLowerCase().includes(search)) ||
+        (c.phone && c.phone.includes(search)) ||
         (c.email && c.email.toLowerCase().includes(search)) ||
         (c.contactName && c.contactName.toLowerCase().includes(search)) ||
         (c.response && c.response.toLowerCase().includes(search))
@@ -362,8 +416,21 @@ function App() {
       result = result.filter(c => c.adLink && c.adLink.toLowerCase().includes(linkFilter));
     }
 
+    // Ordenación
+    result.sort((a, b) => {
+      if (sortBy === 'name_asc') {
+        return (a.name || '').trim().toLowerCase().localeCompare((b.name || '').trim().toLowerCase());
+      } else if (sortBy === 'name_desc') {
+        return (b.name || '').trim().toLowerCase().localeCompare((a.name || '').trim().toLowerCase());
+      } else if (sortBy === 'date_asc') {
+        return new Date(a.date || 0) - new Date(b.date || 0);
+      } else { // date_desc (default)
+        return new Date(b.date || 0) - new Date(a.date || 0);
+      }
+    });
+
     setFilteredClients(result);
-  }, [clients, clientFilters]);
+  }, [clients, clientFilters, sortBy]);
 
   const loadProperties = async (silent = false) => {
     if (!silent) setLoading(true)
@@ -1085,1158 +1152,1179 @@ function App() {
   }
 
   return (
-    <div className="app">
-      <header className="header">
-        <div className="header-content">
-          <div className="logo">
-            <img 
-              src="./icon.svg" 
-              alt="Logo" 
-              style={{ 
-                height: '80px', 
-                width: 'auto',
-                objectFit: 'contain',
-                mixBlendMode: 'multiply'
-              }} 
-            />
-          </div>
+    <ErrorBoundary>
+      <div className="app">
+        <header className="header">
+          <div className="header-content">
+            <div className="logo">
+              <img
+                src="./icon.svg"
+                alt="Logo"
+                style={{
+                  height: '80px',
+                  width: 'auto',
+                  objectFit: 'contain',
+                  mixBlendMode: 'multiply'
+                }}
+              />
+            </div>
 
-          <div className="scraper-buttons">
-            <button
-              onClick={() => setSupportModalOpen(true)}
-              className="config-btn"
-              title="Soporte Técnico"
-              style={{ backgroundColor: 'var(--primary)', color: 'white', border: 'none' }}
-            >
-              <LifeBuoy size={20} />
-              <span>Soporte</span>
-            </button>
-
-            <div className="notification-wrapper">
+            <div className="scraper-buttons">
               <button
-                onClick={() => setShowNotificationPanel(!showNotificationPanel)}
+                onClick={() => setSupportModalOpen(true)}
                 className="config-btn"
-                title="Historial de Notificaciones"
-                style={{ position: 'relative' }}
+                title="Soporte Técnico"
+                style={{ backgroundColor: 'var(--primary)', color: 'white', border: 'none' }}
               >
-                <Bell size={20} />
-                {notificationHistory.length > 0 && (
-                  <span className="notification-badge">{notificationHistory.length}</span>
-                )}
+                <LifeBuoy size={20} />
+                <span>Soporte</span>
               </button>
 
-              {showNotificationPanel && (
-                <>
-                  <div 
-                    style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 998, cursor: 'default' }}
-                    onClick={() => setShowNotificationPanel(false)}
-                  />
-                  <div className="notification-panel" style={{ zIndex: 999, position: 'absolute' }}>
-                  <div className="notification-header">
-                    <h3>Notificaciones</h3>
-                    <button onClick={clearNotificationHistory} className="clear-btn" title="Borrar todo">
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                  <div className="notification-list">
-                    {notificationHistory.length === 0 ? (
-                      <p className="no-notifications">No hay notificaciones</p>
-                    ) : (
-                      notificationHistory.map(notif => (
-                        <div key={notif.id} className={`notification-item ${notif.type}`}>
-                          <div className="notif-icon">
-                            {notif.type === 'success' && <CheckCircle size={16} />}
-                            {notif.type === 'error' && <AlertCircle size={16} />}
-                            {notif.type === 'info' && <Info size={16} />}
-                          </div>
-                          <div className="notif-content">
-                            <p>{notif.message}</p>
-                            <span className="notif-time">
-                              {new Date(notif.timestamp).toLocaleString()}
-                            </span>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-                </>
-              )}
-            </div>
-
-            <button onClick={openConfigModal} className="config-btn" title="Configuración de Mensajería">
-              <Settings size={20} />
-              <span>Configuración</span>
-            </button>
-            <div className="fotocasa-group">
-              <button
-                onClick={() => setShowFotocasaOptions(!showFotocasaOptions)}
-                className="scraper-btn fotocasa"
-              >
-                <ImageIcon size={18} />
-                <span>Fotocasa</span>
-              </button>
-              {showFotocasaOptions && (
-                <div className="fotocasa-options">
-                  {['viviendas', 'locales', 'terrenos'].map(type => {
-                    const isRunning = scrapingInProgress[`fotocasa_${type}`];
-                    return (
-                      <button
-                        key={type}
-                        onClick={() => isRunning ? stopScraper('fotocasa', type) : runScraper('fotocasa', type)}
-                        className={`scraper-btn fotocasa ${isRunning ? 'stop-btn' : ''}`}
-                        title={isRunning ? "Detener Scraper" : `Buscar ${type}`}
-                        style={isRunning ? { backgroundColor: '#dc2626', borderColor: '#b91c1c' } : {}}
-                      >
-                        {isRunning ? (
-                          <><Square size={18} fill="currentColor" /><span>Detener</span></>
-                        ) : (
-                          <>
-                            {type === 'viviendas' && <Home size={18} />}
-                            {type === 'locales' && <Building2 size={18} />}
-                            {type === 'terrenos' && <MapPin size={18} />}
-                            <span>{type.charAt(0).toUpperCase() + type.slice(1)}</span>
-                          </>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <button
-              onClick={() => scrapingInProgress.idealista ? stopScraper('idealista') : runScraper('idealista')}
-              className={`scraper-btn idealista ${scrapingInProgress.idealista ? 'stop-btn' : ''}`}
-              style={scrapingInProgress.idealista ? { backgroundColor: '#dc2626', borderColor: '#b91c1c' } : {}}
-            >
-              {scrapingInProgress.idealista ? (
-                <>
-                  <Square size={18} fill="currentColor" />
-                  <span>Detener</span>
-                </>
-              ) : (
-                <>
-                  <Building2 size={18} />
-                  <span>Idealista</span>
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {scrapingLog && (
-        <div className="scraping-log">
-          <div className="log-header">
-            <h4>Log de Ejecución</h4>
-            <button onClick={() => setScrapingLog('')} className="close-log">✕</button>
-          </div>
-          <pre>{scrapingLog}</pre>
-        </div>
-      )}
-
-      <div className="tabs">
-        <button
-          className={activeTab === 'properties' ? 'active' : ''}
-          onClick={() => setActiveTab('properties')}
-        >
-          <Building2 size={20} />
-          <span>Propiedades ({properties.length})</span>
-        </button>
-        <button
-          className={activeTab === 'clients' ? 'active' : ''}
-          onClick={() => setActiveTab('clients')}
-        >
-          <Users size={20} />
-          <span>Clientes ({clients.length})</span>
-        </button>
-        <button
-          className={activeTab === 'messages' ? 'active' : ''}
-          onClick={() => setActiveTab('messages')}
-        >
-          <MessageSquare size={20} />
-          <span>Mensajes</span>
-        </button>
-      </div>
-
-      <main className="main-content">
-        {activeTab === 'properties' && (
-          <>
-            <div className="controls">
-              <div className="search-bar">
-                <Search size={20} />
-                <input
-                  type="text"
-                  placeholder="Buscar por título..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-                {searchTerm && (
-                  <button onClick={() => setSearchTerm('')} className="clear-search">✕</button>
-                )}
-              </div>
-
-              <div className="filters">
-                <div className="filter-group">
-                  <Filter size={20} />
-                  <select value={filterType} onChange={(e) => setFilterType(e.target.value)}>
-                    <option value="all">Todos los tipos ({properties.length})</option>
-                    <option value="viviendas">Viviendas ({properties.filter(p => p.property_type === 'viviendas').length})</option>
-                    <option value="locales">Locales ({properties.filter(p => p.property_type === 'locales').length})</option>
-                    <option value="terrenos">Terrenos ({properties.filter(p => p.property_type === 'terrenos').length})</option>
-                  </select>
-                </div>
-
-                <div className="filter-group">
-                  <label>Ordenar:</label>
-                  <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-                    <option value="date_desc">Más recientes</option>
-                    <option value="date_asc">Más antiguos</option>
-                    <option value="price_asc">Precio (menor a mayor)</option>
-                    <option value="price_desc">Precio (mayor a menor)</option>
-                  </select>
-                </div>
-                <button onClick={clearFilters} className="clear-filters-btn">
-                  Limpiar Filtros
-                </button>
-              </div>
-            </div>
-
-            <div className="stats">
-              <div className="stat-card">
-                <Building2 size={24} />
-                <div>
-                  <h3>{filteredProperties.length}</h3>
-                  <p>Encontradas</p>
-                </div>
-              </div>
-              <div className="stat-card">
-                <Home size={24} />
-                <div>
-                  <h3>{properties.filter(p => p.property_type === 'viviendas').length}</h3>
-                  <p>Viviendas</p>
-                </div>
-              </div>
-              <div className="stat-card">
-                <Building2 size={24} />
-                <div>
-                  <h3>{properties.filter(p => p.property_type === 'locales').length}</h3>
-                  <p>Locales</p>
-                </div>
-              </div>
-              <div className="stat-card">
-                <MapPin size={24} />
-                <div>
-                  <h3>{properties.filter(p => p.property_type === 'terrenos').length}</h3>
-                  <p>Terrenos</p>
-                </div>
-              </div>
-            </div>
-
-            {filteredProperties.length > 0 && (
-              <div className="selected-info">
-                <p>{selectedProperties.length} propiedad(es) seleccionada(s) para mensajería</p>
-                <div className="selection-buttons">
-                  <button onClick={selectAllProperties} className="select-all-btn">
-                    Seleccionar Todas
-                  </button>
-                  <button onClick={updateProperties} className="update-btn" disabled={updatingProperties || selectedProperties.length === 0}>
-                    {updatingProperties ? 'Actualizando...' : 'Actualizar'}
-                  </button>
-                  {selectedProperties.length > 0 && (
-                    <button onClick={() => setSelectedProperties([])} className="clear-selection">
-                      Limpiar selección
-                    </button>
+              <div className="notification-wrapper">
+                <button
+                  onClick={() => setShowNotificationPanel(!showNotificationPanel)}
+                  className="config-btn"
+                  title="Historial de Notificaciones"
+                  style={{ position: 'relative' }}
+                >
+                  <Bell size={20} />
+                  {notificationHistory.length > 0 && (
+                    <span className="notification-badge">{notificationHistory.length}</span>
                   )}
-                </div>
-                {updateLog.length > 0 && (
-                  <div className="update-log">
-                    <h4>Registro de Actualización</h4>
-                    <pre>{updateLog.join('\n')}</pre>
-                    <button onClick={() => setUpdateLog([])} className="clear-log">Limpiar Registro</button>
-                  </div>
-                )}
-              </div>
-            )}
+                </button>
 
-            <div className="properties-grid">
-              {filteredProperties.map((property) => (
-                <div key={property.id} className="property-card">
-                  <div className="property-image">
-                    <img
-                      src={property.imgurl !== 'None' ? property.imgurl : 'https://via.placeholder.com/400x300?text=Sin+imagen'}
-                      alt={property.Title}
-                      onError={(e) => e.target.src = 'https://via.placeholder.com/400x300?text=Sin+imagen'}
+                {showNotificationPanel && (
+                  <>
+                    <div
+                      style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 998, cursor: 'default' }}
+                      onClick={() => setShowNotificationPanel(false)}
                     />
-                    <div className={`property-source ${property.source?.toLowerCase() || 'fotocasa'}`}>{property.source || 'Fotocasa'}</div>
-
-                    <div className="property-type">{property.property_type}</div>
-                    <label className="property-checkbox-label">
-                      <input
-                        type="checkbox"
-                        className="property-checkbox"
-                        checked={selectedProperties.includes(property.url)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedProperties([...selectedProperties, property.url])
-                          } else {
-                            setSelectedProperties(selectedProperties.filter(url => url !== property.url))
-                          }
-                        }}
-                      />
-                    </label>
-
-                  </div>
-
-                  <div className="property-content">
-                    <h3>{property.Title}</h3>
-                    {property.Description !== 'None' && (
-                      <p className="description">{property.Description}</p>
-                    )}
-
-                    <div className="property-details">
-                      <div className="detail price-detail">
-                        <span className="price">{formatPrice(property.Price)}</span>
-                      </div>
-
-                      {property.hab !== 'None' && (
-                        <div className="detail">
-                          <Home size={16} />
-                          <span>{property.hab}</span>
-                        </div>
-                      )}
-
-                      {property.m2 !== 'None' && (
-                        <div className="detail">
-                          <Building2 size={16} />
-                          <span>{property.m2}</span>
-                        </div>
-                      )}
-
-                      {property.publicationDate && (
-                        <div className="detail">
-                          <Calendar size={16} />
-                          <span>{property.Timeago}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Municipio */}
-                    {property.Municipality && (
-                      <div className="property-location">
-                        <MapPin size={16} />
-                        <span>{property.Municipality}</span>
-                      </div>
-                    )}
-
-                    {/* Anunciante */}
-                    {property.Advertiser && (
-                      <div className="property-advertiser">
-                        <Users size={16} />
-                        <span>{property.Advertiser}</span>
-                      </div>
-                    )}
-
-                    {property.Phone !== 'None' && (
-                      <div className="property-contact">
-                        <Phone size={16} />
-                        <a href={`tel:${property.Phone}`}>{property.Phone}</a>
-                      </div>
-                    )}
-
-                    <a
-                      href={property.url !== 'None' ? property.url : '#'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="view-more"
-                    >
-                      Ver detalles
-                      <ExternalLink size={16} />
-                    </a>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {filteredProperties.length === 0 && (
-              <div className="empty-state">
-                <Search size={48} />
-                <h3>No se encontraron propiedades</h3>
-                <p>{properties.length === 0 ? 'Ejecuta un scraper para obtener propiedades' : 'Intenta cambiar los filtros de búsqueda'}</p>
-              </div>
-            )}
-          </>
-        )}
-
-        {activeTab === 'clients' && (
-          <div className="clients-section">
-            <div className="clients-header-unified" style={{ marginBottom: '2rem' }}>
-              <div className="controls-unified" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: 'var(--surface)', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 4px 6px var(--shadow)' }}>
-                <div className="controls-top" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                  <h2 style={{ margin: 0 }}>Gestión de Clientes</h2>
-                  <div className="action-buttons-top" style={{ display: 'flex', gap: '0.5rem' }}>
-                    <label className="import-btn" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1rem', background: '#22c55e', color: 'white', borderRadius: '0.5rem', fontSize: '0.9rem', fontWeight: '500', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', transition: 'all 0.2s', height: '40px', boxSizing: 'border-box' }}>
-                      <Upload size={18} />
-                      <span className="btn-text">Importar</span>
-                      <input type="file" accept=".csv" onChange={handleFileUpload} style={{ display: 'none' }} />
-                    </label>
-                    <button
-                      onClick={() => {
-                        if (showClientForm) cancelEditing();
-                        else setShowClientForm(true);
-                      }}
-                      className={showClientForm ? 'cancel-btn' : 'add-btn'}
-                      style={{ padding: '0.6rem 1rem', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', background: showClientForm ? 'var(--danger)' : 'var(--primary)', color: 'white', fontWeight: '500', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', transition: 'all 0.2s', height: '40px', boxSizing: 'border-box' }}
-                    >
-                      {showClientForm ? <X size={18} /> : <Plus size={18} />}
-                      {showClientForm ? 'Cerrar Formulario' : 'Añadir Cliente'}
-                    </button>
-                  </div>
-                </div>
-
-                {showClientForm && (
-                  <div className="client-form-container" style={{ marginBottom: '1.5rem', padding: '1.5rem', background: 'var(--background)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                    <form id="client-form" onSubmit={handleClientSubmit} className="client-form">
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', width: '100%' }}>
-                        <input type="text" placeholder="Nombre *" value={newClient.name} onChange={(e) => setNewClient({ ...newClient, name: e.target.value })} required />
-                        <input type="tel" placeholder="Teléfono *" value={newClient.phone} onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })} required />
-                        <input type="email" placeholder="Email" value={newClient.email} onChange={(e) => setNewClient({ ...newClient, email: e.target.value })} />
-                        <input type="text" placeholder="Nombre Contacto" value={newClient.contactName} onChange={(e) => setNewClient({ ...newClient, contactName: e.target.value })} />
-                        <input type="text" placeholder="Ubicación" value={newClient.location} onChange={(e) => setNewClient({ ...newClient, location: e.target.value })} />
-                        <input type="text" placeholder="Enlace Anuncio" value={newClient.adLink} onChange={(e) => setNewClient({ ...newClient, adLink: e.target.value })} />
-                        <input type="text" placeholder="Tipo Inmueble" value={newClient.propertyType} onChange={(e) => setNewClient({ ...newClient, propertyType: e.target.value })} />
-                        <select value={newClient.answered} onChange={(e) => setNewClient({ ...newClient, answered: e.target.value })} style={{ background: 'var(--background)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.75rem' }}>
-                          <option value="">-- Contestado --</option>
-                          <option value="Si">Si</option>
-                          <option value="No">No</option>
-                        </select>
-                        <input type="date" placeholder="Fecha" value={newClient.date} onChange={(e) => setNewClient({ ...newClient, date: e.target.value })} />
-                        <input type="datetime-local" placeholder="Fecha Cita" value={newClient.appointmentDate} onChange={(e) => setNewClient({ ...newClient, appointmentDate: e.target.value })} />
-                        <input type="text" placeholder="Respuesta" value={newClient.response} onChange={(e) => setNewClient({ ...newClient, response: e.target.value })} style={{ gridColumn: 'span 2' }} />
-                      </div>
-                      <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-                        <button type="button" onClick={cancelEditing} className="cancel-btn" style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--text)', padding: '0.5rem 1rem', borderRadius: '0.5rem', cursor: 'pointer' }}>Cancelar</button>
-                        <button type="submit" className="save-btn" style={{ background: 'var(--secondary)', color: 'white', border: 'none', padding: '0.5rem 1.5rem', borderRadius: '0.5rem', cursor: 'pointer' }}>
-                          {editingId ? 'Actualizar Cliente' : 'Guardar Cliente'}
+                    <div className="notification-panel" style={{ zIndex: 999, position: 'absolute' }}>
+                      <div className="notification-header">
+                        <h3>Notificaciones</h3>
+                        <button onClick={clearNotificationHistory} className="clear-btn" title="Borrar todo">
+                          <Trash2 size={16} />
                         </button>
                       </div>
-                    </form>
+                      <div className="notification-list">
+                        {notificationHistory.length === 0 ? (
+                          <p className="no-notifications">No hay notificaciones</p>
+                        ) : (
+                          notificationHistory.map(notif => (
+                            <div key={notif.id} className={`notification-item ${notif.type}`}>
+                              <div className="notif-icon">
+                                {notif.type === 'success' && <CheckCircle size={16} />}
+                                {notif.type === 'error' && <AlertCircle size={16} />}
+                                {notif.type === 'info' && <Info size={16} />}
+                              </div>
+                              <div className="notif-content">
+                                <p>{notif.message}</p>
+                                <span className="notif-time">
+                                  {new Date(notif.timestamp).toLocaleString()}
+                                </span>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <button onClick={openConfigModal} className="config-btn" title="Configuración de Mensajería">
+                <Settings size={20} />
+                <span>Configuración</span>
+              </button>
+              <div className="fotocasa-group">
+                <button
+                  onClick={() => setShowFotocasaOptions(!showFotocasaOptions)}
+                  className="scraper-btn fotocasa"
+                >
+                  <ImageIcon size={18} />
+                  <span>Fotocasa</span>
+                </button>
+                {showFotocasaOptions && (
+                  <div className="fotocasa-options">
+                    {['viviendas', 'locales', 'terrenos'].map(type => {
+                      const isRunning = scrapingInProgress[`fotocasa_${type}`];
+                      return (
+                        <button
+                          key={type}
+                          onClick={() => isRunning ? stopScraper('fotocasa', type) : runScraper('fotocasa', type)}
+                          className={`scraper-btn fotocasa ${isRunning ? 'stop-btn' : ''}`}
+                          title={isRunning ? "Detener Scraper" : `Buscar ${type}`}
+                          style={isRunning ? { backgroundColor: '#dc2626', borderColor: '#b91c1c' } : {}}
+                        >
+                          {isRunning ? (
+                            <><Square size={18} fill="currentColor" /><span>Detener</span></>
+                          ) : (
+                            <>
+                              {type === 'viviendas' && <Home size={18} />}
+                              {type === 'locales' && <Building2 size={18} />}
+                              {type === 'terrenos' && <MapPin size={18} />}
+                              <span>{type.charAt(0).toUpperCase() + type.slice(1)}</span>
+                            </>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
+              </div>
 
-                <div className="filters-container" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: 'var(--background)', padding: '1rem', borderRadius: '0.5rem', border: '1px solid var(--border)' }}>
-                  {/* Search Bar Row - Full Width */}
-                  <div className="search-bar" style={{ width: '100%', marginBottom: 0, height: '42px', border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--surface)', padding: '0 1rem', display: 'flex', alignItems: 'center' }}>
-                    <Search size={20} style={{ color: 'var(--text-secondary)' }} />
-                    <input
-                      type="text"
-                      placeholder="Buscar clientes (Nombre, Teléfono, Email...)"
-                      value={clientFilters.search}
-                      onChange={(e) => setClientFilters(prev => ({ ...prev, search: e.target.value }))}
-                      style={{ height: '100%', border: 'none', background: 'transparent', width: '100%', marginLeft: '0.5rem', outline: 'none', color: 'var(--text)', fontSize: '1rem' }}
-                    />
-                    {clientFilters.search && (
-                      <button onClick={() => setClientFilters(prev => ({ ...prev, search: '' }))} className="clear-search">✕</button>
-                    )}
+              <button
+                onClick={() => scrapingInProgress.idealista ? stopScraper('idealista') : runScraper('idealista')}
+                className={`scraper-btn idealista ${scrapingInProgress.idealista ? 'stop-btn' : ''}`}
+                style={scrapingInProgress.idealista ? { backgroundColor: '#dc2626', borderColor: '#b91c1c' } : {}}
+              >
+                {scrapingInProgress.idealista ? (
+                  <>
+                    <Square size={18} fill="currentColor" />
+                    <span>Detener</span>
+                  </>
+                ) : (
+                  <>
+                    <Building2 size={18} />
+                    <span>Idealista</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {
+          scrapingLog && (
+            <div className="scraping-log">
+              <div className="log-header">
+                <h4>Log de Ejecución</h4>
+                <button onClick={() => setScrapingLog('')} className="close-log">✕</button>
+              </div>
+              <pre>{scrapingLog}</pre>
+            </div>
+          )
+        }
+
+        <div className="tabs">
+          <button
+            className={activeTab === 'properties' ? 'active' : ''}
+            onClick={() => setActiveTab('properties')}
+          >
+            <Building2 size={20} />
+            <span>Propiedades ({properties.length})</span>
+          </button>
+          <button
+            className={activeTab === 'clients' ? 'active' : ''}
+            onClick={() => setActiveTab('clients')}
+          >
+            <Users size={20} />
+            <span>Clientes ({clients.length})</span>
+          </button>
+          <button
+            className={activeTab === 'messages' ? 'active' : ''}
+            onClick={() => setActiveTab('messages')}
+          >
+            <MessageSquare size={20} />
+            <span>Mensajes</span>
+          </button>
+        </div>
+
+        <main className="main-content">
+          {activeTab === 'properties' && (
+            <>
+              <div className="controls">
+                <div className="search-bar">
+                  <Search size={20} />
+                  <input
+                    type="text"
+                    placeholder="Buscar por título..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                  {searchTerm && (
+                    <button onClick={() => setSearchTerm('')} className="clear-search">✕</button>
+                  )}
+                </div>
+
+                <div className="filters">
+                  <div className="filter-group">
+                    <Filter size={20} />
+                    <select value={filterType} onChange={(e) => setFilterType(e.target.value)}>
+                      <option value="all">Todos los tipos ({properties.length})</option>
+                      <option value="viviendas">Viviendas ({properties.filter(p => p.property_type === 'viviendas').length})</option>
+                      <option value="locales">Locales ({properties.filter(p => p.property_type === 'locales').length})</option>
+                      <option value="terrenos">Terrenos ({properties.filter(p => p.property_type === 'terrenos').length})</option>
+                    </select>
                   </div>
 
-                  {/* Filters Row */}
-                  <div className="filters-row" style={{ display: 'flex', alignItems: 'center', gap: '1rem', overflowX: 'auto', paddingBottom: '0.5rem', scrollbarWidth: 'thin' }}>
-                    <div className="filter-group" style={{ marginBottom: 0 }}>
-                      <CheckCircle size={18} style={{ color: 'var(--text-secondary)' }} />
-                      <select value={clientFilters.answered} onChange={(e) => setClientFilters(prev => ({ ...prev, answered: e.target.value }))} style={{ padding: '0.5rem 2rem 0.5rem 0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', cursor: 'pointer', fontWeight: '500' }}>
-                        <option value="all">Estado</option>
-                        <option value="Si">Si</option>
-                        <option value="Pendiente">Pendiente</option>
-                        <option value="No">No</option>
-                      </select>
-                    </div>
+                  <div className="filter-group">
+                    <label>Ordenar:</label>
+                    <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                      <option value="date_desc">Más recientes</option>
+                      <option value="date_asc">Más antiguos</option>
+                      <option value="price_asc">Precio (menor a mayor)</option>
+                      <option value="price_desc">Precio (mayor a menor)</option>
+                    </select>
+                  </div>
+                  <button onClick={clearFilters} className="clear-filters-btn">
+                    Limpiar Filtros
+                  </button>
+                </div>
+              </div>
 
-                    <div className="filter-group" style={{ marginBottom: 0 }}>
-                      <Home size={18} style={{ color: 'var(--text-secondary)' }} />
-                      <select value={clientFilters.propertyType} onChange={(e) => setClientFilters(prev => ({ ...prev, propertyType: e.target.value }))} style={{ padding: '0.5rem 2rem 0.5rem 0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', cursor: 'pointer', fontWeight: '500' }}>
-                        <option value="all">Tipo</option>
-                        <option value="Viviendas">Viviendas</option>
-                        <option value="Casa">Casa</option>
-                        <option value="Piso">Piso</option>
-                        <option value="Chalet">Chalet</option>
-                        <option value="Finca rústica">Finca rústica</option>
-                        <option value="Local">Local</option>
-                        <option value="Terreno">Terreno</option>
-                      </select>
-                    </div>
-
-                    <div className="filter-group" style={{ marginBottom: 0 }}>
-                      <MapPin size={18} style={{ color: 'var(--text-secondary)' }} />
-                      <input
-                        type="text"
-                        placeholder="Ubicación"
-                        value={clientFilters.location}
-                        onChange={(e) => setClientFilters(prev => ({ ...prev, location: e.target.value }))}
-                        style={{ padding: '0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', width: '120px' }}
-                      />
-                    </div>
-
-                    <div className="filter-group" style={{ marginBottom: 0 }}>
-                      <Calendar size={18} style={{ color: 'var(--text)' }} />
-                      <span style={{ fontSize: '0.9rem', color: 'var(--text)', fontWeight: 500 }}>Fecha:</span>
-                      <input
-                        type="date"
-                        value={clientFilters.date}
-                        onChange={(e) => setClientFilters(prev => ({ ...prev, date: e.target.value }))}
-                        style={{ padding: '0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', width: 'auto', fontFamily: 'inherit', cursor: 'pointer' }}
-                      />
-                    </div>
-
-                    <div className="filter-group" style={{ marginBottom: 0 }}>
-                      <History size={18} style={{ color: 'var(--text)' }} />
-                      <span style={{ fontSize: '0.9rem', color: 'var(--text)', fontWeight: 500 }}>Cita:</span>
-                      <input
-                        type="date"
-                        value={clientFilters.appointmentDate}
-                        onChange={(e) => setClientFilters(prev => ({ ...prev, appointmentDate: e.target.value }))}
-                        style={{ padding: '0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', width: 'auto', fontFamily: 'inherit', cursor: 'pointer' }}
-                      />
-                    </div>
-
-                    <div className="filter-group" style={{ marginBottom: 0 }}>
-                      <Phone size={18} style={{ color: 'var(--text-secondary)' }} />
-                      <input
-                        type="text"
-                        placeholder="Teléfono"
-                        value={clientFilters.phone}
-                        onChange={(e) => setClientFilters(prev => ({ ...prev, phone: e.target.value }))}
-                        style={{ padding: '0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', width: '120px' }}
-                      />
-                    </div>
-
-                    <div className="filter-group" style={{ marginBottom: 0 }}>
-                      <Mail size={18} style={{ color: 'var(--text-secondary)' }} />
-                      <input
-                        type="text"
-                        placeholder="Email"
-                        value={clientFilters.email}
-                        onChange={(e) => setClientFilters(prev => ({ ...prev, email: e.target.value }))}
-                        style={{ padding: '0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', width: '150px' }}
-                      />
-                    </div>
-
-                    <div className="filter-group" style={{ marginBottom: 0 }}>
-                      <ExternalLink size={18} style={{ color: 'var(--text-secondary)' }} />
-                      <input
-                        type="text"
-                        placeholder="Enlace Anuncio"
-                        value={clientFilters.adLink}
-                        onChange={(e) => setClientFilters(prev => ({ ...prev, adLink: e.target.value }))}
-                        style={{ padding: '0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', width: '150px' }}
-                      />
-                    </div>
-
-                    <button
-                      onClick={() => setClientFilters({ search: '', status: 'all', propertyType: 'all', answered: 'all', location: '', date: '', appointmentDate: '', phone: '', email: '', adLink: '' })}
-                      style={{ marginLeft: 'auto', padding: '0.5rem 1rem', background: 'var(--surface-hover)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--text)', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem', fontWeight: '500' }}
-                      title="Limpiar filtros"
-                    >
-                      <X size={16} />
-                      <span>Limpiar</span>
-                    </button>
+              <div className="stats">
+                <div className="stat-card">
+                  <Building2 size={24} />
+                  <div>
+                    <h3>{filteredProperties.length}</h3>
+                    <p>Encontradas</p>
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <Home size={24} />
+                  <div>
+                    <h3>{properties.filter(p => p.property_type === 'viviendas').length}</h3>
+                    <p>Viviendas</p>
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <Building2 size={24} />
+                  <div>
+                    <h3>{properties.filter(p => p.property_type === 'locales').length}</h3>
+                    <p>Locales</p>
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <MapPin size={24} />
+                  <div>
+                    <h3>{properties.filter(p => p.property_type === 'terrenos').length}</h3>
+                    <p>Terrenos</p>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div className="clients-table-wrapper">
-              <div className="clients-table">
-                <table>
-                  <thead>
-                    <tr>
-                      <th style={{ width: '40px' }}>
+              {filteredProperties.length > 0 && (
+                <div className="selected-info">
+                  <p>{selectedProperties.length} propiedad(es) seleccionada(s) para mensajería</p>
+                  <div className="selection-buttons">
+                    <button onClick={selectAllProperties} className="select-all-btn">
+                      Seleccionar Todas
+                    </button>
+                    <button onClick={updateProperties} className="update-btn" disabled={updatingProperties || selectedProperties.length === 0}>
+                      {updatingProperties ? 'Actualizando...' : 'Actualizar'}
+                    </button>
+                    {selectedProperties.length > 0 && (
+                      <button onClick={() => setSelectedProperties([])} className="clear-selection">
+                        Limpiar selección
+                      </button>
+                    )}
+                  </div>
+                  {updateLog.length > 0 && (
+                    <div className="update-log">
+                      <h4>Registro de Actualización</h4>
+                      <pre>{updateLog.join('\n')}</pre>
+                      <button onClick={() => setUpdateLog([])} className="clear-log">Limpiar Registro</button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="properties-grid">
+                {filteredProperties.map((property) => (
+                  <div key={property.id} className="property-card">
+                    <div className="property-image">
+                      <img
+                        src={property.imgurl !== 'None' ? property.imgurl : 'https://via.placeholder.com/400x300?text=Sin+imagen'}
+                        alt={property.Title}
+                        onError={(e) => e.target.src = 'https://via.placeholder.com/400x300?text=Sin+imagen'}
+                      />
+                      <div className={`property-source ${property.source?.toLowerCase() || 'fotocasa'}`}>{property.source || 'Fotocasa'}</div>
+
+                      <div className="property-type">{property.property_type}</div>
+                      <label className="property-checkbox-label">
                         <input
                           type="checkbox"
-                          checked={selectedClients.length === filteredClients.length && filteredClients.length > 0}
+                          className="property-checkbox"
+                          checked={selectedProperties.includes(property.url)}
                           onChange={(e) => {
                             if (e.target.checked) {
-                              setSelectedClients(filteredClients.map(c => c.id))
+                              setSelectedProperties([...selectedProperties, property.url])
                             } else {
-                              setSelectedClients([])
+                              setSelectedProperties(selectedProperties.filter(url => url !== property.url))
                             }
                           }}
                         />
-                      </th>
-                      <th style={{ width: columnWidths.name }}>
-                        Nombre
-                        <div className="resizer" onMouseDown={(e) => startResizing(e, 'name')} />
-                      </th>
-                      <th style={{ width: columnWidths.phone }}>
-                        Teléfono
-                        <div className="resizer" onMouseDown={(e) => startResizing(e, 'phone')} />
-                      </th>
-                      <th style={{ width: columnWidths.email }}>
-                        Email
-                        <div className="resizer" onMouseDown={(e) => startResizing(e, 'email')} />
-                      </th>
-                      <th style={{ width: columnWidths.contactName }}>
-                        Contacto
-                        <div className="resizer" onMouseDown={(e) => startResizing(e, 'contactName')} />
-                      </th>
-                      <th style={{ width: columnWidths.location }}>
-                        Ubicación
-                        <div className="resizer" onMouseDown={(e) => startResizing(e, 'location')} />
-                      </th>
-                      <th style={{ width: columnWidths.propertyType }}>
-                        Tipo
-                        <div className="resizer" onMouseDown={(e) => startResizing(e, 'propertyType')} />
-                      </th>
-                      <th style={{ width: columnWidths.adLink }}>
-                        Anuncio
-                        <div className="resizer" onMouseDown={(e) => startResizing(e, 'adLink')} />
-                      </th>
-                      <th style={{ width: columnWidths.whatsappLink }}>
-                        WhatsApp
-                        <div className="resizer" onMouseDown={(e) => startResizing(e, 'whatsappLink')} />
-                      </th>
-                      <th style={{ width: columnWidths.answered }}>
-                        Estado
-                        <div className="resizer" onMouseDown={(e) => startResizing(e, 'answered')} />
-                      </th>
-                      <th style={{ width: columnWidths.response }}>
-                        Respuesta
-                        <div className="resizer" onMouseDown={(e) => startResizing(e, 'response')} />
-                      </th>
-                      <th style={{ width: columnWidths.date }}>
-                        Fecha
-                        <div className="resizer" onMouseDown={(e) => startResizing(e, 'date')} />
-                      </th>
-                      <th style={{ width: columnWidths.appointmentDate }}>
-                        Cita
-                        <div className="resizer" onMouseDown={(e) => startResizing(e, 'appointmentDate')} />
-                      </th>
-                      <th style={{ width: columnWidths.actions }}>
-                        Acciones
-                        <div className="resizer" onMouseDown={(e) => startResizing(e, 'actions')} />
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredClients.length === 0 ? (
-                      <tr>
-                        <td colSpan="13" style={{ textAlign: 'center', padding: '2rem' }}>
-                          {clients.length === 0 ? 'No hay clientes. Añade uno usando el formulario de arriba o importa un CSV.' : 'No se encontraron clientes con los filtros seleccionados.'}
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredClients.map(client => (
-                        <tr key={client.id}>
-                          <td>
-                            <input
-                              type="checkbox"
-                              checked={selectedClients.includes(client.id)}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setSelectedClients([...selectedClients, client.id])
-                                } else {
-                                  setSelectedClients(selectedClients.filter(id => id !== client.id))
-                                }
-                              }}
-                            />
-                          </td>
-                          <td title={client.name}>{client.name}</td>
-                          <td title={client.phone}>{client.phone}</td>
-                          <td title={client.email || '-'}>{client.email || '-'}</td>
-                          <td title={client.contactName || '-'}>{client.contactName || '-'}</td>
-                          <td title={client.location || '-'}>{client.location || '-'}</td>
-                          <td title={client.propertyType || '-'}>{client.propertyType || '-'}</td>
-                          <td>
-                            {client.adLink ? (
-                              <a href={client.adLink} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6' }}>
-                                <ExternalLink size={14} /> Link
-                              </a>
-                            ) : '-'}
-                          </td>
-                          <td>
-                            {client.whatsappLink ? (
-                              <a href={client.whatsappLink} target="_blank" rel="noopener noreferrer" style={{ color: '#22c55e', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <MessageSquare size={14} /> Chat
-                              </a>
-                            ) : '-'}
-                          </td>
-                          <td>
-                            {client.answered ? (
-                              <span className={`badge ${client.answered.toLowerCase().includes('si') ? 'success' : 'warning'}`}>
-                                {client.answered}
-                              </span>
-                            ) : '-'}
-                          </td>
-                          <td title={client.response || '-'} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {client.response || '-'}
-                          </td>
-                          <td title={client.date || '-'}>{client.date || '-'}</td>
-                          <td title={client.appointmentDate || '-'}>{client.appointmentDate || '-'}</td>
-                          <td>
-                            <div className="action-buttons">
-                              <button onClick={() => viewHistory(client)} className="edit-btn" title="Ver Historial" style={{ background: '#8b5cf6' }}>
-                                <History size={16} />
-                              </button>
-                              <button onClick={() => startEditing(client)} className="edit-btn" title="Editar">
-                                <Pencil size={16} />
-                              </button>
-                              <button onClick={() => deleteClient(client.id)} className="delete-btn" title="Eliminar">
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
+                      </label>
 
-        {activeTab === 'messages' && (
-          <div className="messages-section">
-            <h2>Generador de Mensajes Personalizados con IA</h2>
-
-            <div className="message-config">
-              <div className="config-panel">
-                <h3>1. Selecciona Propiedades (Opcional)</h3>
-                <p className={selectedProperties.length > 0 ? 'selected' : ''}>{selectedProperties.length} propiedad(es) seleccionada(s)</p>
-                <small>Ve a "Propiedades" y marca las propiedades relevantes (si aplica)</small>
-              </div>
-
-              <div className="config-panel">
-                <h3>2. Selecciona Clientes</h3>
-                <p className={selectedClients.length > 0 ? 'selected' : ''}>{selectedClients.length} cliente(s) seleccionado(s)</p>
-                <small>Ve a la pestaña "Clientes" para seleccionar destinatarios</small>
-              </div>
-
-              <div className="config-panel">
-                <h3>3. Selecciona Modelo IA</h3>
-                <select
-                  value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                  className="model-selector"
-                >
-                  <option value="openai/gpt-oss-20b:free">GPT-4o Mini (Gratis)</option>
-                  <option value="openai/gpt-oss-120b:free">GPT-4o (Gratis)</option>
-                  <option value="tngtech/deepseek-r1t-chimera:free">DeepSeek R1 (Gratis)</option>
-                </select>
-                <small>Elige el cerebro de la IA</small>
-              </div>
-
-              <div className="config-panel">
-                <h3>4. Canal de Envío</h3>
-                <select
-                  value={selectedChannel}
-                  onChange={(e) => setSelectedChannel(e.target.value)}
-                  className="channel-selector"
-                >
-                  <option value="whatsapp">WhatsApp</option>
-                  <option value="email">Email</option>
-                  <option value="both">WhatsApp + Email</option>
-                </select>
-                <small>Elige por dónde enviar el mensaje</small>
-              </div>
-
-              <button
-                onClick={generateMessage}
-                className="generate-btn"
-                disabled={selectedClients.length === 0 || generatingMessage}
-              >
-                {generatingMessage ? (
-                  <>
-                    <RefreshCw size={20} className="spinning" />
-                    Generando con IA...
-                  </>
-                ) : (
-                  <>
-                    <MessageSquare size={20} />
-                    Generar Mensaje con IA
-                  </>
-                )}
-              </button>
-            </div>
-
-            {generatedMessage && (
-              <div className="generated-message">
-                <h3>Mensaje Generado:</h3>
-                <textarea
-                  value={generatedMessage}
-                  onChange={(e) => setGeneratedMessage(e.target.value)}
-                  rows={18}
-                />
-
-                <div className="message-actions">
-                  <button onClick={copyToClipboard} className="copy-btn">
-                    📋 Copiar Mensaje
-                  </button>
-                  <button onClick={sendMessage} className="send-btn">
-                    <Send size={16} />
-                    Enviar Automáticamente
-                  </button>
-                </div>
-                <small className="tip">💡 El mensaje se enviará directamente desde tu PC (WhatsApp Web local / Email).</small>
-              </div>
-            )}
-          </div>
-        )}
-      </main>
-
-      {/* Modal de Configuración */}
-      {configModalOpen && (
-        <div className="modal-overlay" onClick={() => setConfigModalOpen(false)}>
-          <div className="modal-content config-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header-custom" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ margin: 0 }}>Configuración de Mensajería Local</h3>
-              <button onClick={() => setConfigModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text)' }}><X size={24} /></button>
-            </div>
-
-            <div className="config-section">
-              <h4><Phone size={20} /> WhatsApp Web Local</h4>
-              <div className="whatsapp-status">
-                <p>Estado:
-                  <span className={`status-badge ${configStatus.whatsapp.ready ? 'success' : 'warning'}`}>
-                    {configStatus.whatsapp.ready ? 'Conectado ✅' : 'Desconectado ❌'}
-                  </span>
-                </p>
-
-                {!configStatus.whatsapp.ready && configStatus.whatsapp.qr ? (
-                  <div className="qr-container">
-                    <p>Escanea este código QR con WhatsApp en tu móvil:</p>
-                    <img src={configStatus.whatsapp.qr} alt="WhatsApp QR Code" className="qr-image" />
-                  </div>
-                ) : !configStatus.whatsapp.ready ? (
-                  <div style={{ textAlign: 'center', padding: '1rem' }}>
-                    <p className="loading-text">
-                      {configStatus.whatsapp.state === 'ERROR'
-                        ? '❌ Error iniciando WhatsApp. Intenta reiniciar el servicio.'
-                        : '⏳ Iniciando servicio de WhatsApp...'}
-                    </p>
-                    <small style={{ display: 'block', marginBottom: '1rem', color: 'var(--text-secondary)' }}>
-                      {configStatus.whatsapp.state || 'Esperando conexión...'}
-                    </small>
-                    <button
-                      onClick={handleWhatsAppLogout}
-                      className="logout-btn"
-                      style={{ background: '#f59e0b', fontSize: '0.9rem', marginRight: '0.5rem' }}
-                    >
-                      <RefreshCw size={14} /> Reiniciar Servicio
-                    </button>
-
-                    <button
-                      onClick={handleWhatsAppReset}
-                      className="logout-btn"
-                      style={{ background: '#dc2626', fontSize: '0.9rem' }}
-                      title="Usar si el QR no aparece nunca"
-                    >
-                      <Trash2 size={14} /> Reset Total
-                    </button>
-                  </div>
-                ) : (
-                  <div className="connected-actions">
-                    <p>WhatsApp está listo para enviar mensajes.</p>
-                    <button onClick={handleWhatsAppLogout} className="logout-btn">
-                      Cerrar Sesión WhatsApp
-                    </button>
-                    <button onClick={handleWhatsAppReset} className="logout-btn" style={{ background: '#ef4444', marginLeft: '10px' }}>
-                      Forzar Reset
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="config-section">
-              <h4><MessageSquare size={20} /> Configuración Email (Gmail)</h4>
-              <p className="config-info">
-                Usa tu cuenta de Gmail. Si tienes activada la verificación en 2 pasos, necesitas crear una "Contraseña de Aplicación".
-              </p>
-              <form onSubmit={handleEmailSave} className="email-config-form">
-                <div className="form-group">
-                  <label>Gmail:</label>
-                  <input
-                    type="email"
-                    value={emailForm.email}
-                    onChange={e => setEmailForm({ ...emailForm, email: e.target.value })}
-                    placeholder="tu_email@gmail.com"
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Contraseña de Aplicación:</label>
-                  <input
-                    type="password"
-                    value={emailForm.password}
-                    onChange={e => setEmailForm({ ...emailForm, password: e.target.value })}
-                    placeholder="xxxx xxxx xxxx xxxx"
-                    required
-                  />
-                </div>
-                <button type="submit" className="save-btn" disabled={savingEmail}>
-                  {savingEmail ? 'Guardando...' : 'Guardar Credenciales'}
-                </button>
-              </form>
-              {configStatus.email.configured && (
-                <p className="success-text">✅ Email configurado correctamente ({configStatus.email.user})</p>
-              )}
-            </div>
-
-            <div className="config-section">
-              <h4><RefreshCw size={20} /> Scraper Automático (Fotocasa)</h4>
-              <p className="config-info">
-                Configura la búsqueda automática de nuevas propiedades en Fotocasa (solo 1ª página).
-              </p>
-
-              <div className="form-group">
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={scraperConfig.fotocasa?.enabled || false}
-                    onChange={e => setScraperConfig(prev => ({
-                      ...prev,
-                      fotocasa: { ...prev.fotocasa, enabled: e.target.checked }
-                    }))}
-                    style={{ width: 'auto' }}
-                  />
-                  Activar Scraper Automático
-                </label>
-              </div>
-
-              {scraperConfig.fotocasa?.enabled && (
-                <div className="form-group">
-                  <label>Intervalo de ejecución:</label>
-                  <select
-                    value={scraperConfig.fotocasa?.interval || "60"}
-                    onChange={e => setScraperConfig(prev => ({
-                      ...prev,
-                      fotocasa: { ...prev.fotocasa, interval: e.target.value }
-                    }))}
-                    style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)' }}
-                  >
-                    <option value="15">Cada 15 minutos</option>
-                    <option value="30">Cada 30 minutos</option>
-                    <option value="60">Cada 1 hora</option>
-                  </select>
-                </div>
-              )}
-
-              <button
-                onClick={handleScraperConfigSave}
-                className="save-btn"
-                disabled={savingScraperConfig}
-                style={{ marginTop: '1rem' }}
-              >
-                {savingScraperConfig ? 'Guardando...' : 'Guardar Configuración'}
-              </button>
-            </div>
-
-            <div className="config-section">
-              <h4><Settings size={20} /> Configuración del Sistema</h4>
-              <p className="config-info">
-                Configura rutas y opciones del sistema. Si los scrapers fallan con error 9009, especifica la ruta completa a Python.
-              </p>
-              <form onSubmit={handlePythonPathSave} className="config-form">
-                <div className="form-group">
-                  <label>Ruta ejecutable Python:</label>
-                  <input
-                    type="text"
-                    value={pythonPathInput}
-                    onChange={e => setPythonPathInput(e.target.value)}
-                    placeholder="Ej: C:\Python314\python.exe (Win) o /usr/bin/python3 (Mac)"
-                  />
-                  <small style={{ display: 'block', marginTop: '0.25rem', color: 'var(--text-secondary)' }}>
-                    Por defecto: 'python' (Win) o 'python3' (Mac/Linux). Si falla, pon la ruta completa.
-                  </small>
-                </div>
-                <button type="submit" className="save-btn" disabled={savingPythonPath}>
-                  {savingPythonPath ? 'Guardando...' : 'Guardar Configuración Sistema'}
-                </button>
-              </form>
-            </div>
-
-            <div className="config-section">
-              <h4><RefreshCw size={20} /> Actualizaciones</h4>
-              <p className="config-info">
-                Comprueba si hay nuevas versiones de la aplicación disponibles.
-              </p>
-              <button
-                onClick={() => {
-                  if (window.electronAPI) {
-                    window.electronAPI.checkForUpdates();
-                    showNotification('Buscando actualizaciones...', 'info');
-                  } else {
-                    showNotification('Esta función solo está disponible en la versión de escritorio.', 'warning');
-                  }
-                }}
-                className="save-btn"
-                style={{ marginTop: '1rem', backgroundColor: '#3b82f6' }}
-              >
-                Buscar Actualizaciones Ahora
-              </button>
-            </div>
-
-            <div className="config-section">
-              <h4><Trash2 size={20} /> Mantenimiento</h4>
-              <p className="config-info">
-                Elimina archivos temporales generados por los scrapers y actualizaciones para liberar espacio.
-              </p>
-              <button
-                onClick={handleCleanup}
-                className="save-btn"
-                style={{ marginTop: '1rem', backgroundColor: '#ef4444' }}
-              >
-                Limpiar Archivos Temporales
-              </button>
-            </div>
-
-            <div className="modal-actions">
-              <button onClick={() => setConfigModalOpen(false)} className="modal-btn confirm">
-                Cerrar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {historyModalOpen && viewingClientHistory && (
-        <div className="modal-overlay" onClick={closeHistory}>
-          <div className="modal-content" style={{ maxWidth: '600px' }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ margin: 0 }}>Historial de Contacto: {viewingClientHistory.name}</h3>
-              <button onClick={closeHistory} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={24} /></button>
-            </div>
-
-            {!viewingClientHistory.contactHistory || viewingClientHistory.contactHistory.length === 0 ? (
-              <p>No hay mensajes enviados a este cliente.</p>
-            ) : (
-              <div className="history-list" style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                {viewingClientHistory.contactHistory.slice().reverse().map((record, index) => (
-                  <div key={index} className="history-item" style={{ marginBottom: '1rem', padding: '1rem', background: 'var(--background)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                      <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                        {new Date(record.date).toLocaleString()}
-                      </span>
-                      <span className={`history-badge sent`}>
-                        {record.channel === 'both' ? 'WhatsApp + Email' : (record.channel || 'WhatsApp')}
-                      </span>
                     </div>
-                    <p style={{ fontSize: '0.9rem', marginBottom: '0.5rem', whiteSpace: 'pre-wrap' }}>{record.message}</p>
-                    {record.propertyUrl && record.propertyUrl !== 'Multiple/General' && (
-                      <a href={record.propertyUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.85rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <ExternalLink size={14} /> Ver Propiedad
+
+                    <div className="property-content">
+                      <h3>{property.Title}</h3>
+                      {property.Description !== 'None' && (
+                        <p className="description">{property.Description}</p>
+                      )}
+
+                      <div className="property-details">
+                        <div className="detail price-detail">
+                          <span className="price">{formatPrice(property.Price)}</span>
+                        </div>
+
+                        {property.hab !== 'None' && (
+                          <div className="detail">
+                            <Home size={16} />
+                            <span>{property.hab}</span>
+                          </div>
+                        )}
+
+                        {property.m2 !== 'None' && (
+                          <div className="detail">
+                            <Building2 size={16} />
+                            <span>{property.m2}</span>
+                          </div>
+                        )}
+
+                        {property.publicationDate && (
+                          <div className="detail">
+                            <Calendar size={16} />
+                            <span>{property.Timeago}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Municipio */}
+                      {property.Municipality && (
+                        <div className="property-location">
+                          <MapPin size={16} />
+                          <span>{property.Municipality}</span>
+                        </div>
+                      )}
+
+                      {/* Anunciante */}
+                      {property.Advertiser && (
+                        <div className="property-advertiser">
+                          <Users size={16} />
+                          <span>{property.Advertiser}</span>
+                        </div>
+                      )}
+
+                      {property.Phone !== 'None' && (
+                        <div className="property-contact">
+                          <Phone size={16} />
+                          <a href={`tel:${property.Phone}`}>{property.Phone}</a>
+                        </div>
+                      )}
+
+                      <a
+                        href={property.url !== 'None' ? property.url : '#'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="view-more"
+                      >
+                        Ver detalles
+                        <ExternalLink size={16} />
                       </a>
-                    )}
+                    </div>
                   </div>
                 ))}
               </div>
-            )}
 
-            <div className="modal-actions">
-              <button onClick={closeHistory} className="modal-btn confirm">
-                Cerrar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              {filteredProperties.length === 0 && (
+                <div className="empty-state">
+                  <Search size={48} />
+                  <h3>No se encontraron propiedades</h3>
+                  <p>{properties.length === 0 ? 'Ejecuta un scraper para obtener propiedades' : 'Intenta cambiar los filtros de búsqueda'}</p>
+                </div>
+              )}
+            </>
+          )}
 
-      {/* Modal de Soporte Técnico */}
-      {supportModalOpen && (
-        <div className="modal-overlay" onClick={() => setSupportModalOpen(false)}>
-          <div className="modal-content support-modal" onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ margin: 0 }}>Soporte Técnico</h3>
-              <button onClick={() => setSupportModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={24} /></button>
+          {activeTab === 'clients' && (
+            <div className="clients-section">
+              <div className="clients-header-unified" style={{ marginBottom: '2rem' }}>
+                <div className="controls-unified" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: 'var(--surface)', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 4px 6px var(--shadow)' }}>
+                  <div className="controls-top" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <h2 style={{ margin: 0 }}>Gestión de Clientes</h2>
+                    <div className="action-buttons-top" style={{ display: 'flex', gap: '0.5rem' }}>
+                      <label className="import-btn" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1rem', background: '#22c55e', color: 'white', borderRadius: '0.5rem', fontSize: '0.9rem', fontWeight: '500', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', transition: 'all 0.2s', height: '40px', boxSizing: 'border-box' }}>
+                        <Upload size={18} />
+                        <span className="btn-text">Importar</span>
+                        <input type="file" accept=".csv" onChange={handleFileUpload} style={{ display: 'none' }} />
+                      </label>
+                      <button
+                        onClick={() => {
+                          if (showClientForm) cancelEditing();
+                          else setShowClientForm(true);
+                        }}
+                        className={showClientForm ? 'cancel-btn' : 'add-btn'}
+                        style={{ padding: '0.6rem 1rem', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', background: showClientForm ? 'var(--danger)' : 'var(--primary)', color: 'white', fontWeight: '500', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', transition: 'all 0.2s', height: '40px', boxSizing: 'border-box' }}
+                      >
+                        {showClientForm ? <X size={18} /> : <Plus size={18} />}
+                        {showClientForm ? 'Cerrar Formulario' : 'Añadir Cliente'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {showClientForm && (
+                    <div className="client-form-container" style={{ marginBottom: '1.5rem', padding: '1.5rem', background: 'var(--background)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                      <form id="client-form" onSubmit={handleClientSubmit} className="client-form">
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', width: '100%' }}>
+                          <input type="text" placeholder="Nombre *" value={newClient.name} onChange={(e) => setNewClient({ ...newClient, name: e.target.value })} required />
+                          <input type="tel" placeholder="Teléfono *" value={newClient.phone} onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })} required />
+                          <input type="email" placeholder="Email" value={newClient.email} onChange={(e) => setNewClient({ ...newClient, email: e.target.value })} />
+                          <input type="text" placeholder="Nombre Contacto" value={newClient.contactName} onChange={(e) => setNewClient({ ...newClient, contactName: e.target.value })} />
+                          <input type="text" placeholder="Ubicación" value={newClient.location} onChange={(e) => setNewClient({ ...newClient, location: e.target.value })} />
+                          <input type="text" placeholder="Enlace Anuncio" value={newClient.adLink} onChange={(e) => setNewClient({ ...newClient, adLink: e.target.value })} />
+                          <input type="text" placeholder="Tipo Inmueble" value={newClient.propertyType} onChange={(e) => setNewClient({ ...newClient, propertyType: e.target.value })} />
+                          <select value={newClient.answered} onChange={(e) => setNewClient({ ...newClient, answered: e.target.value })} style={{ background: 'var(--background)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.75rem' }}>
+                            <option value="">-- Contestado --</option>
+                            <option value="Si">Si</option>
+                            <option value="No">No</option>
+                          </select>
+                          <input type="date" placeholder="Fecha" value={newClient.date} onChange={(e) => setNewClient({ ...newClient, date: e.target.value })} />
+                          <input type="datetime-local" placeholder="Fecha Cita" value={newClient.appointmentDate} onChange={(e) => setNewClient({ ...newClient, appointmentDate: e.target.value })} />
+                          <input type="text" placeholder="Respuesta" value={newClient.response} onChange={(e) => setNewClient({ ...newClient, response: e.target.value })} style={{ gridColumn: 'span 2' }} />
+                        </div>
+                        <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
+                          <button type="button" onClick={cancelEditing} className="cancel-btn" style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--text)', padding: '0.5rem 1rem', borderRadius: '0.5rem', cursor: 'pointer' }}>Cancelar</button>
+                          <button type="submit" className="save-btn" style={{ background: 'var(--secondary)', color: 'white', border: 'none', padding: '0.5rem 1.5rem', borderRadius: '0.5rem', cursor: 'pointer' }}>
+                            {editingId ? 'Actualizar Cliente' : 'Guardar Cliente'}
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  )}
+
+                  <div className="filters-container" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: 'var(--background)', padding: '1rem', borderRadius: '0.5rem', border: '1px solid var(--border)' }}>
+                    {/* Search Bar Row - Full Width */}
+                    <div className="search-bar" style={{ width: '100%', marginBottom: 0, height: '42px', border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--surface)', padding: '0 1rem', display: 'flex', alignItems: 'center' }}>
+                      <Search size={20} style={{ color: 'var(--text-secondary)' }} />
+                      <input
+                        type="text"
+                        placeholder="Buscar clientes (Nombre, Teléfono, Email...)"
+                        value={clientFilters.search}
+                        onChange={(e) => setClientFilters(prev => ({ ...prev, search: e.target.value }))}
+                        style={{ height: '100%', border: 'none', background: 'transparent', width: '100%', marginLeft: '0.5rem', outline: 'none', color: 'var(--text)', fontSize: '1rem' }}
+                      />
+                      {clientFilters.search && (
+                        <button onClick={() => setClientFilters(prev => ({ ...prev, search: '' }))} className="clear-search">✕</button>
+                      )}
+                    </div>
+
+                    {/* Filters Row */}
+                    <div className="filters-row" style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', paddingBottom: '0.5rem' }}>
+                      <div className="filter-group" style={{ marginBottom: 0 }}>
+                        <CheckCircle size={18} style={{ color: 'var(--text-secondary)' }} />
+                        <select value={clientFilters.answered} onChange={(e) => setClientFilters(prev => ({ ...prev, answered: e.target.value }))} style={{ padding: '0.5rem 2rem 0.5rem 0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', cursor: 'pointer', fontWeight: '500' }}>
+                          <option value="all">Estado</option>
+                          <option value="Si">Si</option>
+                          <option value="Pendiente">Pendiente</option>
+                          <option value="No">No</option>
+                        </select>
+                      </div>
+
+                      <div className="filter-group" style={{ marginBottom: 0 }}>
+                        <Home size={18} style={{ color: 'var(--text-secondary)' }} />
+                        <select value={clientFilters.propertyType} onChange={(e) => setClientFilters(prev => ({ ...prev, propertyType: e.target.value }))} style={{ padding: '0.5rem 2rem 0.5rem 0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', cursor: 'pointer', fontWeight: '500' }}>
+                          <option value="all">Tipo</option>
+                          <option value="Viviendas">Viviendas</option>
+                          <option value="Casa">Casa</option>
+                          <option value="Piso">Piso</option>
+                          <option value="Chalet">Chalet</option>
+                          <option value="Finca rústica">Finca rústica</option>
+                          <option value="Local">Local</option>
+                          <option value="Terreno">Terreno</option>
+                        </select>
+                      </div>
+
+                      <div className="filter-group" style={{ marginBottom: 0 }}>
+                        <MapPin size={18} style={{ color: 'var(--text-secondary)' }} />
+                        <input
+                          type="text"
+                          placeholder="Ubicación"
+                          value={clientFilters.location}
+                          onChange={(e) => setClientFilters(prev => ({ ...prev, location: e.target.value }))}
+                          style={{ padding: '0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', width: '120px' }}
+                        />
+                      </div>
+
+                      <div className="filter-group" style={{ marginBottom: 0 }}>
+                        <Calendar size={18} style={{ color: 'var(--text)' }} />
+                        <span style={{ fontSize: '0.9rem', color: 'var(--text)', fontWeight: 500 }}>Fecha:</span>
+                        <input
+                          type="date"
+                          value={clientFilters.date}
+                          onChange={(e) => setClientFilters(prev => ({ ...prev, date: e.target.value }))}
+                          style={{ padding: '0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', width: 'auto', fontFamily: 'inherit', cursor: 'pointer' }}
+                        />
+                      </div>
+
+                      <div className="filter-group" style={{ marginBottom: 0 }}>
+                        <History size={18} style={{ color: 'var(--text)' }} />
+                        <span style={{ fontSize: '0.9rem', color: 'var(--text)', fontWeight: 500 }}>Cita:</span>
+                        <input
+                          type="date"
+                          value={clientFilters.appointmentDate}
+                          onChange={(e) => setClientFilters(prev => ({ ...prev, appointmentDate: e.target.value }))}
+                          style={{ padding: '0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', width: 'auto', fontFamily: 'inherit', cursor: 'pointer' }}
+                        />
+                      </div>
+
+                      <div className="filter-group" style={{ marginBottom: 0 }}>
+                        <Phone size={18} style={{ color: 'var(--text-secondary)' }} />
+                        <input
+                          type="text"
+                          placeholder="Teléfono"
+                          value={clientFilters.phone}
+                          onChange={(e) => setClientFilters(prev => ({ ...prev, phone: e.target.value }))}
+                          style={{ padding: '0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', width: '120px' }}
+                        />
+                      </div>
+
+                      <div className="filter-group" style={{ marginBottom: 0 }}>
+                        <Mail size={18} style={{ color: 'var(--text-secondary)' }} />
+                        <input
+                          type="text"
+                          placeholder="Email"
+                          value={clientFilters.email}
+                          onChange={(e) => setClientFilters(prev => ({ ...prev, email: e.target.value }))}
+                          style={{ padding: '0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', width: '150px' }}
+                        />
+                      </div>
+
+                      <div className="filter-group" style={{ marginBottom: 0 }}>
+                        <ExternalLink size={18} style={{ color: 'var(--text-secondary)' }} />
+                        <input
+                          type="text"
+                          placeholder="Enlace Anuncio"
+                          value={clientFilters.adLink}
+                          onChange={(e) => setClientFilters(prev => ({ ...prev, adLink: e.target.value }))}
+                          style={{ padding: '0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', width: '150px' }}
+                        />
+                      </div>
+
+                      <button
+                        onClick={() => setClientFilters({ search: '', status: 'all', propertyType: 'all', answered: 'all', location: '', date: '', appointmentDate: '', phone: '', email: '', adLink: '' })}
+                        style={{ marginLeft: 'auto', padding: '0.5rem 1rem', background: 'var(--surface-hover)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--text)', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem', fontWeight: '500' }}
+                        title="Limpiar filtros"
+                      >
+                        <X size={16} />
+                        <span>Limpiar</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="clients-table-wrapper">
+                <div className="clients-table">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th style={{ width: '40px' }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedClients.length === filteredClients.length && filteredClients.length > 0}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedClients(filteredClients.map(c => c.id))
+                              } else {
+                                setSelectedClients([])
+                              }
+                            }}
+                          />
+                        </th>
+                        <th
+                          style={{ width: columnWidths.name, cursor: 'pointer', userSelect: 'none' }}
+                          onClick={() => {
+                            if (sortBy === 'name_asc') setSortBy('name_desc');
+                            else if (sortBy === 'name_desc') setSortBy('date_desc');
+                            else setSortBy('name_asc');
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            Nombre
+                            {sortBy === 'name_asc' && <span style={{ fontSize: '0.8em' }}>▲</span>}
+                            {sortBy === 'name_desc' && <span style={{ fontSize: '0.8em' }}>▼</span>}
+                          </div>
+                          <div className="resizer" onMouseDown={(e) => { e.stopPropagation(); startResizing(e, 'name'); }} />
+                        </th>
+                        <th style={{ width: columnWidths.phone }}>
+                          Teléfono
+                          <div className="resizer" onMouseDown={(e) => startResizing(e, 'phone')} />
+                        </th>
+                        <th style={{ width: columnWidths.email }}>
+                          Email
+                          <div className="resizer" onMouseDown={(e) => startResizing(e, 'email')} />
+                        </th>
+                        <th style={{ width: columnWidths.contactName }}>
+                          Contacto
+                          <div className="resizer" onMouseDown={(e) => startResizing(e, 'contactName')} />
+                        </th>
+                        <th style={{ width: columnWidths.location }}>
+                          Ubicación
+                          <div className="resizer" onMouseDown={(e) => startResizing(e, 'location')} />
+                        </th>
+                        <th style={{ width: columnWidths.propertyType }}>
+                          Tipo
+                          <div className="resizer" onMouseDown={(e) => startResizing(e, 'propertyType')} />
+                        </th>
+                        <th style={{ width: columnWidths.adLink }}>
+                          Anuncio
+                          <div className="resizer" onMouseDown={(e) => startResizing(e, 'adLink')} />
+                        </th>
+                        <th style={{ width: columnWidths.whatsappLink }}>
+                          WhatsApp
+                          <div className="resizer" onMouseDown={(e) => startResizing(e, 'whatsappLink')} />
+                        </th>
+                        <th style={{ width: columnWidths.answered }}>
+                          Estado
+                          <div className="resizer" onMouseDown={(e) => startResizing(e, 'answered')} />
+                        </th>
+                        <th style={{ width: columnWidths.response }}>
+                          Respuesta
+                          <div className="resizer" onMouseDown={(e) => startResizing(e, 'response')} />
+                        </th>
+                        <th style={{ width: columnWidths.date }}>
+                          Fecha
+                          <div className="resizer" onMouseDown={(e) => startResizing(e, 'date')} />
+                        </th>
+                        <th style={{ width: columnWidths.appointmentDate }}>
+                          Cita
+                          <div className="resizer" onMouseDown={(e) => startResizing(e, 'appointmentDate')} />
+                        </th>
+                        <th style={{ width: columnWidths.actions }}>
+                          Acciones
+                          <div className="resizer" onMouseDown={(e) => startResizing(e, 'actions')} />
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredClients.length === 0 ? (
+                        <tr>
+                          <td colSpan="13" style={{ textAlign: 'center', padding: '2rem' }}>
+                            {clients.length === 0 ? 'No hay clientes. Añade uno usando el formulario de arriba o importa un CSV.' : 'No se encontraron clientes con los filtros seleccionados.'}
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredClients.map(client => (
+                          <tr key={client.id}>
+                            <td style={{ textAlign: 'center', padding: '0.25rem' }}>
+                              <input
+                                type="checkbox"
+                                checked={selectedClients.includes(client.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedClients([...selectedClients, client.id])
+                                  } else {
+                                    setSelectedClients(selectedClients.filter(id => id !== client.id))
+                                  }
+                                }}
+                              />
+                            </td>
+                            <td title={client.name}>{capitalizeName(client.name)}</td>
+                            <td title={client.phone}>{client.phone}</td>
+                            <td title={client.email || '-'}>{client.email || '-'}</td>
+                            <td title={client.contactName || '-'}>{client.contactName || '-'}</td>
+                            <td title={client.location || '-'}>{client.location || '-'}</td>
+                            <td title={client.propertyType || '-'}>{client.propertyType || '-'}</td>
+                            <td>
+                              {client.adLink ? (
+                                <a href={client.adLink} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6' }}>
+                                  <ExternalLink size={14} /> Link
+                                </a>
+                              ) : '-'}
+                            </td>
+                            <td>
+                              {client.whatsappLink ? (
+                                <a href={client.whatsappLink} target="_blank" rel="noopener noreferrer" style={{ color: '#22c55e', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <MessageSquare size={14} /> Chat
+                                </a>
+                              ) : '-'}
+                            </td>
+                            <td>
+                              <span className={`badge ${formatAnswered(client.answered) === 'Si' ? 'success' : 'warning'}`}>
+                                {formatAnswered(client.answered)}
+                              </span>
+                            </td>
+                            <td title={client.response || '-'} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {client.response || '-'}
+                            </td>
+                            <td title={client.date || '-'}>{client.date || '-'}</td>
+                            <td title={client.appointmentDate || '-'}>{client.appointmentDate || '-'}</td>
+                            <td>
+                              <div className="action-buttons">
+                                <button onClick={() => viewHistory(client)} className="edit-btn" title="Ver Historial" style={{ background: '#8b5cf6' }}>
+                                  <History size={16} />
+                                </button>
+                                <button onClick={() => startEditing(client)} className="edit-btn" title="Editar">
+                                  <Pencil size={16} />
+                                </button>
+                                <button onClick={() => deleteClient(client.id)} className="delete-btn" title="Eliminar">
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
-            <p className="support-description">
-              Envía un mensaje al desarrollador (viicttoriius@gmail.com) para sugerencias, errores o dudas.
-            </p>
-            <form onSubmit={handleSendSupport} className="config-form support-form">
-              <div className="form-group">
-                <label>Asunto:</label>
-                <input
-                  type="text"
-                  value={supportForm.subject}
-                  onChange={e => setSupportForm({ ...supportForm, subject: e.target.value })}
-                  placeholder="Ej: Sugerencia, Error, Duda..."
-                  className="support-input"
-                />
-              </div>
-              <div className="form-group">
-                <label>Mensaje (*):</label>
-                <textarea
-                  value={supportForm.message}
-                  onChange={e => setSupportForm({ ...supportForm, message: e.target.value })}
-                  placeholder="Describe tu consulta o problema..."
-                  rows="5"
-                  required
-                  className="support-textarea"
-                />
-              </div>
-              <div className="modal-actions">
-                <button type="button" onClick={() => setSupportModalOpen(false)} className="modal-btn cancel">
-                  Cancelar
+          )}
+
+          {activeTab === 'messages' && (
+            <div className="messages-section">
+              <h2>Generador de Mensajes Personalizados con IA</h2>
+
+              <div className="message-config">
+                <div className="config-panel">
+                  <h3>1. Selecciona Propiedades (Opcional)</h3>
+                  <p className={selectedProperties.length > 0 ? 'selected' : ''}>{selectedProperties.length} propiedad(es) seleccionada(s)</p>
+                  <small>Ve a "Propiedades" y marca las propiedades relevantes (si aplica)</small>
+                </div>
+
+                <div className="config-panel">
+                  <h3>2. Selecciona Clientes</h3>
+                  <p className={selectedClients.length > 0 ? 'selected' : ''}>{selectedClients.length} cliente(s) seleccionado(s)</p>
+                  <small>Ve a la pestaña "Clientes" para seleccionar destinatarios</small>
+                </div>
+
+                <div className="config-panel">
+                  <h3>3. Selecciona Modelo IA</h3>
+                  <select
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="model-selector"
+                  >
+                    <option value="openai/gpt-oss-20b:free">GPT-4o Mini (Gratis)</option>
+                    <option value="openai/gpt-oss-120b:free">GPT-4o (Gratis)</option>
+                    <option value="tngtech/deepseek-r1t-chimera:free">DeepSeek R1 (Gratis)</option>
+                  </select>
+                  <small>Elige el cerebro de la IA</small>
+                </div>
+
+                <div className="config-panel">
+                  <h3>4. Canal de Envío</h3>
+                  <select
+                    value={selectedChannel}
+                    onChange={(e) => setSelectedChannel(e.target.value)}
+                    className="channel-selector"
+                  >
+                    <option value="whatsapp">WhatsApp</option>
+                    <option value="email">Email</option>
+                    <option value="both">WhatsApp + Email</option>
+                  </select>
+                  <small>Elige por dónde enviar el mensaje</small>
+                </div>
+
+                <button
+                  onClick={generateMessage}
+                  className="generate-btn"
+                  disabled={selectedClients.length === 0 || generatingMessage}
+                >
+                  {generatingMessage ? (
+                    <>
+                      <RefreshCw size={20} className="spinning" />
+                      Generando con IA...
+                    </>
+                  ) : (
+                    <>
+                      <MessageSquare size={20} />
+                      Generar Mensaje con IA
+                    </>
+                  )}
                 </button>
-                <button type="submit" className="modal-btn confirm" disabled={sendingSupport}>
-                  {sendingSupport ? 'Enviando...' : 'Enviar Mensaje'}
-                </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
 
-      {/* Sistema de Notificaciones */}
-      <div className="notification-container">
-        {notifications.map(notification => (
-          <div key={notification.id} className={`notification-toast ${notification.type}`}>
-            <div className="notification-icon">
-              {notification.type === 'success' && <CheckCircle size={20} />}
-              {notification.type === 'error' && <AlertCircle size={20} />}
-              {notification.type === 'info' && <Info size={20} />}
-              {notification.type === 'warning' && <AlertCircle size={20} />}
-            </div>
-            <div className="notification-content">
-              {notification.title && <strong style={{ display: 'block', marginBottom: '4px', fontSize: '0.95rem' }}>{notification.title}</strong>}
-              <div style={{ fontSize: '0.9rem', lineHeight: '1.4' }}>{notification.message}</div>
-              <small style={{ display: 'block', marginTop: '4px', opacity: 0.7, fontSize: '0.75rem' }}>
-                {new Date(notification.timestamp).toLocaleTimeString()}
-              </small>
-            </div>
-            <button onClick={() => removeNotification(notification.id)} className="notification-close">
-              <X size={16} />
-            </button>
-          </div>
-        ))}
-      </div>
+              {generatedMessage && (
+                <div className="generated-message">
+                  <h3>Mensaje Generado:</h3>
+                  <textarea
+                    value={generatedMessage}
+                    onChange={(e) => setGeneratedMessage(e.target.value)}
+                    rows={18}
+                  />
 
-      {/* Modal de Confirmación */}
-      {confirmModal.isOpen && (
-        <div className="modal-overlay" onClick={closeConfirmModal}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>{confirmModal.title}</h3>
-            <p>{confirmModal.message}</p>
-            <div className="modal-actions">
-              <button onClick={closeConfirmModal} className="modal-btn cancel">
-                {confirmModal.cancelText}
+                  <div className="message-actions">
+                    <button onClick={copyToClipboard} className="copy-btn">
+                      📋 Copiar Mensaje
+                    </button>
+                    <button onClick={sendMessage} className="send-btn">
+                      <Send size={16} />
+                      Enviar Automáticamente
+                    </button>
+                  </div>
+                  <small className="tip">💡 El mensaje se enviará directamente desde tu PC (WhatsApp Web local / Email).</small>
+                </div>
+              )}
+            </div>
+          )}
+        </main>
+
+        {/* Modal de Configuración */}
+        {
+          configModalOpen && (
+            <div className="modal-overlay" onClick={() => setConfigModalOpen(false)}>
+              <div className="modal-content config-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-header-custom" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h3 style={{ margin: 0 }}>Configuración de Mensajería Local</h3>
+                  <button onClick={() => setConfigModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text)' }}><X size={24} /></button>
+                </div>
+
+                <div className="config-section">
+                  <h4><Phone size={20} /> WhatsApp Web Local</h4>
+                  <div className="whatsapp-status">
+                    <p>Estado:
+                      <span className={`status-badge ${configStatus.whatsapp.ready ? 'success' : 'warning'}`}>
+                        {configStatus.whatsapp.ready ? 'Conectado ✅' : 'Desconectado ❌'}
+                      </span>
+                    </p>
+
+                    {!configStatus.whatsapp.ready && configStatus.whatsapp.qr ? (
+                      <div className="qr-container">
+                        <p>Escanea este código QR con WhatsApp en tu móvil:</p>
+                        <img src={configStatus.whatsapp.qr} alt="WhatsApp QR Code" className="qr-image" />
+                      </div>
+                    ) : !configStatus.whatsapp.ready ? (
+                      <div style={{ textAlign: 'center', padding: '1rem' }}>
+                        <p className="loading-text">
+                          {configStatus.whatsapp.state === 'ERROR'
+                            ? '❌ Error iniciando WhatsApp. Intenta reiniciar el servicio.'
+                            : '⏳ Iniciando servicio de WhatsApp...'}
+                        </p>
+                        <small style={{ display: 'block', marginBottom: '1rem', color: 'var(--text-secondary)' }}>
+                          {configStatus.whatsapp.state || 'Esperando conexión...'}
+                        </small>
+                        <button
+                          onClick={handleWhatsAppLogout}
+                          className="logout-btn"
+                          style={{ background: '#f59e0b', fontSize: '0.9rem', marginRight: '0.5rem' }}
+                        >
+                          <RefreshCw size={14} /> Reiniciar Servicio
+                        </button>
+
+                        <button
+                          onClick={handleWhatsAppReset}
+                          className="logout-btn"
+                          style={{ background: '#dc2626', fontSize: '0.9rem' }}
+                          title="Usar si el QR no aparece nunca"
+                        >
+                          <Trash2 size={14} /> Reset Total
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="connected-actions">
+                        <p>WhatsApp está listo para enviar mensajes.</p>
+                        <button onClick={handleWhatsAppLogout} className="logout-btn">
+                          Cerrar Sesión WhatsApp
+                        </button>
+                        <button onClick={handleWhatsAppReset} className="logout-btn" style={{ background: '#ef4444', marginLeft: '10px' }}>
+                          Forzar Reset
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="config-section">
+                  <h4><MessageSquare size={20} /> Configuración Email (Gmail)</h4>
+                  <p className="config-info">
+                    Usa tu cuenta de Gmail. Si tienes activada la verificación en 2 pasos, necesitas crear una "Contraseña de Aplicación".
+                  </p>
+                  <form onSubmit={handleEmailSave} className="email-config-form">
+                    <div className="form-group">
+                      <label>Gmail:</label>
+                      <input
+                        type="email"
+                        value={emailForm.email}
+                        onChange={e => setEmailForm({ ...emailForm, email: e.target.value })}
+                        placeholder="tu_email@gmail.com"
+                        required
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Contraseña de Aplicación:</label>
+                      <input
+                        type="password"
+                        value={emailForm.password}
+                        onChange={e => setEmailForm({ ...emailForm, password: e.target.value })}
+                        placeholder="xxxx xxxx xxxx xxxx"
+                        required
+                      />
+                    </div>
+                    <button type="submit" className="save-btn" disabled={savingEmail}>
+                      {savingEmail ? 'Guardando...' : 'Guardar Credenciales'}
+                    </button>
+                  </form>
+                  {configStatus.email.configured && (
+                    <p className="success-text">✅ Email configurado correctamente ({configStatus.email.user})</p>
+                  )}
+                </div>
+
+                <div className="config-section">
+                  <h4><RefreshCw size={20} /> Scraper Automático (Fotocasa)</h4>
+                  <p className="config-info">
+                    Configura la búsqueda automática de nuevas propiedades en Fotocasa (solo 1ª página).
+                  </p>
+
+                  <div className="form-group">
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={scraperConfig.fotocasa?.enabled || false}
+                        onChange={e => setScraperConfig(prev => ({
+                          ...prev,
+                          fotocasa: { ...prev.fotocasa, enabled: e.target.checked }
+                        }))}
+                        style={{ width: 'auto' }}
+                      />
+                      Activar Scraper Automático
+                    </label>
+                  </div>
+
+                  {scraperConfig.fotocasa?.enabled && (
+                    <div className="form-group">
+                      <label>Intervalo de ejecución:</label>
+                      <select
+                        value={scraperConfig.fotocasa?.interval || "60"}
+                        onChange={e => setScraperConfig(prev => ({
+                          ...prev,
+                          fotocasa: { ...prev.fotocasa, interval: e.target.value }
+                        }))}
+                        style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)' }}
+                      >
+                        <option value="15">Cada 15 minutos</option>
+                        <option value="30">Cada 30 minutos</option>
+                        <option value="60">Cada 1 hora</option>
+                      </select>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleScraperConfigSave}
+                    className="save-btn"
+                    disabled={savingScraperConfig}
+                    style={{ marginTop: '1rem' }}
+                  >
+                    {savingScraperConfig ? 'Guardando...' : 'Guardar Configuración'}
+                  </button>
+                </div>
+
+                <div className="config-section">
+                  <h4><Settings size={20} /> Configuración del Sistema</h4>
+                  <p className="config-info">
+                    Configura rutas y opciones del sistema. Si los scrapers fallan con error 9009, especifica la ruta completa a Python.
+                  </p>
+                  <form onSubmit={handlePythonPathSave} className="config-form">
+                    <div className="form-group">
+                      <label>Ruta ejecutable Python:</label>
+                      <input
+                        type="text"
+                        value={pythonPathInput}
+                        onChange={e => setPythonPathInput(e.target.value)}
+                        placeholder="Ej: C:\Python314\python.exe (Win) o /usr/bin/python3 (Mac)"
+                      />
+                      <small style={{ display: 'block', marginTop: '0.25rem', color: 'var(--text-secondary)' }}>
+                        Por defecto: 'python' (Win) o 'python3' (Mac/Linux). Si falla, pon la ruta completa.
+                      </small>
+                    </div>
+                    <button type="submit" className="save-btn" disabled={savingPythonPath}>
+                      {savingPythonPath ? 'Guardando...' : 'Guardar Configuración Sistema'}
+                    </button>
+                  </form>
+                </div>
+
+                <div className="config-section">
+                  <h4><RefreshCw size={20} /> Actualizaciones</h4>
+                  <p className="config-info">
+                    Comprueba si hay nuevas versiones de la aplicación disponibles.
+                  </p>
+                  <button
+                    onClick={() => {
+                      if (window.electronAPI) {
+                        window.electronAPI.checkForUpdates();
+                        showNotification('Buscando actualizaciones...', 'info');
+                      } else {
+                        showNotification('Esta función solo está disponible en la versión de escritorio.', 'warning');
+                      }
+                    }}
+                    className="save-btn"
+                    style={{ marginTop: '1rem', backgroundColor: '#3b82f6' }}
+                  >
+                    Buscar Actualizaciones Ahora
+                  </button>
+                </div>
+
+                <div className="config-section">
+                  <h4><Trash2 size={20} /> Mantenimiento</h4>
+                  <p className="config-info">
+                    Elimina archivos temporales generados por los scrapers y actualizaciones para liberar espacio.
+                  </p>
+                  <button
+                    onClick={handleCleanup}
+                    className="save-btn"
+                    style={{ marginTop: '1rem', backgroundColor: '#ef4444' }}
+                  >
+                    Limpiar Archivos Temporales
+                  </button>
+                </div>
+
+                <div className="modal-actions">
+                  <button onClick={() => setConfigModalOpen(false)} className="modal-btn confirm">
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        }
+
+        {
+          historyModalOpen && viewingClientHistory && (
+            <div className="modal-overlay" onClick={closeHistory}>
+              <div className="modal-content" style={{ maxWidth: '600px' }} onClick={(e) => e.stopPropagation()}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h3 style={{ margin: 0 }}>Historial de Contacto: {viewingClientHistory.name}</h3>
+                  <button onClick={closeHistory} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={24} /></button>
+                </div>
+
+                {!viewingClientHistory.contactHistory || viewingClientHistory.contactHistory.length === 0 ? (
+                  <p>No hay mensajes enviados a este cliente.</p>
+                ) : (
+                  <div className="history-list" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                    {viewingClientHistory.contactHistory.slice().reverse().map((record, index) => (
+                      <div key={index} className="history-item" style={{ marginBottom: '1rem', padding: '1rem', background: 'var(--background)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                            {new Date(record.date).toLocaleString()}
+                          </span>
+                          <span className={`history-badge sent`}>
+                            {record.channel === 'both' ? 'WhatsApp + Email' : (record.channel || 'WhatsApp')}
+                          </span>
+                        </div>
+                        <p style={{ fontSize: '0.9rem', marginBottom: '0.5rem', whiteSpace: 'pre-wrap' }}>{record.message}</p>
+                        {record.propertyUrl && record.propertyUrl !== 'Multiple/General' && (
+                          <a href={record.propertyUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.85rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <ExternalLink size={14} /> Ver Propiedad
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="modal-actions">
+                  <button onClick={closeHistory} className="modal-btn confirm">
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        }
+
+        {/* Modal de Soporte Técnico */}
+        {
+          supportModalOpen && (
+            <div className="modal-overlay" onClick={() => setSupportModalOpen(false)}>
+              <div className="modal-content support-modal" onClick={(e) => e.stopPropagation()}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h3 style={{ margin: 0 }}>Soporte Técnico</h3>
+                  <button onClick={() => setSupportModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={24} /></button>
+                </div>
+                <p className="support-description">
+                  Envía un mensaje al desarrollador (viicttoriius@gmail.com) para sugerencias, errores o dudas.
+                </p>
+                <form onSubmit={handleSendSupport} className="config-form support-form">
+                  <div className="form-group">
+                    <label>Asunto:</label>
+                    <input
+                      type="text"
+                      value={supportForm.subject}
+                      onChange={e => setSupportForm({ ...supportForm, subject: e.target.value })}
+                      placeholder="Ej: Sugerencia, Error, Duda..."
+                      className="support-input"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Mensaje (*):</label>
+                    <textarea
+                      value={supportForm.message}
+                      onChange={e => setSupportForm({ ...supportForm, message: e.target.value })}
+                      placeholder="Describe tu consulta o problema..."
+                      rows="5"
+                      required
+                      className="support-textarea"
+                    />
+                  </div>
+                  <div className="modal-actions">
+                    <button type="button" onClick={() => setSupportModalOpen(false)} className="modal-btn cancel">
+                      Cancelar
+                    </button>
+                    <button type="submit" className="modal-btn confirm" disabled={sendingSupport}>
+                      {sendingSupport ? 'Enviando...' : 'Enviar Mensaje'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )
+        }
+
+        {/* Sistema de Notificaciones */}
+        <div className="notification-container">
+          {notifications.map(notification => (
+            <div key={notification.id} className={`notification-toast ${notification.type}`}>
+              <div className="notification-icon">
+                {notification.type === 'success' && <CheckCircle size={20} />}
+                {notification.type === 'error' && <AlertCircle size={20} />}
+                {notification.type === 'info' && <Info size={20} />}
+                {notification.type === 'warning' && <AlertCircle size={20} />}
+              </div>
+              <div className="notification-content">
+                {notification.title && <strong style={{ display: 'block', marginBottom: '4px', fontSize: '0.95rem' }}>{notification.title}</strong>}
+                <div style={{ fontSize: '0.9rem', lineHeight: '1.4' }}>{notification.message}</div>
+                <small style={{ display: 'block', marginTop: '4px', opacity: 0.7, fontSize: '0.75rem' }}>
+                  {new Date(notification.timestamp).toLocaleTimeString()}
+                </small>
+              </div>
+              <button onClick={() => removeNotification(notification.id)} className="notification-close">
+                <X size={16} />
               </button>
-              <button
-                onClick={confirmModal.onConfirm}
-                className={`modal-btn ${confirmModal.isDanger ? 'danger' : 'confirm'}`}
-              >
-                {confirmModal.confirmText}
-              </button>
             </div>
-          </div>
+          ))}
         </div>
-      )}
 
-      {/* Componente de Notificación de Actualización */}
-      <UpdateNotification />
-    </div >
+        {/* Modal de Confirmación */}
+        {
+          confirmModal.isOpen && (
+            <div className="modal-overlay" onClick={closeConfirmModal}>
+              <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <h3>{confirmModal.title}</h3>
+                <p>{confirmModal.message}</p>
+                <div className="modal-actions">
+                  <button onClick={closeConfirmModal} className="modal-btn cancel">
+                    {confirmModal.cancelText}
+                  </button>
+                  <button
+                    onClick={confirmModal.onConfirm}
+                    className={`modal-btn ${confirmModal.isDanger ? 'danger' : 'confirm'}`}
+                  >
+                    {confirmModal.confirmText}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        }
+
+        {/* Componente de Notificación de Actualización */}
+        <UpdateNotification />
+      </div >
+    </ErrorBoundary>
   )
 }
 

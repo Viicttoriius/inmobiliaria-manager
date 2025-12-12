@@ -37,115 +37,63 @@ class SuppressStdout:
 def save_client_from_property(property_data):
     """
     Guarda un nuevo cliente a partir de los datos de la propiedad scrapeada.
-    Intenta completar datos faltantes usando properties.json existente.
+    Ahora usa la API del backend para guardar en SQLite.
     """
     try:
-        # Usar variable de entorno o fallback para dev
-        base_data_path = os.environ.get("USER_DATA_PATH")
-        if base_data_path:
-             clients_file = os.path.join(base_data_path, "data/clients/clients.json")
-             properties_file = os.path.join(base_data_path, "data/properties.json")
-        else:
-             clients_file = os.path.join(current_dir, "../../data/clients/clients.json")
-             properties_file = os.path.join(current_dir, "../../data/properties.json")
+        import requests
         
-        # Asegurar que el directorio de clientes existe
-        os.makedirs(os.path.dirname(clients_file), exist_ok=True)
-        
-        # Cargar clientes existentes
-        clients = []
-        if os.path.exists(clients_file):
-            try:
-                with open(clients_file, 'r', encoding='utf-8') as f:
-                    clients = json.load(f)
-            except:
-                clients = []
-
-        # Cargar propiedades existentes para fallback de datos
-        existing_props = []
-        if os.path.exists(properties_file):
-            try:
-                with open(properties_file, 'r', encoding='utf-8') as f:
-                    existing_props = json.load(f)
-            except:
-                pass
+        # URL de la API del backend
+        api_url = "http://localhost:3001/api/clients"
         
         url = property_data.get('url')
+        phone = property_data.get('Phone') or ''
+        name = property_data.get('Advertiser') or 'Particular'
+        location = property_data.get('Municipality') or 'Desconocido'
+        title = property_data.get('Title') or 'Sin título'
         
-        # Buscar datos existentes de la propiedad (fallback)
-        # Normalizamos URL quitando parámetros para mejorar coincidencia
-        def normalize_url(u):
-            return u.split('?')[0].strip() if u else ""
-
-        target_url = normalize_url(url)
-        existing_prop_data = {}
+        # Si no hay teléfono, no guardamos el cliente
+        if not phone:
+            print(f"  ⚠️ Sin teléfono para la propiedad, no se crea cliente.", file=sys.stderr)
+            return
         
-        for p in existing_props:
-            if normalize_url(p.get('url')) == target_url:
-                existing_prop_data = p
-                break
+        # Limpiar teléfono
+        phone_clean = str(phone).replace(' ', '').replace('-', '').replace('.', '')
+        if phone_clean.startswith('+34'):
+            phone_clean = phone_clean[3:]
+        if phone_clean.startswith('34') and len(phone_clean) > 9:
+            phone_clean = phone_clean[2:]
         
-        if not existing_prop_data:
-             print(f"  ℹ️ No se encontraron datos previos en properties.json para {target_url}", file=sys.stderr)
-        else:
-             print(f"  ℹ️ Datos previos encontrados para completar ficha de cliente.", file=sys.stderr)
-
-        # Combinar datos (prioridad: scrapeado > existente)
-        phone = property_data.get('Phone') or existing_prop_data.get('Phone') or ''
-        name = property_data.get('Advertiser') or existing_prop_data.get('Advertiser') or 'Particular'
-        location = property_data.get('Municipality') or existing_prop_data.get('Municipality') or 'Desconocido'
-        title = property_data.get('Title') or existing_prop_data.get('Title') or 'Sin título'
+        # Determinar tipo de propiedad
+        prop_type = "vivienda"
         
-        # Normalizar teléfono para comparación (simple)
-        # Eliminar espacios, guiones, y prefijo +34 si existe para comparar
-        def clean_phone(p):
-            if not p: return ""
-            p = str(p).replace(' ', '').replace('-', '').replace('.', '')
-            if p.startswith('+34'): p = p[3:]
-            if p.startswith('34') and len(p) > 9: p = p[2:] # Caso 34666...
-            return p
-
-        phone_clean = clean_phone(phone)
-
-        # Verificar duplicados por TELÉFONO
-        if phone_clean:
-            for c in clients:
-                c_phone = clean_phone(c.get('phone'))
-                if c_phone and c_phone == phone_clean:
-                    print(f"  ℹ️ Cliente ya existe con el teléfono {phone} (ID: {c.get('id')}).", file=sys.stderr)
-                    return
-        
-        # Si no hay teléfono, verificar por URL para evitar duplicados obvios
-        elif any(c.get('adLink') == url for c in clients):
-             print(f"  ℹ️ Cliente ya existe para esta propiedad (URL).", file=sys.stderr)
-             return
-
-        # Generar ID único
-        client_id = str(int(time.time() * 1000)) + str(len(clients))
-        
-        # Determinar tipo (por defecto vivienda)
-        prop_type = "vivienda" 
+        # Generar enlace de WhatsApp
+        whatsapp_link = f"https://web.whatsapp.com/send?phone=34{phone_clean}&text=Hola {name}, le contacto por el anuncio de la vivienda que tiene en venta"
         
         new_client = {
-            "id": client_id,
             "name": name,
-            "phone": phone,
-            "email": "", 
+            "phone": phone_clean,
+            "email": "",
             "location": location,
             "date": datetime.now().strftime("%Y-%m-%d"),
-            "status": "pendiente",
+            "status": "Pendiente",
             "adLink": url,
+            "whatsappLink": whatsapp_link,
             "propertyType": prop_type,
-            "createdAt": datetime.now().isoformat(),
             "notes": f"Cliente importado automáticamente: {title}"
         }
         
-        clients.append(new_client)
-        
-        with open(clients_file, 'w', encoding='utf-8') as f:
-            json.dump(clients, f, ensure_ascii=False, indent=2)
-        
-        print(f"  ✅ Nuevo cliente añadido: {new_client['name']} ({new_client['location']}) - Tlf: {phone}", file=sys.stderr)
+        # Hacer petición POST a la API
+        try:
+            response = requests.post(api_url, json=new_client, timeout=10)
+            if response.status_code == 200:
+                result = response.json()
+                print(f"  ✅ Nuevo cliente añadido via API: {name} ({location}) - Tlf: {phone_clean}", file=sys.stderr)
+            else:
+                print(f"  ⚠️ Error de API ({response.status_code}): {response.text}", file=sys.stderr)
+        except requests.exceptions.ConnectionError:
+            print(f"  ⚠️ No se pudo conectar al backend. Asegúrate de que está corriendo.", file=sys.stderr)
+        except Exception as e:
+            print(f"  ⚠️ Error en petición API: {e}", file=sys.stderr)
         
     except Exception as e:
         print(f"  ⚠️ Error al guardar cliente: {e}", file=sys.stderr)
