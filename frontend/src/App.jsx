@@ -1105,13 +1105,20 @@ function App() {
           console.log('Normalized Row:', row);
 
           // Mapping robusto
-          const phoneRaw = row['teléfono'] || row['telefono'] || row['phone'] || row['celular'] || row['movil'] || row['móvil'] || row['tlf'] || '';
-          const phone = phoneRaw ? String(phoneRaw).replace(/\s+/g, '') : '';
+          // 1. Obtener teléfono limpio
+          let phoneRaw = row['teléfono'] || row['telefono'] || row['phone'] || row['celular'] || row['movil'] || row['móvil'] || row['tlf'] || '';
+          let phone = phoneRaw ? String(phoneRaw).replace(/[^0-9+]/g, '') : '';
           
+          // Si no hay teléfono, intentar usar el nombre si parece un número
+          if (!phone && row['nombre'] && /^[0-9+]+$/.test(String(row['nombre']).replace(/\s/g, ''))) {
+             phone = String(row['nombre']).replace(/[^0-9+]/g, '');
+          }
+
+          // 2. Obtener enlace de WhatsApp
           const whatsappLink = row['click para contactar'] || row['link wtp'] || row['enlace whatsapp'] || row['whatsapp'] || (phone ? `https://web.whatsapp.com/send?phone=34${phone}` : '');
 
           return {
-            name: row['nombre'] || row['nombre del cliente'] || row['cliente'] || row['name'] || row['nombre completo'] || '',
+            name: row['nombre'] || row['nombre del cliente'] || row['cliente'] || row['name'] || row['nombre completo'] || 'Sin Nombre',
             phone: phone,
             contactName: row['contacto'] || row['persona contacto'] || '',
             location: row['ubicacion'] || row['ubicación'] || row['zona'] || row['ciudad'] || '',
@@ -1128,8 +1135,9 @@ function App() {
             preferences: ''
           };
         }).filter(c => {
-            const isValid = c.name || c.phone;
-            if (!isValid) console.log('Skipping invalid row:', c);
+            // Validación más permisiva: Aceptar si tiene nombre O teléfono
+            const isValid = (c.name && c.name !== 'Sin Nombre') || c.phone;
+            if (!isValid) console.warn('Skipping invalid row (no name/phone):', c);
             return isValid;
         });
 
