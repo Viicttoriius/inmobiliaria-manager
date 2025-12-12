@@ -1035,24 +1035,30 @@ function App() {
       header: true,
       skipEmptyLines: true,
       complete: async (results) => {
-        const importedClients = results.data.map(row => {
-          const phone = (row['Teléfono'] || row['telefono'] || '').replace(/\s+/g, '');
-          const whatsappLink = row['Click para contactar'] || row['Link Wtp'] || row['Link WTP'] || (phone ? `https://web.whatsapp.com/send?phone=34${phone}` : '');
+        const importedClients = results.data.map(originalRow => {
+          // Normalizar claves: trim y lowercase para evitar errores de tipeo en cabeceras
+          const row = {};
+          Object.keys(originalRow).forEach(key => {
+            row[key.trim().toLowerCase()] = originalRow[key];
+          });
+
+          const phone = (row['teléfono'] || row['telefono'] || row['phone'] || row['celular'] || '').replace(/\s+/g, '');
+          const whatsappLink = row['click para contactar'] || row['link wtp'] || row['enlace whatsapp'] || (phone ? `https://web.whatsapp.com/send?phone=34${phone}` : '');
 
           return {
-            name: row['Nombre'] || row['Nombre del cliente'] || '',
+            name: row['nombre'] || row['nombre del cliente'] || row['cliente'] || row['name'] || '',
             phone: phone,
-            contactName: row['Contacto'] || '',
-            location: row['UBICACION '] || row['UBICACION'] || row['Ubicacion'] || '',
-            adLink: row['Enlace del anuncio'] || '',
-            status: row['Estado'] || 'Enviado',
-            propertyType: (row['Tipo de Inmueble '] || row['Tipo de Inmueble'] || '').trim(),
+            contactName: row['contacto'] || row['persona contacto'] || '',
+            location: row['ubicacion'] || row['ubicación'] || row['zona'] || '',
+            adLink: row['enlace del anuncio'] || row['link anuncio'] || row['url'] || '',
+            status: row['estado'] || 'Enviado',
+            propertyType: (row['tipo de inmueble'] || row['tipo inmueble'] || row['tipo'] || '').trim(),
             whatsappLink: whatsappLink,
-            answered: row['Contestado '] || row['Contestado'] || '',
-            response: row['Respuesta'] || '',
-            date: row['Fecha'] || '',
-            appointmentDate: row['Fecha de Cita'] || '',
-            email: '', // CSV doesn't seem to have email
+            answered: row['contestado'] || row['respuesta recibida'] || '',
+            response: row['respuesta'] || '',
+            date: row['fecha'] || '',
+            appointmentDate: row['fecha de cita'] || row['cita'] || '',
+            email: row['email'] || row['correo'] || '',
             interest: 'Comprar', // Default
             preferences: ''
           };
