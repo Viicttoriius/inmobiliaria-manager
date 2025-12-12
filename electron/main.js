@@ -120,6 +120,18 @@ function startBackend() {
 
   const userDataPath = app.getPath('userData');
   console.log('User Data Path:', userDataPath);
+  
+  // Archivo de logs del proceso principal (para debug en producción)
+  const mainLogPath = path.join(userDataPath, 'main.log');
+  const logToFile = (msg) => {
+    try {
+      const timestamp = new Date().toISOString();
+      fs.appendFileSync(mainLogPath, `[${timestamp}] ${msg}\n`);
+    } catch (e) { console.error('Error writing to main log:', e); }
+  };
+
+  logToFile('--- Starting Backend ---');
+  logToFile(`Script Path: ${scriptPath}`);
 
   try {
     // Usar fork para lanzar el backend como un proceso hijo independiente
@@ -135,20 +147,28 @@ function startBackend() {
     });
 
     backendProcess.on('error', (err) => {
-      console.error('Failed to start backend process:', err);
+      const msg = `Failed to start backend process: ${err.message}`;
+      console.error(msg);
+      logToFile(msg);
       dialog.showErrorBox('Error de Inicio', `Falló el inicio del proceso backend:\n${err.message}`);
     });
 
     backendProcess.stdout.on('data', (data) => {
-      console.log(`[Backend]: ${data}`);
+      const msg = `[Backend]: ${data}`;
+      console.log(msg);
+      logToFile(msg.trim());
     });
 
     backendProcess.stderr.on('data', (data) => {
-      console.error(`[Backend Error]: ${data}`);
+      const msg = `[Backend Error]: ${data}`;
+      console.error(msg);
+      logToFile(msg.trim());
     });
 
     backendProcess.on('exit', (code, signal) => {
-      console.log(`Backend exited with code ${code} and signal ${signal}`);
+      const msg = `Backend exited with code ${code} and signal ${signal}`;
+      console.log(msg);
+      logToFile(msg);
       if (code !== 0 && code !== null) {
         if (!app.isQuitting) {
           dialog.showErrorBox('Error del Servidor Backend',
@@ -162,7 +182,9 @@ function startBackend() {
       }
     });
   } catch (err) {
-    console.error('Exception starting backend:', err);
+    const msg = `Exception starting backend: ${err.message}`;
+    console.error(msg);
+    logToFile(msg);
     dialog.showErrorBox('Excepción Fatal', `Error al intentar iniciar el backend:\n${err.message}`);
   }
 }

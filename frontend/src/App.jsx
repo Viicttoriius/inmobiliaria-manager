@@ -333,16 +333,40 @@ function App() {
   const [filteredClients, setFilteredClients] = useState([]);
 
   useEffect(() => {
-    loadProperties()
-    loadClients()
+    // Intentar conectar al backend con reintentos
+    const connectToBackend = async () => {
+      let retries = 0;
+      const maxRetries = 20; // 20 segundos de espera
+      
+      while (retries < maxRetries) {
+        try {
+          // Intentar un fetch simple para ver si el backend responde
+          await fetch(`${API_URL}/properties?limit=1`);
+          console.log('✅ Backend conectado exitosamente');
+          
+          // Si conecta, cargar datos
+          loadProperties();
+          loadClients();
+          
+          // Iniciar polling
+          const interval = setInterval(() => {
+            loadProperties(true);
+            loadClients(true);
+          }, 10000);
+          
+          return () => clearInterval(interval);
+        } catch (error) {
+          console.log(`⏳ Esperando backend... (${retries + 1}/${maxRetries})`);
+          retries++;
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      
+      console.error('❌ No se pudo conectar al backend después de múltiples intentos');
+      // Podríamos mostrar un estado de error aquí si lo deseamos
+    };
 
-    // Polling automático cada 10 segundos para actualizar datos y notificar
-    const interval = setInterval(() => {
-      loadProperties(true);
-      loadClients(true);
-    }, 10000);
-
-    return () => clearInterval(interval);
+    connectToBackend();
   }, [])
 
   useEffect(() => {
