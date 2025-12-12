@@ -568,6 +568,18 @@ function bulkUpsertClients(clients) {
                 if (client.phone && typeof client.phone !== 'string') client.phone = String(client.phone);
                 if (client.name && typeof client.name !== 'string') client.name = String(client.name);
 
+                // --- LIMPIEZA AUTOMÁTICA DE DATOS ---
+                // 1. Limpiar teléfono: Quitar espacios ("690 70 22"), guiones, letras, dejar solo NUMEROS y '+'
+                if (client.phone) {
+                    client.phone = client.phone.replace(/[^0-9+]/g, '');
+                }
+
+                // 2. Limpiar nombre: Quitar espacios extra
+                if (client.name) {
+                    client.name = client.name.trim();
+                }
+                // ------------------------------------
+
                 // Normalizar answered a booleano/integer si viene string ('Si'/'No')
                 // Aunque insertClient ya hace `client.answered ? 1 : 0`, nos aseguramos
 
