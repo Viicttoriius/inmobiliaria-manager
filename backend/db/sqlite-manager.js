@@ -560,16 +560,29 @@ function bulkUpsertClients(clients) {
         let updated = 0;
 
         for (const client of clientList) {
-            if (!client.phone) continue;
+            try {
+                // Validación básica para evitar crashes
+                if (!client.phone) continue;
 
-            const existing = getClientByPhone(client.phone);
+                // Asegurar tipos básicos
+                if (client.phone && typeof client.phone !== 'string') client.phone = String(client.phone);
+                if (client.name && typeof client.name !== 'string') client.name = String(client.name);
 
-            if (existing) {
-                updateClient(existing.id, client);
-                updated++;
-            } else {
-                insertClient(client);
-                added++;
+                // Normalizar answered a booleano/integer si viene string ('Si'/'No')
+                // Aunque insertClient ya hace `client.answered ? 1 : 0`, nos aseguramos
+
+                const existing = getClientByPhone(client.phone);
+
+                if (existing) {
+                    updateClient(existing.id, client);
+                    updated++;
+                } else {
+                    insertClient(client);
+                    added++;
+                }
+            } catch (err) {
+                console.error(`Error importando cliente individual (${client.phone || 'sin tlf'}):`, err.message);
+                // No relanzamos el error para permitir que continúe con el resto del lote
             }
         }
 

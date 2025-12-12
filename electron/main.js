@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, Notification, dialog } = require('electron');
 const path = require('path');
 const { fork } = require('child_process');
 const { autoUpdater } = require('electron-updater');
@@ -129,8 +129,19 @@ function startBackend() {
     console.error(`[Backend Error]: ${data}`);
   });
 
-  backendProcess.on('close', (code) => {
-    console.log(`Backend exited with code ${code}`);
+  backendProcess.on('exit', (code, signal) => {
+    console.log(`Backend exited with code ${code} and signal ${signal}`);
+    if (code !== 0 && code !== null) {
+      if (!app.isQuitting) {
+        dialog.showErrorBox('Error del Servidor Backend',
+          `El proceso del servidor se ha detenido inesperadamente (Código: ${code}, Señal: ${signal}).\n\n` +
+          `Posibles causas:\n` +
+          `1. Base de datos corrupta o bloqueada.\n` +
+          `2. Puerto 3001 ocupado.\n` +
+          `3. Error en módulo nativo (better-sqlite3).\n\n` +
+          `La aplicación puede no funcionar correctamente. Se recomienda reiniciar.`);
+      }
+    }
   });
 }
 
