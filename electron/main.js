@@ -15,6 +15,11 @@ let backendProcess;
 // Detectar si estamos en modo desarrollo
 const isDev = !app.isPackaged;
 
+// Establecer App ID para Windows (Importante para notificaciones y barra de tareas)
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.victormunoz.inmobiliaria');
+}
+
 // Detectar si estamos en macOS antiguo (para ajustes de compatibilidad)
 const isMacOSLegacy = () => {
   if (process.platform !== 'darwin') return false;
@@ -228,4 +233,8 @@ ipcMain.handle('download-update', () => {
 
 ipcMain.handle('quit-and-install', () => {
   autoUpdater.quitAndInstall();
+});
+
+ipcMain.handle('get-app-version', () => {
+  return app.getVersion();
 });

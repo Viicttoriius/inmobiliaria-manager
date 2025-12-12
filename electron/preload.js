@@ -18,5 +18,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     quitAndInstall: () => ipcRenderer.invoke('quit-and-install'),
 
     // Otros (ejemplo)
-    sendNotification: (message) => ipcRenderer.send('notify', message)
+    sendNotification: (message) => ipcRenderer.send('notify', message),
+    getAppVersion: () => ipcRenderer.invoke('get-app-version')
 });

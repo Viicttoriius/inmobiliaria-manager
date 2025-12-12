@@ -761,6 +761,31 @@ body {
   box-shadow: 0 1px 0 var(--border);
 }
 
+/* Fix for potential stray dot in first column */
+.clients-table th:first-child {
+  list-style: none;
+  text-decoration: none;
+  font-size: 0; /* Hide any potential stray text/dots */
+  text-align: center;
+  padding: 0;
+  vertical-align: middle;
+}
+
+.clients-table th:first-child input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  margin: auto;
+  display: block;
+}
+
+.clients-table th:first-child::before,
+.clients-table th:first-child::after,
+.clients-table th:first-child::marker {
+  content: none !important;
+  display: none !important;
+}
+
 .clients-table td {
   color: var(--text);
 }

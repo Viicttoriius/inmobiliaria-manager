@@ -101,6 +101,34 @@ function App() {
 
   // Cargar historial de notificaciones al iniciar
   useEffect(() => {
+    // Verificar actualización de versión
+    const checkVersionUpdate = async () => {
+      if (window.electronAPI) {
+        try {
+          const currentVersion = await window.electronAPI.getAppVersion();
+          const lastVersion = localStorage.getItem('appVersion');
+
+          if (lastVersion && lastVersion !== currentVersion) {
+            // Se ha actualizado la aplicación
+            showNotification(
+              `¡Actualización completada! Ahora estás en la versión ${currentVersion}.`,
+              'success',
+              'Aplicación Actualizada'
+            );
+            
+            // Aquí podrías mostrar un modal con las novedades si lo deseas
+            // showReleaseNotesModal(currentVersion); 
+          }
+
+          // Guardar la versión actual
+          localStorage.setItem('appVersion', currentVersion);
+        } catch (error) {
+          console.error('Error verificando versión:', error);
+        }
+      }
+    };
+    checkVersionUpdate();
+
     const savedHistory = localStorage.getItem('notificationHistory');
     if (savedHistory) {
       try {
@@ -1029,28 +1057,41 @@ function App() {
 
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
+    console.log('File selected:', file);
     if (!file) return;
 
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
+      delimitersToGuess: [',', ';', '\t', '|'],
       complete: async (results) => {
+        console.log('CSV Raw Results:', results);
+        
+        if (results.errors.length > 0) {
+           console.warn('CSV Parse Errors:', results.errors);
+        }
+
         const importedClients = results.data.map(originalRow => {
           // Normalizar claves: trim y lowercase para evitar errores de tipeo en cabeceras
           const row = {};
           Object.keys(originalRow).forEach(key => {
             row[key.trim().toLowerCase()] = originalRow[key];
           });
+          
+          console.log('Normalized Row:', row);
 
-          const phone = (row['teléfono'] || row['telefono'] || row['phone'] || row['celular'] || '').replace(/\s+/g, '');
-          const whatsappLink = row['click para contactar'] || row['link wtp'] || row['enlace whatsapp'] || (phone ? `https://web.whatsapp.com/send?phone=34${phone}` : '');
+          // Mapping robusto
+          const phoneRaw = row['teléfono'] || row['telefono'] || row['phone'] || row['celular'] || row['movil'] || row['móvil'] || row['tlf'] || '';
+          const phone = phoneRaw ? String(phoneRaw).replace(/\s+/g, '') : '';
+          
+          const whatsappLink = row['click para contactar'] || row['link wtp'] || row['enlace whatsapp'] || row['whatsapp'] || (phone ? `https://web.whatsapp.com/send?phone=34${phone}` : '');
 
           return {
-            name: row['nombre'] || row['nombre del cliente'] || row['cliente'] || row['name'] || '',
+            name: row['nombre'] || row['nombre del cliente'] || row['cliente'] || row['name'] || row['nombre completo'] || '',
             phone: phone,
             contactName: row['contacto'] || row['persona contacto'] || '',
-            location: row['ubicacion'] || row['ubicación'] || row['zona'] || '',
-            adLink: row['enlace del anuncio'] || row['link anuncio'] || row['url'] || '',
+            location: row['ubicacion'] || row['ubicación'] || row['zona'] || row['ciudad'] || '',
+            adLink: row['enlace del anuncio'] || row['link anuncio'] || row['url'] || row['anuncio'] || '',
             status: row['estado'] || 'Enviado',
             propertyType: (row['tipo de inmueble'] || row['tipo inmueble'] || row['tipo'] || '').trim(),
             whatsappLink: whatsappLink,
@@ -1062,7 +1103,11 @@ function App() {
             interest: 'Comprar', // Default
             preferences: ''
           };
-        }).filter(c => c.name || c.phone); // Filter empty rows
+        }).filter(c => {
+            const isValid = c.name || c.phone;
+            if (!isValid) console.log('Skipping invalid row:', c);
+            return isValid;
+        });
 
         if (importedClients.length === 0) {
           showNotification('No se encontraron clientes válidos en el archivo.', 'warning');
