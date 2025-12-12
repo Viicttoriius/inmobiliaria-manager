@@ -109,45 +109,62 @@ function startBackend() {
     scriptPath = path.join(process.resourcesPath, 'backend', 'server.js');
   }
 
+  // Verificación de existencia del script
+  const fs = require('fs');
+  if (!fs.existsSync(scriptPath)) {
+    dialog.showErrorBox('Error Crítico', `No se encuentra el archivo del servidor backend en:\n${scriptPath}\n\nLa aplicación no funcionará correctamente.`);
+    return;
+  }
+
   console.log('Iniciando Backend desde:', scriptPath);
 
   const userDataPath = app.getPath('userData');
   console.log('User Data Path:', userDataPath);
 
-  // Usar fork para lanzar el backend como un proceso hijo independiente
-  // Esto usa el binario de Node.js integrado en Electron
-  backendProcess = fork(scriptPath, [], {
-    cwd: path.dirname(scriptPath), // IMPORTANTE: Fijar directorio de trabajo
-    stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
-    env: {
-      ...process.env,
-      PORT: 3001,
-      USER_DATA_PATH: userDataPath
-    }
-  });
-
-  backendProcess.stdout.on('data', (data) => {
-    console.log(`[Backend]: ${data}`);
-  });
-
-  backendProcess.stderr.on('data', (data) => {
-    console.error(`[Backend Error]: ${data}`);
-  });
-
-  backendProcess.on('exit', (code, signal) => {
-    console.log(`Backend exited with code ${code} and signal ${signal}`);
-    if (code !== 0 && code !== null) {
-      if (!app.isQuitting) {
-        dialog.showErrorBox('Error del Servidor Backend',
-          `El proceso del servidor se ha detenido inesperadamente (Código: ${code}, Señal: ${signal}).\n\n` +
-          `Posibles causas:\n` +
-          `1. Base de datos corrupta o bloqueada.\n` +
-          `2. Puerto 3001 ocupado.\n` +
-          `3. Error en módulo nativo (better-sqlite3).\n\n` +
-          `La aplicación puede no funcionar correctamente. Se recomienda reiniciar.`);
+  try {
+    // Usar fork para lanzar el backend como un proceso hijo independiente
+    // Esto usa el binario de Node.js integrado en Electron
+    backendProcess = fork(scriptPath, [], {
+      cwd: path.dirname(scriptPath), // IMPORTANTE: Fijar directorio de trabajo
+      stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
+      env: {
+        ...process.env,
+        PORT: 3001,
+        USER_DATA_PATH: userDataPath
       }
-    }
-  });
+    });
+
+    backendProcess.on('error', (err) => {
+      console.error('Failed to start backend process:', err);
+      dialog.showErrorBox('Error de Inicio', `Falló el inicio del proceso backend:\n${err.message}`);
+    });
+
+    backendProcess.stdout.on('data', (data) => {
+      console.log(`[Backend]: ${data}`);
+    });
+
+    backendProcess.stderr.on('data', (data) => {
+      console.error(`[Backend Error]: ${data}`);
+    });
+
+    backendProcess.on('exit', (code, signal) => {
+      console.log(`Backend exited with code ${code} and signal ${signal}`);
+      if (code !== 0 && code !== null) {
+        if (!app.isQuitting) {
+          dialog.showErrorBox('Error del Servidor Backend',
+            `El proceso del servidor se ha detenido inesperadamente (Código: ${code}, Señal: ${signal}).\n\n` +
+            `Posibles causas:\n` +
+            `1. Base de datos corrupta o bloqueada.\n` +
+            `2. Puerto 3001 ocupado.\n` +
+            `3. Error en módulo nativo (better-sqlite3).\n\n` +
+            `La aplicación puede no funcionar correctamente. Se recomienda reiniciar.`);
+        }
+      }
+    });
+  } catch (err) {
+    console.error('Exception starting backend:', err);
+    dialog.showErrorBox('Excepción Fatal', `Error al intentar iniciar el backend:\n${err.message}`);
+  }
 }
 
 app.whenReady().then(() => {
