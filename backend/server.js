@@ -425,6 +425,20 @@ process.on('uncaughtException', (err) => {
 
 process.on('unhandledRejection', (reason, promise) => {
     console.error('🔥 UNHANDLED REJECTION:', reason);
+
+    // Auto-recuperación para error común de Puppeteer/WhatsApp
+    if (reason && reason.message && reason.message.includes('Execution context was destroyed')) {
+        console.log('♻️ Detectado error de contexto destruido. Reiniciando servicio de WhatsApp en 5s...');
+        // Verificación básica para evitar bucles si ya se está reiniciando
+        setTimeout(() => {
+            // Intentar reiniciar si el cliente existe
+            if (typeof whatsappClient !== 'undefined') {
+                whatsappClient.destroy()
+                    .then(() => initializeWhatsApp())
+                    .catch(() => initializeWhatsApp());
+            }
+        }, 5000);
+    }
 });
 
 // Ejecutar verificación en segundo plano al iniciar
@@ -466,10 +480,12 @@ const whatsappClient = new Client({
             '--disable-gl-drawing-for-tests'
         ]
     },
-    webVersionCache: {
+    // webVersionCache desactivado: Usar versión actual de WhatsApp Web para evitar bucles de recarga
+    // webVersionCache desactivado para evitar conflictos de intercepción y recargas
+    /* webVersionCache: {
         type: 'remote',
         remotePath: 'https://raw.githubusercontent.com/guigo613/alternative-wa-version/main/html/2.2412.54v2.html',
-    }
+    } */
 });
 
 let isWhatsAppReady = false;
