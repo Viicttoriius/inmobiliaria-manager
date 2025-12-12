@@ -459,7 +459,7 @@ const whatsappClient = new Client({
     authStrategy: new LocalAuth({
         dataPath: DATA_DIR
     }),
-    authTimeoutMs: 60000,
+    authTimeoutMs: 120000,
     qrMaxRetries: 0,
     puppeteer: {
         // Si browserPath es undefined, intentamos usar el bundled
@@ -479,13 +479,7 @@ const whatsappClient = new Client({
             '--disable-software-rasterizer',
             '--disable-gl-drawing-for-tests'
         ]
-    },
-    // webVersionCache desactivado: Usar versión actual de WhatsApp Web para evitar bucles de recarga
-    // webVersionCache desactivado para evitar conflictos de intercepción y recargas
-    /* webVersionCache: {
-        type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/guigo613/alternative-wa-version/main/html/2.2412.54v2.html',
-    } */
+    }
 });
 
 let isWhatsAppReady = false;
