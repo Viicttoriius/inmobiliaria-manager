@@ -189,9 +189,91 @@ function startBackend() {
   }
 }
 
-app.whenReady().then(() => {
+let splashWindow;
+
+function createSplashWindow() {
+  splashWindow = new BrowserWindow({
+    width: 500,
+    height: 350,
+    transparent: false,
+    frame: false,
+    alwaysOnTop: true,
+    resizable: false,
+    center: true,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    },
+    icon: path.join(__dirname, 'icon.png')
+  });
+  splashWindow.loadFile(path.join(__dirname, 'splash.html'));
+}
+
+async function waitForBackend() {
+  const { net } = require('electron');
+  const checkUrl = 'http://localhost:3001/';
+  
+  const check = () => {
+    return new Promise((resolve) => {
+      try {
+        const request = net.request(checkUrl);
+        request.on('response', (response) => {
+          resolve(response.statusCode === 200);
+        });
+        request.on('error', (error) => {
+          resolve(false);
+        });
+        request.end();
+      } catch (e) {
+        resolve(false);
+      }
+    });
+  };
+
+  let retries = 0;
+  // Esperar hasta 45 segundos (algunos sistemas son lentos iniciando node/sqlite)
+  while (retries < 45) {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.webContents.send('status-update', `Iniciando servidor... (${retries + 1}/45)`);
+    }
+    
+    const isReady = await check();
+    if (isReady) {
+      if (splashWindow && !splashWindow.isDestroyed()) {
+        splashWindow.webContents.send('status-update', `¡Servidor conectado! Iniciando interfaz...`);
+      }
+      // Pequeña pausa para que el usuario vea "Conectado"
+      await new Promise(r => setTimeout(r, 800));
+      return true;
+    }
+    
+    await new Promise(r => setTimeout(r, 1000));
+    retries++;
+  }
+  return false;
+}
+
+app.whenReady().then(async () => {
+  createSplashWindow();
+  
+  // Dar tiempo a que el splash se renderice
+  await new Promise(r => setTimeout(r, 500));
+  
   startBackend();
+  
+  const backendReady = await waitForBackend();
+  
   createWindow();
+  
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.close();
+  }
+
+  if (!backendReady) {
+    dialog.showErrorBox('Advertencia de Inicio', 
+      'El servidor backend tardó demasiado en responder.\n' + 
+      'La aplicación se abrirá, pero es posible que veas errores de conexión iniciales.');
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
