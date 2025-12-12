@@ -488,7 +488,26 @@ function App() {
     if (!silent) setLoading(true)
     try {
       const response = await fetch(`${API_URL}/properties?t=${new Date().getTime()}`)
-      const data = await response.json()
+      const rawData = await response.json()
+
+      // Map SQLite snake_case to Frontend expected format (PascalCase/Legacy)
+      const data = rawData.map(p => ({
+        ...p,
+        id: p.id,
+        Title: p.title,
+        Price: p.price,
+        Description: p.description,
+        imgurl: p.image_url,
+        url: p.url,
+        property_type: p.property_type,
+        source: p.source,
+        Timeago: p.timeago,
+        Municipality: p.location,
+        Phone: p.phone,
+        hab: p.habitaciones,
+        m2: p.metros,
+        Advertiser: p.extra_data ? (JSON.parse(p.extra_data).advertiser || '') : ''
+      }));
 
       // Detección de nuevas propiedades
       if (prevPropertiesRef.current) {
@@ -511,7 +530,30 @@ function App() {
   const loadClients = async (silent = false) => {
     try {
       const response = await fetch(`${API_URL}/clients?t=${new Date().getTime()}`)
-      const data = await response.json()
+      const rawData = await response.json()
+
+      // Map SQLite snake_case to Frontend CamelCase
+      const data = rawData.map(c => ({
+        ...c,
+        id: c.id,
+        name: c.name,
+        phone: c.phone,
+        email: c.email,
+        contactName: c.contact_name,
+        location: c.location,
+        adLink: c.ad_link,
+        whatsappLink: c.whatsapp_link,
+        status: c.status,
+        propertyType: c.property_type,
+        interest: c.interest,
+        preferences: c.preferences,
+        answered: c.answered,
+        response: c.response,
+        date: c.date,
+        appointmentDate: c.appointment_date,
+        contactHistory: typeof c.contact_history === 'string' ? JSON.parse(c.contact_history) : (c.contact_history || []),
+        notes: c.notes
+      }));
 
       // Detección de nuevos clientes
       if (prevClientsRef.current) {
