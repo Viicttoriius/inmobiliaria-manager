@@ -1,6 +1,6 @@
 {
   "name": "inmobiliaria-manager",
-  "version": "1.2.45",
+  "version": "1.2.46",
   "description": "Sistema de Gestión Inmobiliaria con Automatización",
   "main": "electron/main.js",
   "author": "Victor Muñoz Lopez",
@@ -24,7 +24,8 @@
     "files": [
       "electron/**/*",
       "frontend/dist/**/*",
-      "package.json"
+      "package.json",
+      "electron/assets/**/*"
     ],
     "asarUnpack": [
       "**/node_modules/node-notifier/**/*",
@@ -101,13 +102,16 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "installerLanguages": ["es_ES"],
+      "multiLanguageInstaller": true,
+      "displayLanguageSelector": true,
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false,
       "shortcutName": "Inmobiliaria Manager",
       "include": "build/installer.nsh",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
-      "installerHeaderIcon": "build/icon.ico"
+      "installerHeaderIcon": "build/icon.ico",
+      "license": "LICENSE"
     },
     "publish": {
       "provider": "github",

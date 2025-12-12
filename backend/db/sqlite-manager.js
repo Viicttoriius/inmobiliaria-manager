@@ -5,8 +5,16 @@ const path = require('path');
 const fs = require('fs');
 
 // Determine database path based on environment
-const BASE_PATH = process.env.USER_DATA_PATH || path.join(__dirname, '..', '..');
-const DB_PATH = path.join(BASE_PATH, 'data', 'inmobiliaria.db');
+// Forzar el uso de la carpeta 'data' local en desarrollo O producción si se desea portabilidad/visibilidad
+// En producción (packaged), path.dirname(process.execPath) es la carpeta del .exe
+// En desarrollo, __dirname sube a backend/db, así que ../.. va a la raíz del proyecto
+const ROOT_PATH = process.env.USER_DATA_PATH 
+    ? process.env.USER_DATA_PATH 
+    : (process.env.NODE_ENV === 'production' 
+        ? path.dirname(process.execPath) // Al lado del .exe en producción
+        : path.join(__dirname, '..', '..')); // Raíz del proyecto en desarrollo
+
+const DB_PATH = path.join(ROOT_PATH, 'data', 'inmobiliaria.db');
 
 // Ensure data directory exists
 const dataDir = path.dirname(DB_PATH);
@@ -455,7 +463,8 @@ function getClientByPhone(phone) {
     const last9 = cleanPhone.slice(-9);
     
     // Search for any phone that ends with the last 9 digits of the provided phone
-    const stmt = db.prepare('SELECT * FROM clients WHERE REPLACE(REPLACE(REPLACE(phone, " ", ""), "-", ""), "+", "") LIKE ?');
+    // Use single quotes for string literals in SQL to avoid "no such column" errors
+    const stmt = db.prepare("SELECT * FROM clients WHERE REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', '') LIKE ?");
     let client = stmt.get(`%${last9}`);
 
     if (client) {
