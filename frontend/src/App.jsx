@@ -509,19 +509,19 @@ function App() {
       const data = rawData.map(p => ({
         ...p,
         id: p.id,
-        Title: p.title,
-        Price: p.price,
-        Description: p.description,
-        imgurl: p.image_url,
+        Title: p.title || p.Title,
+        Price: p.price || p.Price,
+        Description: p.description || p.Description,
+        imgurl: p.image_url || p.imgurl,
         url: p.url,
         property_type: p.property_type,
         source: p.source,
-        Timeago: p.timeago,
-        Municipality: p.location,
-        Phone: p.phone,
-        hab: p.habitaciones,
-        m2: p.metros,
-        Advertiser: p.extra_data ? (JSON.parse(p.extra_data).advertiser || '') : ''
+        Timeago: p.timeago || p.Timeago,
+        Municipality: p.location || p.Municipality,
+        Phone: p.phone || p.Phone,
+        hab: p.habitaciones || p.hab,
+        m2: p.metros || p.m2,
+        Advertiser: p.extra_data ? (JSON.parse(p.extra_data).advertiser || '') : (p.Advertiser || '')
       }));
 
       // Detección de nuevas propiedades
@@ -554,19 +554,19 @@ function App() {
         name: c.name,
         phone: c.phone,
         email: c.email,
-        contactName: c.contact_name,
+        contactName: c.contact_name || c.contactName,
         location: c.location,
-        adLink: c.ad_link,
-        whatsappLink: c.whatsapp_link,
+        adLink: c.ad_link || c.adLink,
+        whatsappLink: c.whatsapp_link || c.whatsappLink,
         status: c.status,
-        propertyType: c.property_type,
+        propertyType: c.property_type || c.propertyType,
         interest: c.interest,
         preferences: c.preferences,
         answered: c.answered,
         response: c.response,
         date: c.date,
-        appointmentDate: c.appointment_date,
-        contactHistory: typeof c.contact_history === 'string' ? JSON.parse(c.contact_history) : (c.contact_history || []),
+        appointmentDate: c.appointment_date || c.appointmentDate,
+        contactHistory: typeof c.contact_history === 'string' ? JSON.parse(c.contact_history) : (c.contact_history || c.contactHistory || []),
         notes: c.notes
       }));
 

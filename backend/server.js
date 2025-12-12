@@ -809,11 +809,11 @@ app.post('/api/config/whatsapp/reset', async (req, res) => {
 const PROPERTIES_DIR = path.join(DATA_DIR, 'properties');
 
 const IDEALISTA_SCRAPER = path.join(__dirname, 'scrapers/idealista/run_idealista_scraper.py');
-const CLIENTS_FILE = path.join(DATA_DIR, 'clients/clients.json');
+// const CLIENTS_FILE = path.join(DATA_DIR, 'clients/clients.json'); // LEGACY
 
-const PROPERTIES_JSON_FILE = path.join(DATA_DIR, 'properties.json');
+// const PROPERTIES_JSON_FILE = path.join(DATA_DIR, 'properties.json'); // LEGACY
 
-// Asegurar que existen las carpetas y el archivo de clientes
+// Asegurar que existen las carpetas
 if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
 }
@@ -834,21 +834,21 @@ LEGACY_PATH_CHECK: ${path.join(__dirname, '..', 'data')}
     console.error('Error escribiendo debug info:', e);
 }
 
-const dataClientsDir = path.join(DATA_DIR, 'clients');
-if (!fs.existsSync(dataClientsDir)) {
-    fs.mkdirSync(dataClientsDir, { recursive: true });
-}
-if (!fs.existsSync(CLIENTS_FILE)) {
-    fs.writeFileSync(CLIENTS_FILE, JSON.stringify([], null, 2));
-}
+// const dataClientsDir = path.join(DATA_DIR, 'clients'); // LEGACY
+// if (!fs.existsSync(dataClientsDir)) {
+//    fs.mkdirSync(dataClientsDir, { recursive: true });
+// }
+// if (!fs.existsSync(CLIENTS_FILE)) {
+//    fs.writeFileSync(CLIENTS_FILE, JSON.stringify([], null, 2));
+// }
 // Asegurar que el directorio de propiedades existe
 if (!fs.existsSync(PROPERTIES_DIR)) {
     fs.mkdirSync(PROPERTIES_DIR, { recursive: true });
 }
 // Asegurar que el archivo de propiedades consolidado existe
-if (!fs.existsSync(PROPERTIES_JSON_FILE)) {
-    fs.writeFileSync(PROPERTIES_JSON_FILE, JSON.stringify([], null, 2));
-}
+// if (!fs.existsSync(PROPERTIES_JSON_FILE)) {
+//    fs.writeFileSync(PROPERTIES_JSON_FILE, JSON.stringify([], null, 2));
+// }
 
 // Función para calcular la fecha de publicación real y el Timeago actualizado
 const calculatePublicationDetails = (scrapeDate, timeago) => {
@@ -1102,6 +1102,15 @@ const runPythonScraper = (scraperPath, res, scraperId) => {
                 console.log(`📦 Insertando ${newPropertiesArray.length} propiedades en SQLite...`);
                 sqliteResult = sqliteManager.bulkInsertProperties(newPropertiesArray);
                 console.log(`   ✅ SQLite: ${sqliteResult.inserted} insertadas, ${sqliteResult.updated} actualizadas`);
+                
+                // CLEANUP: Eliminar el archivo JSON temporal después de una inserción exitosa
+                try {
+                    fs.unlinkSync(latestScraperFile);
+                    console.log(`   🗑️ Archivo temporal eliminado: ${path.basename(latestScraperFile)}`);
+                } catch (unlinkError) {
+                    console.warn(`   ⚠️ No se pudo eliminar archivo temporal: ${unlinkError.message}`);
+                }
+
             } catch (sqliteError) {
                 console.error('   ❌ Error insertando en SQLite:', sqliteError.message);
                 return res.status(500).json({ success: false, error: 'Error guardando en base de datos', details: sqliteError.message });
@@ -1503,6 +1512,7 @@ app.post('/api/properties/update', async (req, res) => {
         }
 
         // Actualizar properties.json consolidado también
+        /* LEGACY: Eliminado para usar solo SQLite
         try {
             if (fs.existsSync(PROPERTIES_JSON_FILE)) {
                 const consolidatedData = JSON.parse(fs.readFileSync(PROPERTIES_JSON_FILE, 'utf8'));
@@ -1528,6 +1538,7 @@ app.post('/api/properties/update', async (req, res) => {
         } catch (e) {
             console.error("Error actualizando properties.json:", e);
         }
+        */
 
         // Contar nuevos clientes desde la salida stderr
         let newClientsCount = 0;
