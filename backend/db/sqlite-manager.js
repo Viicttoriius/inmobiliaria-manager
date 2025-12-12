@@ -578,7 +578,23 @@ function bulkUpsertClients(clients) {
                 if (client.name) {
                     client.name = client.name.trim();
                 }
+                
+                // Si no hay teléfono válido pero hay nombre, generar un ID ficticio para permitir la importación
+                // Esto es útil para contactos de email o "chat enviado"
+                if (!client.phone && client.name) {
+                    // Generar un "teléfono" único basado en el nombre para poder guardarlo
+                    // Usamos un prefijo 'ID_' para distinguir
+                    const nameSlug = client.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+                    client.phone = `ID_${nameSlug}_${Date.now().toString().slice(-4)}`;
+                    console.log(`   ⚠️ Cliente sin teléfono (${client.name}). Asignado ID temporal: ${client.phone}`);
+                }
                 // ------------------------------------
+                
+                // Si sigue sin haber identificador (ni teléfono ni nombre), saltar
+                if (!client.phone) {
+                    console.warn(`   ⚠️ Saltando cliente sin teléfono ni nombre válido.`);
+                    continue;
+                }
 
                 // Normalizar answered a booleano/integer si viene string ('Si'/'No')
                 // Aunque insertClient ya hace `client.answered ? 1 : 0`, nos aseguramos
@@ -593,11 +609,12 @@ function bulkUpsertClients(clients) {
                     added++;
                 }
             } catch (err) {
-                console.error(`Error importando cliente individual (${client.phone || 'sin tlf'}):`, err.message);
+                console.error(`❌ Error crítico importando cliente (${client.name || 'sin nombre'} - ${client.phone || 'sin tlf'}):`, err.message);
                 // No relanzamos el error para permitir que continúe con el resto del lote
             }
         }
 
+        console.log(`✅ Importación finalizada. Agregados: ${added}, Actualizados: ${updated}`);
         return { added, updated };
     });
 
