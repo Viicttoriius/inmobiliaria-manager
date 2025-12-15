@@ -150,12 +150,14 @@ const CalendarPanel = ({ clients = [], properties = [] }) => {
             if (res.ok) {
                 const data = await res.json();
 
-                const formattedEvents = data.map(event => ({
-                    ...event,
-                    start: new Date(event.start_date),
-                    end: new Date(event.end_date),
-                    allDay: event.all_day === 1 || event.all_day === true
-                }));
+                const formattedEvents = data
+                    .map(event => ({
+                        ...event,
+                        start: new Date(event.start_date),
+                        end: new Date(event.end_date),
+                        allDay: event.all_day === 1 || event.all_day === true
+                    }))
+                    .filter(event => !isNaN(event.start.getTime()) && !isNaN(event.end.getTime()));
 
                 setEvents(formattedEvents);
             }

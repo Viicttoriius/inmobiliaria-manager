@@ -9,19 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  cleanup:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Delete Release if exists
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release delete ${{ github.ref_name }} --yes || echo "Release ${{ github.ref_name }} not found, skipping delete"
-
   build:
-    needs: cleanup
     runs-on: ${{ matrix.os }}
 
     strategy:
