@@ -15,12 +15,10 @@ jobs:
       contents: write
     steps:
       - name: Delete Release if exists
-        uses: author/delete-release@v4
-        with:
-          release-name: ${{ github.ref_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
+        run: |
+          gh release delete ${{ github.ref_name }} --yes || echo "Release ${{ github.ref_name }} not found, skipping delete"
 
   build:
     needs: cleanup
