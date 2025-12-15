@@ -2,7 +2,12 @@
 
 Todas las cambios notables de este proyecto serán documentados en este archivo.
 
-## [2.1.9] - 2025-12-15
+## [2.1.11] - 2025-12-15
+### Fixed
+- **macOS Crash**: Solucionado error crítico `Unknown system error -86` (Bad CPU Type) en Macs con Apple Silicon/Intel. Implementado sistema de fallback automático que cambia al Python del sistema si el ejecutable empaquetado falla por incompatibilidad de arquitectura.
+- **Backend Stability**: Protegido el ciclo de scrapers automáticos contra cierres inesperados (Unhandled Rejections) mediante manejo robusto de promesas.
+
+## [2.1.10] - 2025-12-15
 ### Fixed
 - **CI/CD**: Solucionado error 422 en la subida de releases. Implementado sistema de limpieza automática de releases y assets previos para evitar colisiones en GitHub Actions.
 - **Scraper Idealista**: Añadido soporte para "Locales" y "Terrenos" en el scraper manual.

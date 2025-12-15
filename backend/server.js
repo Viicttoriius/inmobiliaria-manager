@@ -2235,7 +2235,7 @@ const runAutoScrapers = async () => {
     console.log("⏰ Running auto scrapers...");
 
     // Usar la función centralizada para obtener el ejecutable de Python
-    const pythonExecutable = getPythonExecutable();
+    let pythonExecutable = getPythonExecutable();
 
     const types = ['viviendas', 'terrenos', 'locales'];
     for (const type of types) {
@@ -2245,21 +2245,37 @@ const runAutoScrapers = async () => {
             console.log(`   ▶ Running ${scraperScript}...`);
             // We use a promise wrapper around spawn to await completion
             await new Promise((resolve) => {
-                const child = spawn(pythonExecutable, [scraperPath], {
-                    env: {
-                        ...process.env,
-                        PROPERTIES_OUTPUT_DIR: PROPERTIES_DIR
-                    },
-                    shell: false
-                });
-                child.on('error', (err) => console.error(`[${type}] Error spawn:`, err));
-                child.stdout.on('data', (data) => console.log(`[${type}] ${data}`));
-                child.stderr.on('data', (data) => console.error(`[${type} ERROR] ${data}`));
-                child.on('close', (code) => {
-                    console.log(`[${type}] Finished with code ${code}`);
-                    resolve();
-                });
-            });
+                const spawnScraper = (execPath, isRetry = false) => {
+                    const child = spawn(execPath, [scraperPath], {
+                        env: {
+                            ...process.env,
+                            PROPERTIES_OUTPUT_DIR: PROPERTIES_DIR
+                        },
+                        shell: false
+                    });
+
+                    child.on('error', (err) => {
+                        console.error(`[${type}] Error spawn:`, err);
+                        // Fallback strategy for macOS architecture mismatch (Error -86) or missing binary
+                        if (!isRetry && (err.message.includes('-86') || err.code === 'BAD_CPU_TYPE' || err.code === 'ENOENT')) {
+                            console.warn(`[${type}] ⚠️ Detectado error de binario/arquitectura. Reintentando con 'python3' del sistema...`);
+                            spawnScraper('python3', true);
+                        } else {
+                            resolve(); // Resolve anyway to continue with next scraper
+                        }
+                    });
+
+                    child.stdout.on('data', (data) => console.log(`[${type}] ${data}`));
+                    child.stderr.on('data', (data) => console.error(`[${type} ERROR] ${data}`));
+                    
+                    child.on('close', (code) => {
+                        console.log(`[${type}] Finished with code ${code}`);
+                        resolve();
+                    });
+                };
+
+                spawnScraper(pythonExecutable);
+            }).catch(e => console.error(`[${type}] Unexpected promise error:`, e));
         }
     }
     console.log("✅ Auto scrapers cycle completed.");
@@ -2296,7 +2312,9 @@ const setupAutoScraper = () => {
         const minutes = parseInt(config.fotocasa.interval);
         console.log(`⏰ Setting up auto scraper every ${minutes} minutes.`);
 
-        autoScraperInterval = setInterval(runAutoScrapers, minutes * 60 * 1000);
+        autoScraperInterval = setInterval(() => {
+            runAutoScrapers().catch(err => console.error('🔥 Error crítico en ciclo de Auto Scraper:', err));
+        }, minutes * 60 * 1000);
     } else {
         console.log("⏰ Auto scraper is disabled.");
     }
