@@ -460,7 +460,8 @@ console.log(`🐛 [DEBUG] Browser Path detectado: ${browserPath || 'NINGUNO (Se 
 
 const whatsappClient = new Client({
     authStrategy: new LocalAuth({
-        dataPath: DATA_DIR
+        clientId: 'client-one', // ID específico para mantener sesión consistente
+        dataPath: DATA_DIR // Ruta base para datos de sesión
     }),
     authTimeoutMs: 120000,
     qrMaxRetries: 0,
@@ -469,7 +470,7 @@ const whatsappClient = new Client({
         // Si browserPath es undefined, intentamos usar el bundled
         executablePath: browserPath || getBundledChromiumPath() || undefined,
         headless: true,
-        dumpio: true, // Mostrar logs del navegador en consola
+        dumpio: false, // Desactivar dumpio en producción para reducir ruido
         ignoreHTTPSErrors: true, // Ignorar errores de certificado
         args: [
             '--no-sandbox',
@@ -492,7 +493,10 @@ const whatsappClient = new Client({
             '--disable-infobars',
             // Añadir estos flags para mejorar compatibilidad Windows
             '--disable-software-rasterizer',
-            '--disable-gl-drawing-for-tests'
+            '--disable-gl-drawing-for-tests',
+            '--disable-features=HttpsFirstBalancedModeAutoEnable', // Fix para error net::ERR_BLOCKED_BY_CLIENT
+            '--disable-features=Translate', // Desactivar traducción
+            '--disable-features=site-per-process' // Ahorro de memoria
         ],
         timeout: 60000 // Aumentar timeout de inicialización de puppeteer
     }
@@ -577,8 +581,8 @@ const initializeWhatsApp = async () => {
         console.error('❌ Error fatal al inicializar WhatsApp Client:', err);
 
         // Nuevo: Si es error de timeout (selector) o evaluación, borrar caché de autenticación para forzar reinicio limpio
-        if (err.message && (err.message.includes('Timeout') || err.message.includes('Evaluation failed'))) {
-            console.log('⚠️ Error de timeout detectado. Posible corrupción de sesión. Limpiando caché...');
+        if (err.message && (err.message.includes('Timeout') || err.message.includes('Evaluation failed') || err.message.includes('Protocol error'))) {
+            console.log('⚠️ Error crítico detectado (Timeout/Evaluation/Protocol). Posible corrupción de sesión. Limpiando caché...');
             try {
                  // LocalAuth crea una carpeta 'session' o '.wwebjs_auth' dependiendo de la config.
                  // Con dataPath: DATA_DIR, suele ser DATA_DIR/session o similar. 
@@ -587,9 +591,20 @@ const initializeWhatsApp = async () => {
                  const sessionPath = path.join(DATA_DIR, 'session'); 
                  const cachePath = path.join(DATA_DIR, '.wwebjs_cache');
                  
-                 if (fs.existsSync(authPath)) fs.rmSync(authPath, { recursive: true, force: true });
-                 if (fs.existsSync(sessionPath)) fs.rmSync(sessionPath, { recursive: true, force: true });
-                 if (fs.existsSync(cachePath)) fs.rmSync(cachePath, { recursive: true, force: true });
+                 // Intentar borrar con reintentos para evitar bloqueos de archivo
+                 const deleteFolder = (p) => {
+                    if (fs.existsSync(p)) {
+                        try {
+                            fs.rmSync(p, { recursive: true, force: true });
+                        } catch (e) {
+                            console.warn(`⚠️ No se pudo borrar ${p} inmediatamente: ${e.message}`);
+                        }
+                    }
+                 };
+
+                 deleteFolder(authPath);
+                 deleteFolder(sessionPath);
+                 deleteFolder(cachePath);
                  
                  console.log('✅ Caché de sesión eliminada. Se requerirá nuevo escaneo de QR.');
             } catch (cleanupErr) {
