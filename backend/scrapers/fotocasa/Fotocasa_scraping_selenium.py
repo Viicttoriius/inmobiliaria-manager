@@ -13,6 +13,7 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException,
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 from bs4 import BeautifulSoup
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 import time
 import random
 import re
@@ -524,6 +525,46 @@ def get_total_pages(driver):
         print(f"  ⚠️ Error al determinar el número total de páginas: {e}")
         return 1
 
+def construct_fotocasa_url(base_url, page_num, sort_by):
+    """
+    Construye la URL correcta para Fotocasa manejando paginación y parámetros.
+    """
+    try:
+        parsed = urlparse(base_url)
+        path = parsed.path
+        query = parsed.query
+        
+        # 1. Manejo del path para paginación (/l/2)
+        new_path = path
+        # Si ya termina en número (ej: /l/2), lo quitamos para reconstruir limpio si es necesario
+        # Pero la base_url suele ser limpia (/l).
+        
+        if page_num > 1:
+            # Asegurar que no duplicamos si ya existe (lógica simple)
+            if not path.endswith(f"/{page_num}"):
+                 if not path.endswith('/'):
+                     new_path += '/'
+                 new_path += str(page_num)
+        
+        # 2. Manejo de query params
+        params = parse_qs(query)
+        
+        # Asegurar sortType
+        if sort_by:
+            params['sortType'] = [sort_by]
+            
+        new_query = urlencode(params, doseq=True)
+        
+        new_parsed = parsed._replace(path=new_path, query=new_query)
+        return urlunparse(new_parsed)
+        
+    except Exception as e:
+        print(f"⚠️ Error construyendo URL: {e}")
+        # Fallback básico (aunque puede fallar si tiene query params)
+        if page_num > 1:
+            return f"{base_url}/{page_num}?sortType={sort_by}"
+        return f"{base_url}?sortType={sort_by}"
+
 def scrape_fotocasa_selenium(start_url, property_type, sort_by="publicationDate", max_pages=None):
     """
     Scraper principal que abre y cierra el navegador para cada página.
@@ -537,7 +578,10 @@ def scrape_fotocasa_selenium(start_url, property_type, sort_by="publicationDate"
     driver = None
     try:
         driver = setup_driver(headless=False)  # Modo visible (necesario para detectar paginación)
-        initial_url = f"{start_url}?sortType={sort_by}"
+        
+        # Usar constructor de URL robusto
+        initial_url = construct_fotocasa_url(start_url, 1, sort_by)
+        
         print(f"  🔍 Accediendo a: {initial_url}")
         driver.get(initial_url)
         time.sleep(2)
@@ -564,22 +608,23 @@ def scrape_fotocasa_selenium(start_url, property_type, sort_by="publicationDate"
         print(f"Error en Fase 1: {e}")
     finally:
         if driver:
-            driver.quit()
+            print("  🛑 Cerrando navegador (Fase 1)...")
+            try:
+                driver.quit()
+                print("  ✅ Navegador cerrado.")
+            except Exception as e:
+                print(f"  ⚠️ Error cerrando navegador: {e}")
 
     # --- Fase 2: Scrapear cada página individualmente ---
     
     for page_num in range(1, total_pages + 1):
         driver = None
         try:
-            # Construcción de URL según el patrón solicitado
-            # Si es la página 1, usamos la URL base (o /1 si se prefiere, pero la base es más segura)
-            # El usuario indicó: .../l/2?sortType=...
-            if page_num == 1:
-                page_url = f"{start_url}?sortType={sort_by}"
-            else:
-                page_url = f"{start_url}/{page_num}?sortType={sort_by}"
+            # Construcción de URL robusta
+            page_url = construct_fotocasa_url(start_url, page_num, sort_by)
                 
             print(f"Procesando página {page_num}/{total_pages}...")
+            print(f"  🔗 URL: {page_url}")
 
             driver = setup_driver(headless=False)  # Modo visible
             wait = WebDriverWait(driver, 20)
@@ -618,7 +663,13 @@ def scrape_fotocasa_selenium(start_url, property_type, sort_by="publicationDate"
             print(f"Error procesando la página {page_num}: {e}")
         finally:
             if driver:
-                driver.quit()
+                # print("  🛑 Cerrando navegador (Fase 2)...")
+                try:
+                    driver.quit()
+                    # print("  ✅ Navegador cerrado.")
+                except Exception as e:
+                    print(f"  ⚠️ Error cerrando navegador en Fase 2: {e}")
+            
             # Pausa entre solicitudes
             time.sleep(random.uniform(5, 10))
             

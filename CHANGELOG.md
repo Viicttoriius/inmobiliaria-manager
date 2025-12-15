@@ -2,6 +2,11 @@
 
 Todas las cambios notables de este proyecto serán documentados en este archivo.
 
+## [2.1.8] - 2025-12-15
+### Fixed
+- **Scrapers**: Corregido bucle infinito en paginación de Fotocasa. Ahora el scraper navega correctamente entre páginas y respeta los filtros de búsqueda.
+- **Scrapers**: Solucionado problema donde el navegador no se cerraba correctamente tras finalizar una página en Fotocasa.
+
 ## [2.1.7] - 2025-12-15
 ### Fixed
 - **Backend**: Mejoras críticas en estabilidad de WhatsApp (Puppeteer).
