@@ -115,7 +115,7 @@ function App() {
               'success',
               'Aplicación Actualizada'
             );
-            
+
             // Aquí podrías mostrar un modal con las novedades si lo deseas
             // showReleaseNotesModal(currentVersion); 
           }
@@ -337,23 +337,23 @@ function App() {
     const connectToBackend = async () => {
       let retries = 0;
       const maxRetries = 20; // 20 segundos de espera
-      
+
       while (retries < maxRetries) {
         try {
           // Intentar un fetch simple para ver si el backend responde
           await fetch(`${API_URL}/properties?limit=1`);
           console.log('✅ Backend conectado exitosamente');
-          
+
           // Si conecta, cargar datos
           loadProperties();
           loadClients();
-          
+
           // Iniciar polling
           const interval = setInterval(() => {
             loadProperties(true);
             loadClients(true);
           }, 10000);
-          
+
           return () => clearInterval(interval);
         } catch (error) {
           console.log(`⏳ Esperando backend... (${retries + 1}/${maxRetries})`);
@@ -361,7 +361,7 @@ function App() {
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
-      
+
       console.error('❌ No se pudo conectar al backend después de múltiples intentos');
       // Podríamos mostrar un estado de error aquí si lo deseamos
     };
@@ -474,7 +474,7 @@ function App() {
       // Try YYYY-MM-DD
       let d = new Date(dateStr);
       if (!isNaN(d.getTime())) return d.getTime();
-      
+
       // Try DD/MM/YYYY
       const parts = dateStr.split('/');
       if (parts.length === 3) {
@@ -789,10 +789,19 @@ function App() {
       const data = await response.json();
 
       if (data.success) {
-        showNotification('Scraper detenido correctamente.', 'info');
+        const message = data.stats && data.stats.inserted > 0
+          ? `Scraper detenido. Se guardaron ${data.stats.inserted} propiedades nuevas.`
+          : 'Scraper detenido correctamente.';
+        showNotification(message, 'info');
+
         // Forzar actualización de estado UI
         setScrapingInProgress(prev => ({ ...prev, [scraperId]: false }));
-        setScrapingLog(prev => prev + '\n🛑 Scraper detenido por el usuario.\n');
+        setScrapingLog(prev => prev + `\n🛑 ${message}\n`);
+
+        // Recargar propiedades si se guardaron datos
+        if (data.stats && data.stats.inserted > 0) {
+          await loadProperties();
+        }
       } else {
         showNotification('Error al detener scraper: ' + data.error, 'error');
       }
@@ -805,7 +814,7 @@ function App() {
   const handleCleanup = async () => {
     requestConfirm({
       title: 'Limpiar Archivos Temporales',
-      message: '¿Estás seguro de que deseas eliminar los archivos temporales de actualización y propiedades? Esta acción no se puede deshacer.',
+      message: '¿Estás seguro de que deseas eliminar los archivos temporales de la carpeta "update"? Esta acción no se puede deshacer. (Los archivos de propiedades se mantienen como historial)',
       isDanger: true,
       confirmText: 'Eliminar',
       onConfirm: async () => {
@@ -821,6 +830,30 @@ function App() {
         } catch (error) {
           console.error('Error cleanup:', error);
           showNotification('Error de conexión al limpiar archivos.', 'error');
+        }
+      }
+    });
+  };
+
+  const handleCleanupProcessed = async () => {
+    requestConfirm({
+      title: 'Limpiar Archivos Procesados',
+      message: '¿Estás seguro de que deseas eliminar los archivos de propiedades ya procesados e importados a la base de datos? Los datos permanecen en SQLite, solo se elimina el historial de archivos JSON.',
+      isDanger: true,
+      confirmText: 'Eliminar Historial',
+      onConfirm: async () => {
+        try {
+          const response = await fetch(`${API_URL}/config/cleanup-processed`, { method: 'POST' });
+          const data = await response.json();
+
+          if (data.success) {
+            showNotification(data.message, 'success');
+          } else {
+            showNotification('Error: ' + data.error, 'error');
+          }
+        } catch (error) {
+          console.error('Error cleanup processed:', error);
+          showNotification('Error de conexión al limpiar archivos procesados.', 'error');
         }
       }
     });
@@ -1147,9 +1180,9 @@ function App() {
       delimitersToGuess: [',', ';', '\t', '|'],
       complete: async (results) => {
         console.log('CSV Raw Results:', results);
-        
+
         if (results.errors.length > 0) {
-           console.warn('CSV Parse Errors:', results.errors);
+          console.warn('CSV Parse Errors:', results.errors);
         }
 
         const importedClients = results.data.map(originalRow => {
@@ -1158,17 +1191,17 @@ function App() {
           Object.keys(originalRow).forEach(key => {
             row[key.trim().toLowerCase()] = originalRow[key];
           });
-          
+
           console.log('Normalized Row:', row);
 
           // Mapping robusto
           // 1. Obtener teléfono limpio
           let phoneRaw = row['teléfono'] || row['telefono'] || row['phone'] || row['celular'] || row['movil'] || row['móvil'] || row['tlf'] || '';
           let phone = phoneRaw ? String(phoneRaw).replace(/[^0-9+]/g, '') : '';
-          
+
           // Si no hay teléfono, intentar usar el nombre si parece un número
           if (!phone && row['nombre'] && /^[0-9+]+$/.test(String(row['nombre']).replace(/\s/g, ''))) {
-             phone = String(row['nombre']).replace(/[^0-9+]/g, '');
+            phone = String(row['nombre']).replace(/[^0-9+]/g, '');
           }
 
           // 2. Obtener enlace de WhatsApp
@@ -1192,10 +1225,10 @@ function App() {
             preferences: ''
           };
         }).filter(c => {
-            // Validación más permisiva: Aceptar si tiene nombre O teléfono
-            const isValid = (c.name && c.name !== 'Sin Nombre') || c.phone;
-            if (!isValid) console.warn('Skipping invalid row (no name/phone):', c);
-            return isValid;
+          // Validación más permisiva: Aceptar si tiene nombre O teléfono
+          const isValid = (c.name && c.name !== 'Sin Nombre') || c.phone;
+          if (!isValid) console.warn('Skipping invalid row (no name/phone):', c);
+          return isValid;
         });
 
         if (importedClients.length === 0) {
@@ -2301,15 +2334,36 @@ function App() {
                 <div className="config-section">
                   <h4><Trash2 size={20} /> Mantenimiento</h4>
                   <p className="config-info">
-                    Elimina archivos temporales generados por los scrapers y actualizaciones para liberar espacio.
+                    Gestión de archivos generados por los scrapers. Los archivos procesados se mantienen como historial en la carpeta 'processed'.
                   </p>
-                  <button
-                    onClick={handleCleanup}
-                    className="save-btn"
-                    style={{ marginTop: '1rem', backgroundColor: '#ef4444' }}
-                  >
-                    Limpiar Archivos Temporales
-                  </button>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '1rem' }}>
+                    <div>
+                      <button
+                        onClick={handleCleanup}
+                        className="save-btn"
+                        style={{ backgroundColor: '#f59e0b', width: '100%' }}
+                      >
+                        🗑️ Limpiar Archivos Temporales
+                      </button>
+                      <small style={{ display: 'block', marginTop: '0.25rem', color: 'var(--text-secondary)' }}>
+                        Limpia solo la carpeta 'update' (archivos temporales de actualización)
+                      </small>
+                    </div>
+
+                    <div>
+                      <button
+                        onClick={handleCleanupProcessed}
+                        className="save-btn"
+                        style={{ backgroundColor: '#ef4444', width: '100%' }}
+                      >
+                        📦 Limpiar Archivos Procesados
+                      </button>
+                      <small style={{ display: 'block', marginTop: '0.25rem', color: 'var(--text-secondary)' }}>
+                        Limpia archivos de propiedades ya importados a SQLite (no afecta la base de datos)
+                      </small>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="modal-actions">

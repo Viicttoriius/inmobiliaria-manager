@@ -1016,7 +1016,7 @@ const processJsonFile = (filePath) => {
     try {
         console.log(`🔄 Procesando archivo de propiedades: ${fileName}`);
         const content = fs.readFileSync(processingPath, 'utf-8');
-        
+
         // Validar JSON vacío
         if (!content.trim()) {
             fs.unlinkSync(processingPath);
@@ -1024,7 +1024,7 @@ const processJsonFile = (filePath) => {
         }
 
         const data = JSON.parse(content);
-        
+
         // Normalizar estructura
         let propertiesArray = [];
         let source = 'Importado';
@@ -1041,8 +1041,8 @@ const processJsonFile = (filePath) => {
         let result = { inserted: 0, updated: 0 };
 
         if (propertiesArray.length > 0) {
-             // Mapear
-             const toInsert = propertiesArray.map(prop => ({
+            // Mapear
+            const toInsert = propertiesArray.map(prop => ({
                 ...prop,
                 property_type: prop.property_type || propertyType,
                 source: prop.source || source,
@@ -1053,8 +1053,18 @@ const processJsonFile = (filePath) => {
             console.log(`   ✅ [Import] ${fileName}: ${result.inserted} insertadas, ${result.updated} actualizadas`);
         }
 
-        // Eliminar archivo procesado
-        fs.unlinkSync(processingPath);
+        // NO eliminar archivo procesado - Moverlo a carpeta 'processed' para mantener historial
+        try {
+            const processedDir = path.join(PROPERTIES_DIR, 'processed');
+            if (!fs.existsSync(processedDir)) fs.mkdirSync(processedDir, { recursive: true });
+            const processedPath = path.join(processedDir, fileName);
+            fs.renameSync(processingPath, processedPath);
+            console.log(`   📦 Archivo movido a: processed/${fileName}`);
+        } catch (e) {
+            console.error(`   ⚠️ Error moviendo archivo procesado: ${e.message}`);
+            // Si hay error moviendo, intentar al menos borrarlo para no bloquearlo
+            try { fs.unlinkSync(processingPath); } catch (e2) { }
+        }
         return result;
 
     } catch (err) {
@@ -1064,7 +1074,7 @@ const processJsonFile = (filePath) => {
             const errorDir = path.join(PROPERTIES_DIR, 'errors');
             if (!fs.existsSync(errorDir)) fs.mkdirSync(errorDir);
             fs.renameSync(processingPath, path.join(errorDir, fileName));
-        } catch (e) {}
+        } catch (e) { }
         return { inserted: 0, updated: 0, error: err.message };
     }
 };
@@ -1075,7 +1085,7 @@ const consolidatePropertiesFolder = () => {
 
     const files = fs.readdirSync(PROPERTIES_DIR)
         .filter(file => file.endsWith('.json') && (file.startsWith('fotocasa') || file.startsWith('idealista')));
-    
+
     let totalInserted = 0;
     let totalUpdated = 0;
     let filesProcessed = 0;
@@ -1302,7 +1312,7 @@ app.post('/api/scraper/idealista/run', (req, res) => {
 });
 
 // Detener un scraper en ejecución
-app.post('/api/scraper/stop', (req, res) => {
+app.post('/api/scraper/stop', async (req, res) => {
     const { name } = req.body;
 
     if (!name) {
@@ -1314,25 +1324,47 @@ app.post('/api/scraper/stop', (req, res) => {
         console.log(`🛑 Deteniendo scraper manual: ${name}`);
 
         try {
-            // Matar el proceso y todos sus hijos (en Windows tree-kill podría ayudar, pero process.kill suele funcionar para lo básico)
-            // Usamos SIGTARM
+            // 1. IMPORTANTE: Consolidar datos ANTES de matar el proceso
+            console.log('📦 Consolidando datos extraídos antes de detener...');
+            const stats = consolidatePropertiesFolder();
+            console.log(`   ✅ Consolidación: ${stats.inserted} nuevas, ${stats.updated} actualizadas, ${stats.filesProcessed} archivos procesados`);
+
+            // 2. Matar el proceso
             processInfo.process.kill();
 
-            // Eliminar del mapa
+            // 3. Eliminar del mapa
             activeScrapers.delete(name);
 
-            // Responder a la petición original si aún está pendiente
+            // 4. Responder a la petición original si aún está pendiente
             if (processInfo.res && !processInfo.res.headersSent) {
-                processInfo.res.json({ success: false, error: 'Scraper detenido manualmente por el usuario.', stopped: true });
+                processInfo.res.json({
+                    success: true,
+                    stopped: true,
+                    message: `Scraper detenido. Se guardaron ${stats.inserted} propiedades nuevas.`,
+                    stats: {
+                        inserted: stats.inserted,
+                        updated: stats.updated,
+                        total: sqliteManager.getPropertiesCount()
+                    }
+                });
             }
 
-            res.json({ success: true, message: `Scraper ${name} detenido.` });
+            res.json({
+                success: true,
+                message: `Scraper ${name} detenido. Datos guardados: ${stats.inserted} nuevas propiedades.`,
+                stats: {
+                    inserted: stats.inserted,
+                    updated: stats.updated,
+                    filesProcessed: stats.filesProcessed,
+                    total: sqliteManager.getPropertiesCount()
+                }
+            });
         } catch (e) {
             console.error(`Error deteniendo proceso ${name}:`, e);
             res.status(500).json({ error: `Error al detener proceso: ${e.message}` });
         }
     } else {
-        res.status(404).json({ error: 'No hay escraper activo con ese nombre' });
+        res.status(404).json({ error: 'No hay scraper activo con ese nombre' });
     }
 });
 
@@ -1340,7 +1372,6 @@ app.post('/api/scraper/stop', (req, res) => {
 app.post('/api/config/cleanup', (req, res) => {
     try {
         const updateDir = path.join(DATA_DIR, 'update');
-        const propertiesDir = PROPERTIES_DIR;
 
         let deletedCount = 0;
         let errors = [];
@@ -1364,19 +1395,56 @@ app.post('/api/config/cleanup', (req, res) => {
             }
         };
 
+        // SOLO limpiar la carpeta de update (archivos temporales)
+        // NO tocar los archivos de propiedades ya que ahora se mantienen como historial
         cleanDirectory(updateDir);
-        cleanDirectory(propertiesDir);
 
         if (errors.length > 0) {
             console.warn('Errores durante la limpieza:', errors);
             // Retornamos success true porque parcialmente funcionó, pero avisamos
             res.json({ success: true, message: `Limpieza completada con advertencias. ${deletedCount} archivos borrados.`, errors });
         } else {
-            res.json({ success: true, message: `Limpieza completada. ${deletedCount} archivos borrados.` });
+            res.json({ success: true, message: `Limpieza completada. ${deletedCount} archivos temporales borrados.` });
         }
 
     } catch (error) {
         console.error('Error crítico en limpieza:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Limpiar archivos procesados (historial de propiedades ya importadas)
+app.post('/api/config/cleanup-processed', (req, res) => {
+    try {
+        const processedDir = path.join(PROPERTIES_DIR, 'processed');
+
+        let deletedCount = 0;
+        let errors = [];
+
+        if (fs.existsSync(processedDir)) {
+            const files = fs.readdirSync(processedDir);
+            for (const file of files) {
+                try {
+                    const filePath = path.join(processedDir, file);
+                    if (fs.lstatSync(filePath).isFile()) {
+                        fs.unlinkSync(filePath);
+                        deletedCount++;
+                    }
+                } catch (err) {
+                    errors.push(`Error borrando ${file}: ${err.message}`);
+                }
+            }
+        }
+
+        if (errors.length > 0) {
+            console.warn('Errores durante la limpieza de procesados:', errors);
+            res.json({ success: true, message: `${deletedCount} archivos procesados borrados (con advertencias).`, errors });
+        } else {
+            res.json({ success: true, message: `${deletedCount} archivos procesados borrados correctamente.` });
+        }
+
+    } catch (error) {
+        console.error('Error crítico en limpieza de procesados:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -2029,6 +2097,25 @@ const runAutoScrapers = async () => {
         }
     }
     console.log("✅ Auto scrapers cycle completed.");
+
+    // IMPORTANTE: Consolidar datos inmediatamente después de completar los scrapers
+    try {
+        console.log("📦 Consolidando datos de scrapers automáticos...");
+        const stats = consolidatePropertiesFolder();
+        console.log(`   ✅ Consolidación automática: ${stats.inserted} nuevas, ${stats.updated} actualizadas, ${stats.filesProcessed} archivos procesados`);
+
+        // Notificar solo si hay propiedades nuevas
+        if (stats.inserted > 0) {
+            notifier.notify({
+                title: 'Scraper Automático',
+                message: `Se encontraron ${stats.inserted} nuevas propiedades automáticamente.`,
+                sound: 'Ping',
+                wait: false
+            });
+        }
+    } catch (error) {
+        console.error('❌ Error consolidando datos auto:', error);
+    }
 };
 
 const setupAutoScraper = () => {
