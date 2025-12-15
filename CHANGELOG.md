@@ -2,6 +2,12 @@
 
 Todas las cambios notables de este proyecto serán documentados en este archivo.
 
+## [2.1.4] - 2025-12-15
+### Fixed
+- **CI/CD**: Solucionados problemas de construcción en macOS y Linux.
+- **Instalador**: Mejorada la reputación del instalador de Windows (GUID fijo).
+- **Linux**: Soporte mejorado para distribuciones Linux (AppImage y Deb).
+
 ## [2.1.3] - 2025-12-15
 ### Added
 - **Calendario Mejorado**: Interfaz de calendario premium con estilos corregidos y alta visibilidad.
