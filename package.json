@@ -1,6 +1,6 @@
 {
   "name": "inmobiliaria-manager",
-  "version": "2.1.14",
+  "version": "2.2.0",
   "description": "Sistema de Gestión Inmobiliaria con Automatización",
   "main": "electron/main.js",
   "author": "Victor Muñoz Lopez",
@@ -95,13 +95,13 @@
       "gatekeeperAssess": false,
       "darkModeSupport": true,
       "entitlements": null,
-      "entitlementsInherit": null,
       "extendInfo": {
-        "NSAppleEventsUsageDescription": "Esta aplicación necesita control de eventos del sistema para funcionar correctamente.",
-        "NSMicrophoneUsageDescription": "Esta aplicación no necesita acceso al micrófono.",
-        "NSCameraUsageDescription": "Esta aplicación no necesita acceso a la cámara."
-      }
+        "NSMicrophoneUsageDescription": "No se requiere acceso al micrófono",
+        "NSCameraUsageDescription": "No se requiere acceso a la cámara"
+      },
+      "mergeASARs": false 
     },
+
     "linux": {
       "icon": "build/icon.png",
       "target": "AppImage",

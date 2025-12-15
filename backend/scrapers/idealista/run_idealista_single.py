@@ -78,6 +78,7 @@ def scrape_single_url(url):
                 price = price_elem.text
             except: pass
             
+            # Extract Phone Number
             phone = "No disponible"
             try:
                 # Buscar botón de teléfono
@@ -95,12 +96,38 @@ def scrape_single_url(url):
             except:
                 pass
             
-            # Imagen
+            # Extract Image
             image_url = ""
             try:
+                # Try main image
                 main_img = driver.find_element(By.CSS_SELECTOR, '.main-image img')
                 image_url = main_img.get_attribute('src')
+            except: 
+                try:
+                    # Fallback to first grid image if main fails
+                    grid_img = driver.find_element(By.CSS_SELECTOR, 'img.main-image_img')
+                    image_url = grid_img.get_attribute('src')
+                except: pass
+
+            # Extract Update Date Info
+            date_update_text = ""
+            try:
+                date_elem = driver.find_element(By.CSS_SELECTOR, '.details-box.date-update-block .date-update-text')
+                date_update_text = date_elem.text.strip()
             except: pass
+
+            stats_text = ""
+            try:
+                stats_elem = driver.find_element(By.CSS_SELECTOR, '.stats-text')
+                stats_text = stats_elem.text.strip()
+            except: pass
+            
+            # Combine update info into a single string or keep separate? 
+            # User asked to extract them. I will add them to the result.
+            extra_data = {
+                "date_update_text": date_update_text,
+                "stats_text": stats_text
+            }
 
             result = {
                 "source": "idealista",
@@ -111,7 +138,8 @@ def scrape_single_url(url):
                 "image_url": image_url,
                 "advertiser": "Particular",
                 "property_type": "inbox_alert",
-                "date": datetime.now().isoformat()
+                "date": datetime.now().isoformat(),
+                "extra_data": extra_data
             }
         else:
             print("❌ No es particular o es agencia.")

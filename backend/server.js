@@ -465,7 +465,10 @@ const whatsappClient = new Client({
     }),
     authTimeoutMs: 120000,
     qrMaxRetries: 0,
-    // webVersionCache eliminado para permitir autodetect de la versión más reciente compatible
+    // Fix para "Cannot read properties of null (reading '1')" en LocalWebCache
+    webVersionCache: {
+        type: 'none'
+    },
     puppeteer: {
         // Si browserPath es undefined, intentamos usar el bundled
         executablePath: browserPath || getBundledChromiumPath() || undefined,
@@ -1168,14 +1171,15 @@ setInterval(() => {
 }, 15000);
 
 // Función auxiliar para ejecutar un scraper de Python
-const runPythonScraper = (scraperPath, res, scraperId) => {
+const runPythonScraper = (scraperPath, res, scraperId, args = []) => {
     // Determinar el ejecutable de Python
     const pythonExecutable = getPythonExecutable();
 
     console.log(`🚀 Iniciando scraper desde ${scraperPath} (ID: ${scraperId})...`);
+    if (args.length > 0) console.log(`   📝 Argumentos: ${JSON.stringify(args)}`);
     console.log(`🐍 Usando intérprete Python: ${pythonExecutable}`);
 
-    const pythonProcess = spawn(pythonExecutable, [scraperPath], {
+    const pythonProcess = spawn(pythonExecutable, [scraperPath, ...args], {
         env: {
             ...process.env,
             PYTHONIOENCODING: 'utf-8',
@@ -1358,11 +1362,19 @@ const activeScrapers = new Map(); // Clave: scraperName, Valor: { process, res }
 
 // Ejecutar el scraper de Idealista
 app.post('/api/scraper/idealista/run', (req, res) => {
+    const { type } = req.body; // 'viviendas', 'locales', 'terrenos'
+
     if (!fs.existsSync(IDEALISTA_SCRAPER)) {
         return res.status(404).json({ success: false, error: 'El scraper de Idealista no está instalado o no se encuentra el archivo.' });
     }
-    // Usamos 'idealista' como ID único
-    runPythonScraper(IDEALISTA_SCRAPER, res, 'idealista');
+    
+    // Usamos ID único basado en el tipo si existe
+    const scraperId = type ? `idealista_${type}` : 'idealista';
+    
+    // Argumentos para el script python (espera JSON en argv[1])
+    const args = type ? [JSON.stringify({ type })] : [];
+
+    runPythonScraper(IDEALISTA_SCRAPER, res, scraperId, args);
 });
 
 // Detener un scraper en ejecución
@@ -1507,6 +1519,8 @@ const UPDATE_SCRAPER = path.join(__dirname, 'scrapers/update_scraper.py');
 
 // ... (el resto de las constantes)
 
+const IDEALISTA_SCRAPER_SINGLE = path.join(__dirname, 'scrapers/idealista/run_idealista_single.py');
+
 // Actualizar propiedades seleccionadas
 app.post('/api/properties/update', async (req, res) => {
     const { urls } = req.body;
@@ -1516,112 +1530,126 @@ app.post('/api/properties/update', async (req, res) => {
     }
 
     console.log(`🔄 Actualizando ${urls.length} propiedades...`);
+    
+    // Separar URLs por plataforma
+    const idealistaUrls = urls.filter(u => u.includes('idealista'));
+    const otherUrls = urls.filter(u => !u.includes('idealista')); // Fotocasa y otros
+
+    const pythonExecutable = getPythonExecutable();
+    let updatedProperties = [];
+    let combinedErrorData = '';
 
     try {
-        // 1. Crear archivo temporal con las URLs en la carpeta data/update para evitar reinicios por watchers
-        const updateDir = path.join(DATA_DIR, 'update');
-        if (!fs.existsSync(updateDir)) {
-            fs.mkdirSync(updateDir, { recursive: true });
-        }
-        const tempUrlsFile = path.join(updateDir, `temp_urls_${Date.now()}.json`);
-        fs.writeFileSync(tempUrlsFile, JSON.stringify(urls));
-        console.log(`   📄 Archivo temporal creado: ${tempUrlsFile}`);
+        // --- 1. PROCESAR IDEALISTA (Uno a uno) ---
+        if (idealistaUrls.length > 0) {
+            console.log(`� Procesando ${idealistaUrls.length} propiedades de Idealista...`);
+            for (const url of idealistaUrls) {
+                try {
+                    const result = await new Promise((resolve) => {
+                        const proc = spawn(pythonExecutable, [IDEALISTA_SCRAPER_SINGLE, url], {
+                            env: { ...process.env, PYTHONIOENCODING: 'utf-8', USER_DATA_PATH: BASE_PATH },
+                            shell: false
+                        });
+                        
+                        let stdout = '';
+                        let stderr = '';
+                        proc.stdout.on('data', d => stdout += d.toString());
+                        proc.stderr.on('data', d => stderr += d.toString());
+                        
+                        proc.on('close', (code) => {
+                            if (code !== 0) {
+                                console.error(`❌ Idealista scraper falló para ${url}`);
+                                combinedErrorData += `[Idealista ${url}] ${stderr}\n`;
+                                resolve(null);
+                            } else {
+                                try {
+                                    // Idealista script prints JSON at the end
+                                    const jsonStr = stdout.trim(); 
+                                    if (jsonStr) {
+                                        const data = JSON.parse(jsonStr);
+                                        if (!data.error) resolve(data);
+                                        else resolve(null);
+                                    } else resolve(null);
+                                } catch (e) {
+                                    console.error("Error parsing Idealista JSON:", e);
+                                    resolve(null);
+                                }
+                            }
+                        });
+                    });
 
-        // 2. Ejecutar scraper con el archivo de URLs
-        // Determinar el ejecutable de Python usando la función centralizada
-        const pythonExecutable = getPythonExecutable();
-
-        console.log(`🚀 Iniciando Update Scraper con: ${pythonExecutable}`);
-
-        const pythonProcess = spawn(pythonExecutable, [UPDATE_SCRAPER, tempUrlsFile], {
-            env: { ...process.env, PYTHONIOENCODING: 'utf-8', USER_DATA_PATH: BASE_PATH },
-            shell: false
-        });
-
-        pythonProcess.on('error', (err) => {
-            console.error('❌ Error CRÍTICO al iniciar update scraper:', err);
-            // No podemos hacer mucho más aquí ya que es un proceso detached/async en este contexto
-        });
-
-        let rawData = '';
-        let errorData = '';
-
-        pythonProcess.on('error', (err) => {
-            console.error('❌ Error iniciando proceso Python:', err);
-            // Intentar borrar archivo temporal si existe
-            try { if (fs.existsSync(tempUrlsFile)) fs.unlinkSync(tempUrlsFile); } catch (e) { }
-            // No podemos responder dos veces si ya respondimos, pero aquí es temprano
-            if (!res.headersSent) {
-                res.status(500).json({ success: false, error: 'Error al iniciar el proceso de actualización: ' + err.message });
-            }
-        });
-
-        pythonProcess.stdout.on('data', (data) => {
-            rawData += data.toString();
-        });
-
-        pythonProcess.stderr.on('data', (data) => {
-            errorData += data.toString();
-            // Solo loguear si es un error real o información importante, no spam
-            if (data.toString().includes('Error') || data.toString().includes('Procesando')) {
-                console.log(`      [Python] ${data.toString().trim()}`);
-            }
-        });
-
-        const exitCode = await new Promise((resolve) => {
-            pythonProcess.on('close', resolve);
-        });
-
-        // Borrar archivo temporal de URLs
-        try {
-            if (fs.existsSync(tempUrlsFile)) fs.unlinkSync(tempUrlsFile);
-        } catch (e) { console.error("Error borrando archivo temporal:", e); }
-
-        if (exitCode !== 0) {
-            console.error(`❌ Scraper falló con código ${exitCode}`);
-            return res.status(500).json({ success: false, error: 'Error ejecutando scraper de actualización', output: errorData });
-        }
-
-        // 3. Procesar resultados
-        let updatedProperties = [];
-        try {
-            // Intentar encontrar el JSON en la salida (puede haber logs previos si algo falló en suppress)
-            const jsonStartIndex = rawData.indexOf('[');
-            const jsonEndIndex = rawData.lastIndexOf(']');
-
-            if (jsonStartIndex !== -1 && jsonEndIndex !== -1) {
-                const jsonString = rawData.substring(jsonStartIndex, jsonEndIndex + 1);
-                updatedProperties = JSON.parse(jsonString);
-            } else {
-                throw new Error("No se encontró JSON válido en la salida");
-            }
-        } catch (e) {
-            console.error("Error parseando salida del scraper:", e);
-            // Fallback: buscar el último archivo en data/update
-            try {
-                const updateDir = path.join(DATA_DIR, 'update');
-                if (fs.existsSync(updateDir)) {
-                    const files = fs.readdirSync(updateDir)
-                        .filter(f => f.startsWith('update_batch_'))
-                        .sort((a, b) => fs.statSync(path.join(updateDir, b)).mtime - fs.statSync(path.join(updateDir, a)).mtime);
-
-                    if (files.length > 0) {
-                        const content = fs.readFileSync(path.join(updateDir, files[0]), 'utf-8');
-                        updatedProperties = JSON.parse(content);
-                    }
+                    if (result) updatedProperties.push(result);
+                } catch (e) {
+                    console.error(`Error loop Idealista: ${e}`);
                 }
-            } catch (err) {
-                console.error("Error fallback leyendo archivo update:", err);
             }
+        }
+
+        // --- 2. PROCESAR OTROS (Fotocasa - Batch) ---
+        if (otherUrls.length > 0) {
+            console.log(`🔎 Procesando ${otherUrls.length} propiedades de Fotocasa/Otros...`);
+            
+            // Crear archivo temporal
+            const updateDir = path.join(DATA_DIR, 'update');
+            if (!fs.existsSync(updateDir)) fs.mkdirSync(updateDir, { recursive: true });
+            const tempUrlsFile = path.join(updateDir, `temp_urls_${Date.now()}.json`);
+            fs.writeFileSync(tempUrlsFile, JSON.stringify(otherUrls));
+
+            // Ejecutar batch scraper
+            await new Promise((resolve, reject) => {
+                const pythonProcess = spawn(pythonExecutable, [UPDATE_SCRAPER, tempUrlsFile], {
+                    env: { ...process.env, PYTHONIOENCODING: 'utf-8', USER_DATA_PATH: BASE_PATH },
+                    shell: false
+                });
+
+                let rawData = '';
+                
+                pythonProcess.stdout.on('data', (data) => rawData += data.toString());
+                pythonProcess.stderr.on('data', (data) => {
+                    combinedErrorData += data.toString();
+                    if (data.toString().includes('Error') || data.toString().includes('Procesando')) {
+                        console.log(`      [Python] ${data.toString().trim()}`);
+                    }
+                });
+
+                pythonProcess.on('close', (code) => {
+                    // Borrar temp file
+                    try { if (fs.existsSync(tempUrlsFile)) fs.unlinkSync(tempUrlsFile); } catch (e) {}
+
+                    if (code !== 0) {
+                        console.error(`❌ Batch scraper falló con código ${code}`);
+                        // No rechazamos para permitir que lo de Idealista se guarde si funcionó
+                        resolve(); 
+                    } else {
+                        // Parsear resultados batch
+                        try {
+                            const jsonStartIndex = rawData.indexOf('[');
+                            const jsonEndIndex = rawData.lastIndexOf(']');
+                            if (jsonStartIndex !== -1 && jsonEndIndex !== -1) {
+                                const jsonString = rawData.substring(jsonStartIndex, jsonEndIndex + 1);
+                                const batchResults = JSON.parse(jsonString);
+                                updatedProperties = [...updatedProperties, ...batchResults];
+                            }
+                        } catch (e) {
+                            console.error("Error parseando salida batch:", e);
+                        }
+                        resolve();
+                    }
+                });
+            });
         }
 
         if (updatedProperties.length === 0) {
-            return res.json({ success: true, updatedCount: 0, message: "No se obtuvieron datos actualizados." });
+             // Si falló todo, devolver error o mensaje vacío
+             if (combinedErrorData) {
+                 // Si hubo error data y no hay propiedades, quizás falló todo
+                 console.warn("⚠️ No se obtuvieron propiedades, pero hubo logs:", combinedErrorData.substring(0, 200));
+             }
+             return res.json({ success: true, updatedCount: 0, message: "No se obtuvieron datos actualizados.", newClientsCount: 0 });
         }
 
-        // 4. Actualizar archivos persistentes
+        // 3. Actualizar archivos persistentes (Código Original Lógica)
         const allProperties = [];
-        // Cargar índice de archivos originales
         const files = fs.readdirSync(PROPERTIES_DIR);
         files.forEach(file => {
             if (path.extname(file) === '.json') {
@@ -1630,11 +1658,8 @@ app.post('/api/properties/update', async (req, res) => {
                     const fileContent = fs.readFileSync(filePath, 'utf8');
                     const data = JSON.parse(fileContent);
                     if (data && Array.isArray(data.properties)) {
-                        // Solo necesitamos saber qué URL está en qué archivo
                         data.properties.forEach(p => {
-                            if (p.url) {
-                                allProperties.push({ url: p.url, originalFile: file });
-                            }
+                            if (p.url) allProperties.push({ url: p.url, originalFile: file });
                         });
                     }
                 } catch (e) { }
@@ -1642,21 +1667,16 @@ app.post('/api/properties/update', async (req, res) => {
         });
 
         let successCount = 0;
-
-        // Agrupar actualizaciones por archivo original para minimizar escrituras
         const updatesByFile = {};
 
         updatedProperties.forEach(updatedProp => {
             const match = allProperties.find(p => p.url === updatedProp.url);
             if (match) {
-                if (!updatesByFile[match.originalFile]) {
-                    updatesByFile[match.originalFile] = [];
-                }
+                if (!updatesByFile[match.originalFile]) updatesByFile[match.originalFile] = [];
                 updatesByFile[match.originalFile].push(updatedProp);
             }
         });
 
-        // Aplicar actualizaciones
         for (const fileName in updatesByFile) {
             const filePath = path.join(PROPERTIES_DIR, fileName);
             if (fs.existsSync(filePath)) {
@@ -1687,46 +1707,12 @@ app.post('/api/properties/update', async (req, res) => {
             }
         }
 
-
-
-        /* LEGACY: Eliminado para usar solo SQLite
-        try {
-            if (fs.existsSync(PROPERTIES_JSON_FILE)) {
-                const consolidatedData = JSON.parse(fs.readFileSync(PROPERTIES_JSON_FILE, 'utf8'));
-                let consolidatedModified = false;
-
-                updatedProperties.forEach(update => {
-                    const index = consolidatedData.findIndex(p => p.url === update.url);
-                    if (index !== -1) {
-                        consolidatedData[index] = {
-                            ...consolidatedData[index],
-                            ...update,
-                            lastUpdated: new Date().toISOString()
-                        };
-                        consolidatedModified = true;
-                    }
-                });
-
-                if (consolidatedModified) {
-                    fs.writeFileSync(PROPERTIES_JSON_FILE, JSON.stringify(consolidatedData, null, 2));
-                    console.log(`💾 Archivo consolidado properties.json actualizado.`);
-                }
-            }
-        } catch (e) {
-            console.error("Error actualizando properties.json:", e);
-        }
-        */
-
-        // Contar nuevos clientes desde la salida stderr
+        // Contar nuevos clientes (regex sobre stderr acumulado)
         let newClientsCount = 0;
         try {
-            const newClientMatches = errorData.match(/Nuevo cliente añadido/g);
-            if (newClientMatches) {
-                newClientsCount = newClientMatches.length;
-            }
-        } catch (e) {
-            console.error("Error contando nuevos clientes:", e);
-        }
+            const newClientMatches = combinedErrorData.match(/Nuevo cliente añadido/g);
+            if (newClientMatches) newClientsCount = newClientMatches.length;
+        } catch (e) {}
 
         res.json({ success: true, updatedCount: successCount, newClientsCount });
 
@@ -2336,6 +2322,69 @@ app.post('/api/config/scraper', (req, res) => {
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: "Failed to save config" });
+    }
+});
+
+// Endpoint de Análisis de Métricas IA
+app.post('/api/ai/analyze-metrics', async (req, res) => {
+    const { data, model } = req.body;
+
+    if (!data) {
+        return res.status(400).json({ success: false, error: 'Datos no proporcionados' });
+    }
+
+    try {
+        const fetch = (await import('node-fetch')).default;
+        
+        const systemPrompt = `Eres un experto analista de datos inmobiliarios y estratega de negocios.
+Tu objetivo es analizar las métricas proporcionadas de una agencia inmobiliaria y generar un informe estratégico en formato Markdown.
+El informe debe ser profesional, directo y orientado a la acción.
+Estructura del informe:
+1. **Resumen Ejecutivo**: Visión general del estado de la agencia.
+2. **Análisis de Cartera**: Interpretación de los tipos de propiedades y precios.
+3. **Análisis de Clientes**: Insights sobre la demanda y preferencias.
+4. **Recomendaciones Estratégicas**: 3-5 acciones concretas para mejorar captación o ventas basadas en los datos.
+
+Usa emojis para hacer la lectura más amena pero mantén la profesionalidad.
+No inventes datos, basa tu análisis estrictamente en el JSON proporcionado.`;
+
+        const userPrompt = `Aquí tienes los datos actuales de la agencia:
+${JSON.stringify(data, null, 2)}
+
+Por favor, genera el informe estratégico.`;
+
+        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'http://localhost:3001',
+                'X-Title': 'Inmobiliaria Manager'
+            },
+            body: JSON.stringify({
+                model: model || 'openai/gpt-4o-mini',
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userPrompt }
+                ],
+                temperature: 0.7,
+                max_tokens: 1500
+            })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`OpenRouter API Error: ${response.status} - ${errorText}`);
+        }
+
+        const result = await response.json();
+        const analysis = result.choices[0].message.content;
+
+        res.json({ success: true, analysis });
+
+    } catch (error) {
+        console.error('Error generating AI analysis:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 

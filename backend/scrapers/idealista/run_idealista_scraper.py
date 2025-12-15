@@ -194,7 +194,30 @@ def extract_detail_data(driver, url, known_data=None):
         try:
             main_img = driver.find_element(By.CSS_SELECTOR, '.main-image img')
             prop_data["image_url"] = main_img.get_attribute('src')
-        except: pass
+        except: 
+             try:
+                # Fallback
+                grid_img = driver.find_element(By.CSS_SELECTOR, 'img.main-image_img')
+                prop_data["image_url"] = grid_img.get_attribute('src')
+             except: pass
+             
+    # Extraer Update Date Info
+    date_update_text = ""
+    try:
+        date_elem = driver.find_element(By.CSS_SELECTOR, '.details-box.date-update-block .date-update-text')
+        date_update_text = date_elem.text.strip()
+    except: pass
+
+    stats_text = ""
+    try:
+        stats_elem = driver.find_element(By.CSS_SELECTOR, '.stats-text')
+        stats_text = stats_elem.text.strip()
+    except: pass
+    
+    prop_data["extra_data"] = {
+        "date_update_text": date_update_text,
+        "stats_text": stats_text
+    }
 
     return prop_data
 
@@ -337,6 +360,10 @@ def scrape_idealista(property_type="viviendas", max_pages=3):
         print(f"\n--- Iniciando Página {page} ---")
         
         page_props = process_page(url, property_type)
+        
+        if page_props:
+            save_to_json(page_props, f"{property_type}_page{page}")
+            
         all_properties.extend(page_props)
         
         # Pequeña pausa entre reinicios de navegador
@@ -345,9 +372,9 @@ def scrape_idealista(property_type="viviendas", max_pages=3):
             
     return all_properties
 
-def save_to_json(properties):
+def save_to_json(properties, suffix=""):
     if not properties:
-        print("No hay propiedades para guardar.")
+        # print("No hay propiedades para guardar.")
         return
 
     output_dir = os.environ.get('PROPERTIES_OUTPUT_DIR', os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'properties'))
@@ -355,27 +382,32 @@ def save_to_json(properties):
         os.makedirs(output_dir)
         
     timestamp = int(time.time() * 1000)
-    filename = f"idealista_manual_{timestamp}.json"
+    filename = f"idealista_{timestamp}_{suffix}.json"
     filepath = os.path.join(output_dir, filename)
     
     with open(filepath, 'w', encoding='utf-8') as f:
-        json.dump(properties, f, ensure_ascii=False, indent=2)
+        json.dump({"properties": properties}, f, ensure_ascii=False, indent=2) # Wrap in object like other scrapers?
         
     print(f"Guardado en: {filepath}")
 
 if __name__ == "__main__":
-    # Leer argumentos si los hay (tipo de propiedad)
+    # Leer argumentos
     ptype = "viviendas"
     if len(sys.argv) > 1:
         arg_json = sys.argv[1]
         try:
-             args = json.loads(arg_json)
-             if "type" in args: ptype = args["type"]
+             # Si viene como JSON {"type": "..."}
+             if arg_json.startswith('{'):
+                args = json.loads(arg_json)
+                if "type" in args: ptype = args["type"]
+             else:
+                # Si viene directo como string
+                ptype = arg_json
         except:
              pass
 
     props = scrape_idealista(ptype)
-    save_to_json(props)
+    # save_to_json(props) # Ya guardamos página a página
     
     # Salida JSON al final para que el backend la lea si es update
     print(json.dumps(props, ensure_ascii=False))

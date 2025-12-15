@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { Home, Building2, MapPin, Calendar, Phone, ExternalLink, Search, Filter, Play, Users, MessageSquare, Plus, Trash2, Send, RefreshCw, Image as ImageIcon, Pencil, History, Settings, AlertCircle, CheckCircle, Info, X, Bell, LifeBuoy, Upload, Mail, Square } from 'lucide-react'
+import { Home, Building2, MapPin, Calendar, Phone, ExternalLink, Search, Filter, Play, Users, MessageSquare, Plus, Trash2, Send, RefreshCw, Image as ImageIcon, Pencil, History, Settings, AlertCircle, CheckCircle, Info, X, Bell, LifeBuoy, Upload, Mail, Square, BarChart2 } from 'lucide-react'
 import Papa from 'papaparse';
 import UpdateNotification from './components/UpdateNotification';
 import CalendarPanel from './components/CalendarPanel';
+import MetricsPanel from './components/MetricsPanel';
 import './App.css'
 
 const API_URL = 'http://localhost:3001/api';
@@ -57,8 +58,12 @@ function App() {
   const [filterType, setFilterType] = useState('all')
   const [sortBy, setSortBy] = useState('date_desc')
   const [activeTab, setActiveTab] = useState('properties')
-  const [scrapingInProgress, setScrapingInProgress] = useState({ fotocasa_viviendas: false, fotocasa_locales: false, fotocasa_terrenos: false, idealista: false });
+  const [scrapingInProgress, setScrapingInProgress] = useState({ 
+    fotocasa_viviendas: false, fotocasa_locales: false, fotocasa_terrenos: false,
+    idealista_viviendas: false, idealista_locales: false, idealista_terrenos: false
+  });
   const [showFotocasaOptions, setShowFotocasaOptions] = useState(false);
+  const [showIdealistaOptions, setShowIdealistaOptions] = useState(false);
   const [scrapingLog, setScrapingLog] = useState('')
 
   // Refs para detección de cambios (nuevos clientes/propiedades)
@@ -1036,16 +1041,20 @@ function App() {
       return
     }
 
-    if (selectedProperties.length === 0) {
-      showNotification('Selecciona al menos una propiedad', 'info')
-      return
-    }
+    // Propiedad opcional
+    // if (selectedProperties.length === 0) {
+    //   showNotification('Selecciona al menos una propiedad', 'info')
+    //   return
+    // }
 
     setGeneratingMessage(true)
 
     try {
       const client = clients.find(c => c.id === selectedClients[0])
-      const props = properties.filter(p => selectedProperties.includes(p.url))
+      // Handle optional property
+      const props = selectedProperties.length > 0 
+        ? properties.filter(p => selectedProperties.includes(p.url))
+        : [];
 
       const response = await fetch(`${API_URL}/messages/generate`, {
         method: 'POST',
@@ -1447,23 +1456,42 @@ function App() {
                 )}
               </div>
 
-              <button
-                onClick={() => scrapingInProgress.idealista ? stopScraper('idealista') : runScraper('idealista')}
-                className={`scraper-btn idealista ${scrapingInProgress.idealista ? 'stop-btn' : ''}`}
-                style={scrapingInProgress.idealista ? { backgroundColor: '#dc2626', borderColor: '#b91c1c' } : {}}
-              >
-                {scrapingInProgress.idealista ? (
-                  <>
-                    <Square size={18} fill="currentColor" />
-                    <span>Detener</span>
-                  </>
-                ) : (
-                  <>
-                    <Building2 size={18} />
-                    <span>Idealista</span>
-                  </>
+              <div className="idealista-group">
+                <button
+                  onClick={() => setShowIdealistaOptions(!showIdealistaOptions)}
+                  className="scraper-btn idealista"
+                >
+                  <Building2 size={18} />
+                  <span>Idealista</span>
+                </button>
+                {showIdealistaOptions && (
+                  <div className="idealista-options">
+                    {['viviendas', 'locales', 'terrenos'].map(type => {
+                      const isRunning = scrapingInProgress[`idealista_${type}`];
+                      return (
+                        <button
+                          key={type}
+                          onClick={() => isRunning ? stopScraper('idealista', type) : runScraper('idealista', type)}
+                          className={`scraper-btn idealista ${isRunning ? 'stop-btn' : ''}`}
+                          title={isRunning ? "Detener Scraper" : `Buscar ${type}`}
+                          style={isRunning ? { backgroundColor: '#dc2626', borderColor: '#b91c1c' } : {}}
+                        >
+                          {isRunning ? (
+                            <><Square size={18} fill="currentColor" /><span>Detener</span></>
+                          ) : (
+                            <>
+                              {type === 'viviendas' && <Home size={18} />}
+                              {type === 'locales' && <Building2 size={18} />}
+                              {type === 'terrenos' && <MapPin size={18} />}
+                              <span>{type.charAt(0).toUpperCase() + type.slice(1)}</span>
+                            </>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 )}
-              </button>
+              </div>
             </div>
           </div>
         </header>
@@ -1508,6 +1536,13 @@ function App() {
           >
             <Calendar size={20} />
             <span>Calendario</span>
+          </button>
+          <button
+            className={activeTab === 'metrics' ? 'active' : ''}
+            onClick={() => setActiveTab('metrics')}
+          >
+            <BarChart2 size={20} />
+            <span>Métricas IA</span>
           </button>
         </div>
 
@@ -2147,6 +2182,9 @@ function App() {
 
           {activeTab === 'calendar' && (
             <CalendarPanel clients={clients} showNotification={showNotification} />
+          )}
+          {activeTab === 'metrics' && (
+            <MetricsPanel properties={properties} clients={clients} API_URL={API_URL} />
           )}
         </main>
 

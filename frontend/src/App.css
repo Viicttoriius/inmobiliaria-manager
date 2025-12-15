@@ -1341,6 +1341,38 @@ body {
     text-align: center;
 }
 
+/* Idealista Options Dropdown */
+.idealista-group {
+    position: relative;
+}
+
+.idealista-options {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+    z-index: 100;
+    min-width: 160px;
+    margin-top: 0.5rem;
+}
+
+.idealista-options button {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    text-align: center;
+}
+
 .notification-header {
   display: flex;
   justify-content: space-between;

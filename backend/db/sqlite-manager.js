@@ -744,10 +744,10 @@ function getClientMessages(clientId) {
 // ============ CALENDAR FUNCTIONS ============
 
 /**
- * Get events within a date range
+ * Get events within a date range (including Client Appointments)
  */
 function getEvents(startDate, endDate) {
-    // Si no se especifican fechas, traer los últimos 3 meses y futuros
+    // 1. Fetch Standard Calendar Events
     let query = 'SELECT * FROM calendar_events WHERE 1=1';
     const params = [];
 
@@ -763,13 +763,54 @@ function getEvents(startDate, endDate) {
     query += ' ORDER BY start_date ASC';
 
     const stmt = db.prepare(query);
-    const events = stmt.all(...params);
-
-    // Convert booleans
-    return events.map(e => ({
+    const standardEvents = stmt.all(...params).map(e => ({
         ...e,
         all_day: Boolean(e.all_day)
     }));
+
+    // 2. Fetch Client Appointments
+    let clientQuery = `
+        SELECT id, name, appointment_date, notes 
+        FROM clients 
+        WHERE appointment_date IS NOT NULL 
+        AND appointment_date != ''
+    `;
+    const clientParams = [];
+
+    if (startDate) {
+        clientQuery += ' AND appointment_date >= ?';
+        clientParams.push(startDate);
+    }
+    if (endDate) {
+        clientQuery += ' AND appointment_date <= ?';
+        clientParams.push(endDate);
+    }
+
+    const clientStmt = db.prepare(clientQuery);
+    const clientAppointments = clientStmt.all(...clientParams).map(client => {
+        // Construct an event object from client appointment
+        const start = new Date(client.appointment_date);
+        const end = new Date(start.getTime() + 60 * 60 * 1000); // Default 1 hour duration
+
+        return {
+            id: `client-${client.id}`, // Unique ID prefix to avoid collision
+            title: `Cita: ${client.name}`,
+            description: client.notes || 'Cita desde panel de clientes',
+            start_date: client.appointment_date,
+            end_date: end.toISOString(),
+            all_day: false,
+            type: 'appointment',
+            client_id: client.id,
+            is_client_source: true // Flag to identify source
+        };
+    });
+
+    // 3. Merge and Sort
+    const allEvents = [...standardEvents, ...clientAppointments].sort((a, b) => 
+        new Date(a.start_date) - new Date(b.start_date)
+    );
+
+    return allEvents;
 }
 
 /**
