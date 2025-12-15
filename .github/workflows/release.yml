@@ -95,40 +95,52 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG_NAME=${{ github.ref_name }}
-          VERSION=${TAG_NAME#v}
-          echo "Checking for existing assets to clean for tag: $TAG_NAME (Version: $VERSION)"
+          echo "Checking for existing assets to clean for tag: $TAG_NAME"
           
           # Check if release exists
-          gh release view "$TAG_NAME" >/dev/null 2>&1 || { echo "Release $TAG_NAME does not exist yet. Skipping cleanup."; exit 0; }
+          if ! gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Release $TAG_NAME does not exist yet. Skipping cleanup."
+            exit 0
+          fi
 
-          # Function to delete asset ignoring errors
-          delete_asset() {
-            echo "Attempting to delete $1..."
-            gh release delete-asset "$TAG_NAME" "$1" -y >/dev/null 2>&1 || echo "Asset $1 not found or could not be deleted"
-          }
-
+          # Define pattern based on OS/Arch
+          PATTERN=""
           if [ "${{ matrix.os }}" == "windows-latest" ]; then
-            delete_asset "Inmobiliaria Manager Setup $VERSION.exe"
-            delete_asset "Inmobiliaria Manager Setup $VERSION.exe.blockmap"
-            delete_asset "latest.yml"
+            PATTERN=".exe"
           elif [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
-             delete_asset "Inmobiliaria Manager-$VERSION.AppImage"
-             delete_asset "latest-linux.yml"
-          elif [ "${{ matrix.os }}" == "macos-latest" ] && [ "${{ matrix.arch }}" == "x64" ]; then
-            delete_asset "Inmobiliaria Manager-$VERSION-mac-x64.zip"
-            delete_asset "Inmobiliaria Manager-$VERSION-mac-x64.zip.blockmap"
-            delete_asset "Inmobiliaria Manager-$VERSION-mac-x64.dmg"
-            delete_asset "Inmobiliaria Manager-$VERSION-mac-x64.dmg.blockmap"
-          elif [ "${{ matrix.os }}" == "macos-latest" ] && [ "${{ matrix.arch }}" == "arm64" ]; then
-            delete_asset "Inmobiliaria Manager-$VERSION-mac-arm64.zip"
-            delete_asset "Inmobiliaria Manager-$VERSION-mac-arm64.zip.blockmap"
-            delete_asset "Inmobiliaria Manager-$VERSION-mac-arm64.dmg"
-            delete_asset "Inmobiliaria Manager-$VERSION-mac-arm64.dmg.blockmap"
+            PATTERN=".AppImage"
+          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
+            PATTERN="-mac-${{ matrix.arch }}"
           fi
+
+          echo "Searching for assets containing: $PATTERN"
           
-          if [ "${{ matrix.os }}" == "macos-latest" ]; then
-            delete_asset "latest-mac.yml"
-          fi
+          # List all assets and delete matches
+          gh release view "$TAG_NAME" --json assets -q '.assets[].name' | while read -r asset; do
+            # Skip empty lines
+            [ -z "$asset" ] && continue
+
+            SHOULD_DELETE=false
+
+            # Check specific pattern
+            if [[ "$asset" == *"$PATTERN"* ]]; then
+              SHOULD_DELETE=true
+            fi
+
+            # Check shared metadata files
+            if [ "${{ matrix.os }}" == "windows-latest" ] && [[ "$asset" == "latest.yml" ]]; then
+               SHOULD_DELETE=true
+            elif [ "${{ matrix.os }}" == "ubuntu-latest" ] && [[ "$asset" == "latest-linux.yml" ]]; then
+               SHOULD_DELETE=true
+            elif [ "${{ matrix.os }}" == "macos-latest" ] && [[ "$asset" == "latest-mac.yml" ]]; then
+               SHOULD_DELETE=true
+            fi
+
+            if [ "$SHOULD_DELETE" = true ]; then
+              echo "Deleting existing asset: $asset"
+              gh release delete-asset "$TAG_NAME" "$asset" -y || echo "⚠️ Failed to delete $asset (might allow overwrite or already gone)"
+            fi
+          done
 
       - name: Install Linux Dependencies
         if: matrix.os == 'ubuntu-latest'
