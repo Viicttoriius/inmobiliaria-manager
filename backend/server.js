@@ -489,10 +489,10 @@ const whatsappClient = new Client({
     }),
     authTimeoutMs: 120000,
     qrMaxRetries: 0,
-    // Configuración robusta para evitar errores de cache/versión
+    // Desactivamos la caché persistente para evitar errores de regex en index.html
+    // y forzamos el uso de la versión más reciente compatible (o la que descargue)
     webVersionCache: {
-        type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
+        type: 'none'
     },
     // Añadido para intentar mitigar problemas de timeout/evaluación en mac
     restartOnAuthFail: true,

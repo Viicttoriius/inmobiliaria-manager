@@ -788,22 +788,46 @@ function getEvents(startDate, endDate) {
 
     const clientStmt = db.prepare(clientQuery);
     const clientAppointments = clientStmt.all(...clientParams).map(client => {
-        // Construct an event object from client appointment
-        const start = new Date(client.appointment_date);
-        const end = new Date(start.getTime() + 60 * 60 * 1000); // Default 1 hour duration
+        try {
+            // Construct an event object from client appointment
+            let start = new Date(client.appointment_date);
+            
+            // Fallback for other formats if necessary (e.g., DD/MM/YYYY)
+            if (isNaN(start.getTime()) && typeof client.appointment_date === 'string') {
+                 const parts = client.appointment_date.split(/[-/]/);
+                 if (parts.length === 3) {
+                     // Assume DD-MM-YYYY or DD/MM/YYYY if first part is > 12 (not always true but heuristic)
+                     // Better: Try to parse as ISO first, if fail, try manual
+                     // If stored as DD/MM/YYYY
+                     if (parts[0].length === 2 && parts[2].length === 4) {
+                         start = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+                     }
+                 }
+            }
 
-        return {
-            id: `client-${client.id}`, // Unique ID prefix to avoid collision
-            title: `Cita: ${client.name}`,
-            description: client.notes || 'Cita desde panel de clientes',
-            start_date: client.appointment_date,
-            end_date: end.toISOString(),
-            all_day: false,
-            type: 'appointment',
-            client_id: client.id,
-            is_client_source: true // Flag to identify source
-        };
-    });
+            if (isNaN(start.getTime())) {
+                console.warn(`Skipping client appointment with invalid date: ${client.appointment_date} (Client ID: ${client.id})`);
+                return null;
+            }
+
+            const end = new Date(start.getTime() + 60 * 60 * 1000); // Default 1 hour duration
+
+            return {
+                id: `client-${client.id}`, // Unique ID prefix to avoid collision
+                title: `Cita: ${client.name}`,
+                description: client.notes || 'Cita desde panel de clientes',
+                start_date: start.toISOString(), // Normalize to ISO
+                end_date: end.toISOString(),
+                all_day: false,
+                type: 'appointment',
+                client_id: client.id,
+                is_client_source: true // Flag to identify source
+            };
+        } catch (err) {
+            console.error(`Error processing client appointment (ID: ${client.id}):`, err);
+            return null;
+        }
+    }).filter(e => e !== null); // Filter out failed ones
 
     // 3. Merge and Sort
     const allEvents = [...standardEvents, ...clientAppointments].sort((a, b) => 
