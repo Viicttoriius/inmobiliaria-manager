@@ -375,21 +375,59 @@ function App() {
     connectToBackend();
   }, [])
 
+  const mapPropertyData = (rawData) => {
+    return rawData.map(p => {
+        // Safe extra_data parsing
+        let extra = {};
+        if (p.extra_data) {
+            try {
+                extra = typeof p.extra_data === 'string' ? JSON.parse(p.extra_data) : p.extra_data;
+            } catch (e) {
+                console.error("Error parsing extra_data for property:", p.id);
+            }
+        }
+
+        // Helper to find key case-insensitive in object
+        const findVal = (obj, key) => {
+            if (!obj) return null;
+            const foundKey = Object.keys(obj).find(k => k.toLowerCase() === key.toLowerCase());
+            return foundKey ? obj[foundKey] : null;
+        };
+
+        const phone = p.phone || p.Phone || findVal(extra, 'phone') || 'None';
+        const advertiser = p.Advertiser || p.advertiser || findVal(extra, 'advertiser') || '';
+
+        return {
+            ...p,
+            Phone: phone,
+            Advertiser: advertiser,
+            Municipality: p.Municipality || findVal(extra, 'municipality') || '',
+            // Ensure other fields are mapped if needed
+            hab: p.hab || findVal(extra, 'hab') || findVal(extra, 'habitaciones') || '',
+            m2: p.m2 || findVal(extra, 'm2') || findVal(extra, 'metros') || ''
+        };
+    });
+  };
+
   useEffect(() => {
     filterAndSortProperties()
   }, [properties, searchTerm, filterType, sortBy])
 
-  // Polling para actualizar el estado del QR cuando el modal está abierto
   useEffect(() => {
+    // Definir la función de polling
+    const pollConfigStatus = async () => {
+      if (configModalOpen && !configStatus.whatsapp.ready) {
+        await loadConfigStatus();
+      }
+    };
+
     let interval;
     if (configModalOpen && !configStatus.whatsapp.ready) {
       // Hacer una carga inicial
       loadConfigStatus();
 
       // Y luego polling cada 3 segundos
-      interval = setInterval(() => {
-        loadConfigStatus();
-      }, 3000);
+      interval = setInterval(pollConfigStatus, 3000);
     }
     return () => {
       if (interval) clearInterval(interval);
@@ -511,24 +549,49 @@ function App() {
       const response = await fetch(`${API_URL}/properties?t=${new Date().getTime()}`)
       const rawData = await response.json()
 
-      // Map SQLite snake_case to Frontend expected format (PascalCase/Legacy)
-      const data = rawData.map(p => ({
-        ...p,
-        id: p.id,
-        Title: p.title || p.Title,
-        Price: p.price || p.Price,
-        Description: p.description || p.Description,
-        imgurl: p.image_url || p.imgurl,
-        url: p.url,
-        property_type: p.property_type,
-        source: p.source,
-        Timeago: p.timeago || p.Timeago,
-        Municipality: p.location || p.Municipality,
-        Phone: p.phone || p.Phone || (p.extra_data ? ((typeof p.extra_data === 'string' ? JSON.parse(p.extra_data) : p.extra_data).phone || (typeof p.extra_data === 'string' ? JSON.parse(p.extra_data) : p.extra_data).Phone) : '') || '',
-        hab: p.habitaciones || p.hab,
-        m2: p.metros || p.m2,
-        Advertiser: p.extra_data ? ((typeof p.extra_data === 'string' ? JSON.parse(p.extra_data) : p.extra_data).advertiser || (typeof p.extra_data === 'string' ? JSON.parse(p.extra_data) : p.extra_data).Advertiser || '') : (p.Advertiser || '')
-      }));
+      const mapPropertyData = (rawData) => {
+        return rawData.map(p => {
+            // Safe extra_data parsing
+            let extra = {};
+            if (p.extra_data) {
+                try {
+                    extra = typeof p.extra_data === 'string' ? JSON.parse(p.extra_data) : p.extra_data;
+                } catch (e) {
+                    console.error("Error parsing extra_data for property:", p.id);
+                }
+            }
+    
+            // Helper to find key case-insensitive in object
+            const findVal = (obj, key) => {
+                if (!obj) return null;
+                const foundKey = Object.keys(obj).find(k => k.toLowerCase() === key.toLowerCase());
+                return foundKey ? obj[foundKey] : null;
+            };
+    
+            const phone = p.phone || p.Phone || findVal(extra, 'phone') || 'None';
+            const advertiser = p.Advertiser || p.advertiser || findVal(extra, 'advertiser') || '';
+    
+            return {
+                ...p,
+                id: p.id,
+                Title: p.title || p.Title,
+                Price: p.price || p.Price,
+                Description: p.description || p.Description,
+                imgurl: p.image_url || p.imgurl,
+                url: p.url,
+                property_type: p.property_type,
+                source: p.source,
+                Timeago: p.timeago || p.Timeago,
+                Municipality: p.location || p.Municipality || findVal(extra, 'municipality') || '',
+                Phone: phone,
+                hab: p.habitaciones || p.hab || findVal(extra, 'hab') || findVal(extra, 'habitaciones'),
+                m2: p.metros || p.m2 || findVal(extra, 'm2') || findVal(extra, 'metros'),
+                Advertiser: advertiser
+            };
+        });
+      };
+
+      const data = mapPropertyData(rawData);
 
       // Detección de nuevas propiedades
       if (prevPropertiesRef.current) {

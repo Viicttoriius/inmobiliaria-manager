@@ -45,6 +45,11 @@ jobs:
             frontend/package-lock.json
             package-lock.json
 
+      - name: Setup Python for Build
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Install Backend Dependencies
         run: |
           cd backend
