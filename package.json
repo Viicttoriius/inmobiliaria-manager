@@ -85,6 +85,7 @@
       "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
       "category": "public.app-category.productivity",
       "minimumSystemVersion": "10.13",
+      "identity": null,
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
       "darkModeSupport": true,
