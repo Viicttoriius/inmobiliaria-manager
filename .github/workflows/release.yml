@@ -62,14 +62,6 @@ jobs:
         run: rm -rf release
         shell: bash
 
-      - name: Rebuild Native Modules (Windows/Linux)
-        if: matrix.os != 'macos-latest'
-        run: npm run rebuild-backend
-
-      - name: Rebuild Native Modules (macOS)
-        if: matrix.os == 'macos-latest'
-        run: npm run rebuild-backend:mac
-
       - name: Verify Build Assets
         run: |
           echo "Checking frontend/dist..."
@@ -77,9 +69,32 @@ jobs:
           echo "Checking electron/main.js..."
           ls electron/main.js || echo "electron/main.js missing!"
 
-      - name: Build/Release Electron App
+      - name: Build/Release Electron App (Windows/Linux)
+        if: matrix.os != 'macos-latest'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEBUG: electron-builder
-        run: npm run release
+        run: |
+          npm run rebuild-backend
+          npm run release
+
+      - name: Build/Release Electron App (macOS x64)
+        if: matrix.os == 'macos-latest'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEBUG: electron-builder
+        run: |
+          npm run rebuild-backend:x64
+          npx electron-builder --mac --x64 --publish always
+
+      - name: Build/Release Electron App (macOS arm64)
+        if: matrix.os == 'macos-latest'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEBUG: electron-builder
+        run: |
+          npm run rebuild-backend:arm64
+          npx electron-builder --mac --arm64 --publish always

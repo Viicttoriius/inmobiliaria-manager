@@ -2,6 +2,16 @@
 
 Todas las cambios notables de este proyecto serán documentados en este archivo.
 
+## [2.1.5] - 2025-12-15
+### Fixed
+- **WhatsApp**: Corregido error de inicialización del navegador (timeout/selector) en versión empaquetada.
+- **WhatsApp**: Implementado sistema de limpieza automática de sesión en caso de corrupción.
+- **macOS**: Solucionado error de arquitectura incompatible (arm64 vs x86_64) en módulo better-sqlite3.
+- **Backend**: Inclusión correcta de dependencias de Puppeteer y caché en el instalador final.
+- **Scrapers**: Solucionado error "Cannot set headers" al finalizar procesos de scraping.
+- **Scrapers**: Corregidos permisos de escritura para archivos de debug (ahora usan carpeta temporal del sistema).
+- **Dependencias**: Añadida librería `html5lib` faltante para scraping robusto de Fotocasa.
+
 ## [2.1.4] - 2025-12-15
 ### Fixed
 - **CI/CD**: Solucionados problemas de construcción en macOS y Linux.

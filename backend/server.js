@@ -260,8 +260,10 @@ const getSystemBrowserPath = () => {
 const getBundledChromiumPath = () => {
     try {
         const isWin = process.platform === 'win32';
-        // Nombres de ejecutables comunes
-        const exeNames = isWin ? ['chrome.exe', 'chromium.exe'] : ['chrome', 'chromium', 'google-chrome'];
+        // Nombres de ejecutables comunes (incluyendo chrome-headless-shell para nuevas versiones de Puppeteer)
+        const exeNames = isWin 
+            ? ['chrome.exe', 'chromium.exe', 'chrome-headless-shell.exe'] 
+            : ['chrome', 'chromium', 'google-chrome', 'chrome-headless-shell'];
 
         // Rutas base posibles donde buscar la cache de puppeteer
         const searchPaths = [
@@ -462,11 +464,7 @@ const whatsappClient = new Client({
     }),
     authTimeoutMs: 120000,
     qrMaxRetries: 0,
-    // Fix: Forzar versión de WhatsApp Web para evitar bucles de QR o incompatibilidades
-    webVersionCache: {
-        type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
-    },
+    // webVersionCache eliminado para permitir autodetect de la versión más reciente compatible
     puppeteer: {
         // Si browserPath es undefined, intentamos usar el bundled
         executablePath: browserPath || getBundledChromiumPath() || undefined,
@@ -495,7 +493,8 @@ const whatsappClient = new Client({
             // Añadir estos flags para mejorar compatibilidad Windows
             '--disable-software-rasterizer',
             '--disable-gl-drawing-for-tests'
-        ]
+        ],
+        timeout: 60000 // Aumentar timeout de inicialización de puppeteer
     }
 });
 
@@ -576,6 +575,27 @@ const initializeWhatsApp = async () => {
         await whatsappClient.initialize();
     } catch (err) {
         console.error('❌ Error fatal al inicializar WhatsApp Client:', err);
+
+        // Nuevo: Si es error de timeout (selector) o evaluación, borrar caché de autenticación para forzar reinicio limpio
+        if (err.message && (err.message.includes('Timeout') || err.message.includes('Evaluation failed'))) {
+            console.log('⚠️ Error de timeout detectado. Posible corrupción de sesión. Limpiando caché...');
+            try {
+                 // LocalAuth crea una carpeta 'session' o '.wwebjs_auth' dependiendo de la config.
+                 // Con dataPath: DATA_DIR, suele ser DATA_DIR/session o similar. 
+                 // Borramos las carpetas probables.
+                 const authPath = path.join(DATA_DIR, '.wwebjs_auth');
+                 const sessionPath = path.join(DATA_DIR, 'session'); 
+                 const cachePath = path.join(DATA_DIR, '.wwebjs_cache');
+                 
+                 if (fs.existsSync(authPath)) fs.rmSync(authPath, { recursive: true, force: true });
+                 if (fs.existsSync(sessionPath)) fs.rmSync(sessionPath, { recursive: true, force: true });
+                 if (fs.existsSync(cachePath)) fs.rmSync(cachePath, { recursive: true, force: true });
+                 
+                 console.log('✅ Caché de sesión eliminada. Se requerirá nuevo escaneo de QR.');
+            } catch (cleanupErr) {
+                console.error('❌ Error limpiando caché:', cleanupErr);
+            }
+        }
 
         // Intento de recuperación: Si falla con el navegador del sistema, intentar sin executablePath
         if (err.message && err.message.includes('Failed to launch the browser process') && browserPath) {
@@ -1182,6 +1202,12 @@ const runPythonScraper = (scraperPath, res, scraperId) => {
     });
 
     pythonProcess.on('close', (code) => {
+        // Evitar respuestas múltiples si ya se respondió
+        if (res.headersSent) {
+            console.warn('⚠️ Intento de respuesta duplicada ignorado en evento close.');
+            return;
+        }
+
         // Limpiar del mapa si existe
         if (scraperId && activeScrapers.has(scraperId)) {
             activeScrapers.delete(scraperId);
@@ -1243,6 +1269,7 @@ const runPythonScraper = (scraperPath, res, scraperId) => {
     });
 
     pythonProcess.on('error', (error) => {
+        if (res.headersSent) return;
         console.error('❌ Error iniciando scraper:', error);
         res.status(500).json({ success: false, error: 'Error iniciando scraper: ' + error.message });
     });

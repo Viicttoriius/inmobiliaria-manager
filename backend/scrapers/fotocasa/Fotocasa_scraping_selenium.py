@@ -545,10 +545,15 @@ def scrape_fotocasa_selenium(start_url, property_type, sort_by="publicationDate"
         handle_push_alert_modal(driver)
         scroll_to_bottom(driver)
         
-        # GUARDAR HTML PARA DEBUG
-        with open("debug_page.html", "w", encoding="utf-8") as f:
-            f.write(driver.page_source)
-        print("  🔍 HTML guardado en debug_page.html para revisión")
+        # GUARDAR HTML PARA DEBUG EN RUTA SEGURA
+        import tempfile
+        debug_path = os.path.join(tempfile.gettempdir(), "fotocasa_debug_page.html")
+        try:
+            with open(debug_path, "w", encoding="utf-8") as f:
+                f.write(driver.page_source)
+            print(f"  🔍 HTML guardado en {debug_path} para revisión")
+        except Exception as e:
+            print(f"  ⚠️ No se pudo guardar HTML de debug: {e}")
         
         total_pages = get_total_pages(driver)
         if max_pages and max_pages < total_pages:

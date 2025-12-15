@@ -1,6 +1,6 @@
 {
   "name": "inmobiliaria-manager",
-  "version": "2.1.4",
+  "version": "2.1.5",
   "description": "Sistema de Gestión Inmobiliaria con Automatización",
   "main": "electron/main.js",
   "author": "Victor Muñoz Lopez",
@@ -13,11 +13,11 @@
     "dist": "electron-builder",
     "release": "electron-builder --publish always",
     "rebuild-backend": "electron-rebuild --module-dir backend -f -w better-sqlite3",
-    "rebuild-backend:mac": "electron-rebuild --module-dir backend -f -w better-sqlite3 --arch arm64,x64",
+    "rebuild-backend:x64": "electron-rebuild --module-dir backend -f -w better-sqlite3 --arch x64",
+    "rebuild-backend:arm64": "electron-rebuild --module-dir backend -f -w better-sqlite3 --arch arm64",
     "postinstall": "electron-builder install-app-deps && npm run rebuild-backend"
   },
   "build": {
-    "npmRebuild": false,
     "appId": "com.victormunoz.inmobiliaria",
     "productName": "Inmobiliaria Manager",
     "copyright": "Copyright © 2025 Victor Muñoz Lopez",
@@ -39,6 +39,10 @@
       {
         "from": "backend/python_env",
         "to": "backend/python_env"
+      },
+      {
+        "from": "backend/.cache",
+        "to": "backend/.cache"
       },
       {
         "from": "backend",
