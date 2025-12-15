@@ -449,13 +449,13 @@ checkPythonDependencies();
 
 const PORT = 3001;
 
-const DATA_DIR = path.join(__dirname, '.wwebjs_auth'); // Usar directorio local para evitar problemas de permisos
-const SESSION_DIR = path.join(DATA_DIR, 'session');
+const WHATSAPP_DATA_DIR = path.join(__dirname, '.wwebjs_auth'); // Usar directorio local para evitar problemas de permisos
+const SESSION_DIR = path.join(WHATSAPP_DATA_DIR, 'session');
 
 // Función para limpiar caché de WhatsApp al inicio
 const cleanWhatsAppCache = () => {
     try {
-        const cachePath = path.join(DATA_DIR, '.wwebjs_cache');
+        const cachePath = path.join(WHATSAPP_DATA_DIR, '.wwebjs_cache');
         if (fs.existsSync(cachePath)) {
             console.log('🧹 Limpiando caché antigua de WhatsApp...');
             fs.rmSync(cachePath, { recursive: true, force: true });
@@ -485,7 +485,7 @@ console.log(`🐛 [DEBUG] Browser Path detectado: ${browserPath || 'NINGUNO (Se 
 const whatsappClient = new Client({
     authStrategy: new LocalAuth({
         clientId: 'client-one', // ID específico para mantener sesión consistente
-        dataPath: DATA_DIR // Ruta base para datos de sesión
+        dataPath: WHATSAPP_DATA_DIR // Ruta base para datos de sesión
     }),
     authTimeoutMs: 120000,
     qrMaxRetries: 0,
@@ -614,12 +614,9 @@ const initializeWhatsApp = async () => {
         if (err.message && (err.message.includes('Timeout') || err.message.includes('Evaluation failed') || err.message.includes('Protocol error'))) {
             console.log('⚠️ Error crítico detectado (Timeout/Evaluation/Protocol). Posible corrupción de sesión. Limpiando caché...');
             try {
-                 // LocalAuth crea una carpeta 'session' o '.wwebjs_auth' dependiendo de la config.
-                 // Con dataPath: DATA_DIR, suele ser DATA_DIR/session o similar. 
-                 // Borramos las carpetas probables.
-                 const authPath = path.join(DATA_DIR, '.wwebjs_auth');
-                 const sessionPath = path.join(DATA_DIR, 'session'); 
-                 const cachePath = path.join(DATA_DIR, '.wwebjs_cache');
+                 // Usar la ruta correcta de WhatsApp
+                 const authPath = WHATSAPP_DATA_DIR;
+                 const cachePath = path.join(WHATSAPP_DATA_DIR, '.wwebjs_cache');
                  
                  // Intentar borrar con reintentos para evitar bloqueos de archivo
                  const deleteFolder = (p) => {
@@ -633,7 +630,6 @@ const initializeWhatsApp = async () => {
                  };
 
                  deleteFolder(authPath);
-                 deleteFolder(sessionPath);
                  deleteFolder(cachePath);
                  
                  console.log('✅ Caché de sesión eliminada. Se requerirá nuevo escaneo de QR.');
@@ -856,7 +852,7 @@ app.post('/api/config/whatsapp/reset', async (req, res) => {
         whatsappState = 'INITIALIZING';
 
         // 2. Borrar carpeta de sesión
-        const sessionPath = path.join(DATA_DIR, '.wwebjs_auth');
+        const sessionPath = WHATSAPP_DATA_DIR;
         console.log(`🗑️ Eliminando datos de sesión en: ${sessionPath}`);
         if (fs.existsSync(sessionPath)) {
             // Reintentos para borrar en Windows si el archivo está en uso
@@ -867,7 +863,7 @@ app.post('/api/config/whatsapp/reset', async (req, res) => {
                 console.error("Error borrando carpeta de sesión (posiblemente bloqueada):", rmError);
                 // Si falla, intentamos renombrarla para que no moleste en el siguiente arranque
                 try {
-                    fs.renameSync(sessionPath, path.join(DATA_DIR, `.wwebjs_auth_bak_${Date.now()}`));
+                    fs.renameSync(sessionPath, path.join(path.dirname(WHATSAPP_DATA_DIR), `.wwebjs_auth_bak_${Date.now()}`));
                     console.log('⚠️ Carpeta renombrada en lugar de borrada.');
                 } catch (renError) { }
             }
