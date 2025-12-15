@@ -13,6 +13,7 @@
     "dist": "electron-builder",
     "release": "electron-builder --publish always",
     "rebuild-backend": "electron-rebuild --module-dir backend -f -w better-sqlite3",
+    "rebuild-backend:mac": "electron-rebuild --module-dir backend -f -w better-sqlite3 --arch arm64,x64",
     "postinstall": "electron-builder install-app-deps && npm run rebuild-backend"
   },
   "build": {

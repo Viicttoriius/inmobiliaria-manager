@@ -62,8 +62,13 @@ jobs:
         run: rm -rf release
         shell: bash
 
-      - name: Rebuild Native Modules
+      - name: Rebuild Native Modules (Windows/Linux)
+        if: matrix.os != 'macos-latest'
         run: npm run rebuild-backend
+
+      - name: Rebuild Native Modules (macOS)
+        if: matrix.os == 'macos-latest'
+        run: npm run rebuild-backend:mac
 
       - name: Verify Build Assets
         run: |
