@@ -449,7 +449,7 @@ checkPythonDependencies();
 
 const PORT = 3001;
 
-const WHATSAPP_DATA_DIR = path.join(__dirname, '.wwebjs_auth'); // Usar directorio local para evitar problemas de permisos
+const WHATSAPP_DATA_DIR = path.join(BASE_PATH, '.wwebjs_auth'); // Usar directorio de datos de usuario para persistencia
 const SESSION_DIR = path.join(WHATSAPP_DATA_DIR, 'session');
 
 // Función para limpiar caché de WhatsApp al inicio
@@ -460,11 +460,13 @@ const cleanWhatsAppCache = () => {
             console.log('🧹 Limpiando caché antigua de WhatsApp...');
             fs.rmSync(cachePath, { recursive: true, force: true });
         }
-        // También limpiar cache local de versiones si existe en otro lado
+        // También limpiar cache local de versiones si existe en otro lado (legacy)
         const localCachePath = path.join(__dirname, '.wwebjs_cache');
          if (fs.existsSync(localCachePath)) {
             console.log('🧹 Limpiando caché local de WhatsApp...');
-            fs.rmSync(localCachePath, { recursive: true, force: true });
+            try {
+                fs.rmSync(localCachePath, { recursive: true, force: true });
+            } catch (e) { console.warn('No se pudo borrar caché local (posiblemente readonly):', e.message); }
         }
     } catch (e) {
         console.warn('⚠️ No se pudo limpiar la caché de WhatsApp:', e.message);

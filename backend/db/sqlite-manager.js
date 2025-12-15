@@ -327,7 +327,8 @@ function upsertProperty(property) {
         features: property.features ? JSON.stringify(property.features) : null,
         // Guardar campos adicionales en extra_data para no perder información
         extra_data: JSON.stringify({
-            Advertiser: property.Advertiser || null,
+            Advertiser: property.Advertiser || property.advertiser || null,
+            Phone: property.Phone || property.phone || null,
             imgurl: property.imgurl || property.image_url || null,
             hab: property.hab || property.habitaciones || null,
             m2: property.m2 || property.metros || null,
@@ -792,16 +793,27 @@ function getEvents(startDate, endDate) {
             // Construct an event object from client appointment
             let start = new Date(client.appointment_date);
             
-            // Fallback for other formats if necessary (e.g., DD/MM/YYYY)
+            // Fallback for other formats if necessary (e.g., DD/MM/YYYY or DD-MM-YY)
             if (isNaN(start.getTime()) && typeof client.appointment_date === 'string') {
-                 const parts = client.appointment_date.split(/[-/]/);
+                 let dateStr = client.appointment_date.trim();
+                 // Normalize separators
+                 dateStr = dateStr.replace(/\//g, '-');
+                 
+                 const parts = dateStr.split('-');
                  if (parts.length === 3) {
-                     // Assume DD-MM-YYYY or DD/MM/YYYY if first part is > 12 (not always true but heuristic)
-                     // Better: Try to parse as ISO first, if fail, try manual
-                     // If stored as DD/MM/YYYY
-                     if (parts[0].length === 2 && parts[2].length === 4) {
-                         start = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+                     let day = parseInt(parts[0], 10);
+                     let month = parseInt(parts[1], 10);
+                     let year = parseInt(parts[2], 10);
+
+                     // Handle 2-digit years (assume 20xx)
+                     if (year < 100) {
+                         year += 2000;
                      }
+
+                     // Create date object (Month is 0-indexed in JS Date constructor)
+                     // But using string "YYYY-MM-DD" is safer
+                     const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                     start = new Date(isoDate);
                  }
             }
 
