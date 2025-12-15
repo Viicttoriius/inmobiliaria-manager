@@ -137,22 +137,32 @@ def extract_detail_data(driver, url, known_data=None):
 
     print("    ✅ ES PARTICULAR! Extrayendo datos...")
     
+    # Extract Contact Name
+    contact_name = "Particular"
+    try:
+        prof_name = driver.find_element(By.CLASS_NAME, 'professional-name')
+        contact_name = prof_name.find_element(By.CLASS_NAME, 'name').text.strip()
+    except: pass
+
     # Intentar ver el teléfono (click en botón)
     phone = "No disponible"
     try:
         # Buscar botón de teléfono
-        phone_btn = WebDriverWait(driver, 3).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, "a.see-phones-btn"))
+        phone_btn = WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "a.see-phones-btn"))
         )
-        driver.execute_script("arguments[0].click();", phone_btn)
+        driver.execute_script("arguments[0].scrollIntoView(true);", phone_btn)
         time.sleep(1)
+        driver.execute_script("arguments[0].click();", phone_btn)
+        time.sleep(2)
         
         # Extraer número
-        phone_elem = WebDriverWait(driver, 3).until(
+        phone_elem = WebDriverWait(driver, 5).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".phone-number-block p"))
         )
         phone = phone_elem.text.strip()
     except Exception as ex_phone:
+        print(f"    ⚠️ No se pudo extraer teléfono: {ex_phone}")
         pass
 
     # Construir objeto base con lo que ya sabemos
@@ -166,7 +176,7 @@ def extract_detail_data(driver, url, known_data=None):
         "description": "", 
         "phone": phone,
         "location": "", 
-        "advertiser": "Particular",
+        "advertiser": contact_name,
         "scrape_date": datetime.now().isoformat()
     }
     
@@ -216,7 +226,8 @@ def extract_detail_data(driver, url, known_data=None):
     
     prop_data["extra_data"] = {
         "date_update_text": date_update_text,
-        "stats_text": stats_text
+        "stats_text": stats_text,
+        "advertiser": contact_name
     }
 
     return prop_data

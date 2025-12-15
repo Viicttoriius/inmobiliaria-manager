@@ -78,22 +78,32 @@ def scrape_single_url(url):
                 price = price_elem.text
             except: pass
             
+            # Extract Contact Name
+            contact_name = "Particular"
+            try:
+                prof_name = driver.find_element(By.CLASS_NAME, 'professional-name')
+                contact_name = prof_name.find_element(By.CLASS_NAME, 'name').text.strip()
+            except: pass
+
             # Extract Phone Number
             phone = "No disponible"
             try:
-                # Buscar botón de teléfono
-                phone_btn = WebDriverWait(driver, 3).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, "a.see-phones-btn"))
+                # Scroll to phone button to ensure visibility
+                phone_btn = WebDriverWait(driver, 5).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "a.see-phones-btn"))
                 )
-                driver.execute_script("arguments[0].click();", phone_btn)
+                driver.execute_script("arguments[0].scrollIntoView(true);", phone_btn)
                 time.sleep(1)
+                driver.execute_script("arguments[0].click();", phone_btn)
+                time.sleep(2)
                 
                 # Extraer número
-                phone_elem = WebDriverWait(driver, 3).until(
+                phone_elem = WebDriverWait(driver, 5).until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, ".phone-number-block p"))
                 )
                 phone = phone_elem.text.strip()
-            except:
+            except Exception as e:
+                print(f"    ⚠️ No se pudo extraer teléfono: {e}")
                 pass
             
             # Extract Image
@@ -126,7 +136,8 @@ def scrape_single_url(url):
             # User asked to extract them. I will add them to the result.
             extra_data = {
                 "date_update_text": date_update_text,
-                "stats_text": stats_text
+                "stats_text": stats_text,
+                "advertiser": contact_name
             }
 
             result = {
@@ -136,7 +147,7 @@ def scrape_single_url(url):
                 "url": url,
                 "phone": phone,
                 "image_url": image_url,
-                "advertiser": "Particular",
+                "advertiser": contact_name,
                 "property_type": "inbox_alert",
                 "date": datetime.now().isoformat(),
                 "extra_data": extra_data

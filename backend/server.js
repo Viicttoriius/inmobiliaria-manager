@@ -2336,6 +2336,43 @@ app.post('/api/ai/analyze-metrics', async (req, res) => {
     try {
         const fetch = (await import('node-fetch')).default;
         
+        // --- FALLBACK SIN API KEY ---
+        const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+        if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY === 'tu_api_key_aqui') {
+            console.warn("⚠️ No OPENROUTER_API_KEY found. Using rule-based fallback.");
+            
+            const generateRuleBasedAnalysis = (d) => {
+                const { total_propiedades, total_clientes, precio_promedio, tipos_propiedades } = d;
+                let text = `### 1. Resumen Ejecutivo\n`;
+                text += `La agencia cuenta con **${total_propiedades} propiedades** y **${total_clientes} clientes**. `;
+                text += `El precio promedio de la cartera es de **${new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(precio_promedio)}**.\n\n`;
+                
+                text += `### 2. Análisis de Cartera\n`;
+                const topType = tipos_propiedades && tipos_propiedades.length > 0 
+                    ? tipos_propiedades.sort((a, b) => b.value - a.value)[0] 
+                    : { name: 'General', value: 0 };
+                
+                if (topType) {
+                    text += `El tipo de propiedad predominante es **${topType.name}** con ${topType.value} unidades. `;
+                }
+                text += `Se recomienda diversificar la cartera para cubrir más segmentos de mercado.\n\n`;
+
+                text += `### 3. Análisis de Clientes\n`;
+                text += `Con ${total_clientes} clientes registrados, el ratio propiedad/cliente es de ${(total_propiedades / (total_clientes || 1)).toFixed(1)}. `;
+                text += `Un ratio saludable suele estar entre 0.5 y 1.5. Es importante mantener un equilibrio entre captación y ventas.\n\n`;
+
+                text += `### 4. Recomendaciones\n`;
+                text += `- **Captación**: Enfocarse en captar más propiedades si el ratio es bajo.\n`;
+                text += `- **Seguimiento**: Contactar a los clientes antiguos para reactivar interés.\n`;
+                text += `- **Datos**: Completar la información de "Intereses" para mejorar el matching.`;
+                return text;
+            };
+
+            const analysis = generateRuleBasedAnalysis(data);
+            return res.json({ success: true, analysis: "⚠️ *Nota: Análisis generado automáticamente (Sin API Key configurada). Para usar IA real, añade tu clave en .env.*\n\n" + analysis });
+        }
+        // -----------------------------
+
         const systemPrompt = `Eres un experto analista de datos inmobiliarios y estratega de negocios.
 Tu objetivo es analizar las métricas proporcionadas de una agencia inmobiliaria y generar un informe estratégico en formato Markdown.
 El informe debe ser profesional, directo y orientado a la acción.
@@ -2387,6 +2424,30 @@ Por favor, genera el informe estratégico.`;
         res.status(500).json({ success: false, error: error.message });
     }
 });
+
+let initStartTime = Date.now();
+// Watchdog para reiniciar si se queda atascado inicializando
+setInterval(() => {
+    // Si lleva más de 2 minutos en INITIALIZING sin estar ready
+    if (whatsappState === 'INITIALIZING' && !isWhatsAppReady) {
+        const timeStuck = Date.now() - initStartTime;
+        if (timeStuck > 120000) { 
+             console.log('♻️ Watchdog: WhatsApp atascado en inicialización > 2min. Forzando reinicio...');
+             initStartTime = Date.now(); // Reset timer
+             if (whatsappClient) {
+                 whatsappClient.destroy()
+                    .then(() => {
+                        console.log('♻️ Cliente destruido. Reinicializando...');
+                        initializeWhatsApp();
+                    })
+                    .catch(e => {
+                        console.error('Error destruyendo cliente:', e);
+                        initializeWhatsApp();
+                    });
+             }
+        }
+    }
+}, 30000);
 
 // Iniciar servidor
 app.listen(PORT, () => {

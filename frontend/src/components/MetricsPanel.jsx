@@ -211,13 +211,11 @@ const MetricsPanel = ({ properties, clients, API_URL }) => {
               onChange={(e) => setSelectedModel(e.target.value)}
               className="model-select"
             >
-              <option value="openai/gpt-4o-mini">GPT-4o Mini (Rápido)</option>
-              <option value="openai/gpt-4o">GPT-4o (Preciso)</option>
-              <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>
-              <option value="meta-llama/llama-3.1-70b-instruct">Llama 3.1 70B</option>
-              <option value="google/gemini-flash-1.5">Gemini Flash 1.5</option>
-              <option value="deepseek/deepseek-r1">DeepSeek R1</option>
+              <option value="openai/gpt-oss-120b:free">GPT-4o (Gratis)</option>
+              <option value="openai/gpt-oss-20b:free">GPT-4o Mini (Gratis)</option>
+              <option value="tngtech/deepseek-r1t-chimera:free">DeepSeek R1 (Gratis)</option>
             </select>
+              
             
             <button 
               onClick={handleAnalyze} 

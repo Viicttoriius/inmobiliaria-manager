@@ -527,7 +527,7 @@ function App() {
         Phone: p.phone || p.Phone,
         hab: p.habitaciones || p.hab,
         m2: p.metros || p.m2,
-        Advertiser: p.extra_data ? (JSON.parse(p.extra_data).advertiser || '') : (p.Advertiser || '')
+        Advertiser: p.extra_data ? ((typeof p.extra_data === 'string' ? JSON.parse(p.extra_data) : p.extra_data).advertiser || '') : (p.Advertiser || '')
       }));
 
       // Detección de nuevas propiedades
