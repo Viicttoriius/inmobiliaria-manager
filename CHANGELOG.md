@@ -2,6 +2,10 @@
 
 Todas las cambios notables de este proyecto serán documentados en este archivo.
 
+## [2.1.12] - 2025-12-15
+### Fixed
+- **Electron Crash**: Downgrade de Electron a versión estable LTS (v33.2.1) para solucionar crash nativo `EXC_BAD_ACCESS` / `EXC_I386_GPFLT` en macOS. La versión anterior usaba una versión inestable/inexistente que provocaba fallos de memoria en el hilo principal de Chromium.
+
 ## [2.1.11] - 2025-12-15
 ### Fixed
 - **macOS Crash**: Solucionado error crítico `Unknown system error -86` (Bad CPU Type) en Macs con Apple Silicon/Intel. Implementado sistema de fallback automático que cambia al Python del sistema si el ejecutable empaquetado falla por incompatibilidad de arquitectura.
