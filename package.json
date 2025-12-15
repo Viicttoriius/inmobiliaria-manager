@@ -99,7 +99,7 @@
     },
     "linux": {
       "icon": "build/icon.png",
-      "target": "AppImage",
+      "target": ["AppImage", "deb"],
       "category": "Office"
     },
     "nsis": {

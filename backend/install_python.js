@@ -51,7 +51,18 @@ const CONFIG = {
         url: 'https://github.com/astral-sh/python-build-standalone/releases/download/20240415/cpython-3.11.9+20240415-x86_64-unknown-linux-gnu-install_only.tar.gz',
         filename: 'python.tar.gz',
         extractCmd: (src, dest) => `tar -xzf "${src}" -C "${dest}" --strip-components=1`, 
-        postInstall: () => {}
+        postInstall: (dest) => {
+             // Dar permisos de ejecución a binarios en Linux también
+             try {
+                const binDir = path.join(dest, 'bin');
+                if (fs.existsSync(binDir)) {
+                    execSync(`chmod -R +x "${binDir}"`);
+                    console.log('✅ Permisos de ejecución aplicados a binarios (Linux)');
+                }
+            } catch (e) {
+                console.warn('⚠️ No se pudieron aplicar permisos de ejecución:', e.message);
+            }
+        }
     },
     darwin: {
         // Se selecciona dinámicamente según arquitectura y versión de macOS
