@@ -112,10 +112,6 @@ const notifier = require('node-notifier'); // Restaurado
 
 const app = express();
 
-// Sentry Request Handler debe ser el primer middleware
-app.use(Sentry.Handlers.requestHandler());
-app.use(Sentry.Handlers.tracingHandler());
-
 // Sentry Setup for Express (Error Handler)
 Sentry.setupExpressErrorHandler(app);
 
