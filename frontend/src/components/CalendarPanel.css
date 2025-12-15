@@ -1,0 +1,447 @@
+/* CalendarPanel.css - Rediseño Premium UI/UX */
+
+/* Variables de Diseño */
+:root {
+    --cal-bg: #1e1e1e;
+    --cal-surface: #252525;
+    --cal-surface-hover: #2d2d2d;
+    --cal-border: #333333;
+    --cal-text: #e0e0e0;
+    --cal-text-muted: #a0a0a0;
+
+    --event-meeting: #3b82f6;
+    /* Blue */
+    --event-call: #8b5cf6;
+    /* Purple */
+    --event-viewing: #10b981;
+    /* Green */
+    --event-task: #f59e0b;
+    /* Amber */
+    --event-other: #64748b;
+    /* Slate */
+
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+.calendar-panel {
+    background-color: var(--cal-bg);
+    padding: 1.5rem;
+    border-radius: 16px;
+    height: calc(100vh - 120px);
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    box-shadow: var(--shadow-md);
+    color: var(--cal-text);
+    border: 1px solid var(--cal-border);
+}
+
+/* --- Cabecera Personalizada --- */
+.rbc-toolbar {
+    margin-bottom: 20px !important;
+    flex-wrap: wrap;
+    gap: 10px;
+    position: relative;
+    z-index: 100;
+    /* Asegurar que esté por encima de eventos del calendario */
+    pointer-events: auto !important;
+}
+
+.rbc-toolbar button {
+    background: var(--cal-surface);
+    color: var(--cal-text);
+    border: 1px solid var(--cal-border);
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    box-shadow: var(--shadow-sm);
+    cursor: pointer;
+    /* Force cursor */
+    position: relative;
+    z-index: 101;
+}
+
+.rbc-toolbar button:hover {
+    background: var(--cal-surface-hover);
+    transform: translateY(-1px);
+}
+
+.rbc-toolbar button.rbc-active {
+    background: var(--event-meeting) !important;
+    color: white !important;
+    border-color: var(--event-meeting) !important;
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.4);
+}
+
+.rbc-toolbar-label {
+    font-size: 1.5rem !important;
+    font-weight: 700 !important;
+    color: #ffffff !important;
+    text-transform: capitalize;
+    flex-grow: 1;
+    /* Ocupar espacio disponible */
+    text-align: center;
+    min-width: 200px;
+    /* Evitar colapso */
+    display: block;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    /* Sombra para contraste */
+}
+
+/* --- Estilos de la Cuadrícula --- */
+.rbc-month-view,
+.rbc-time-view,
+.rbc-agenda-view {
+    border: 1px solid var(--cal-border) !important;
+    background: var(--cal-bg);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.rbc-header {
+    border-bottom: 1px solid var(--cal-border) !important;
+    padding: 12px 0 !important;
+    background: var(--cal-surface);
+    color: var(--cal-text-muted);
+    font-weight: 600 !important;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.rbc-day-bg+.rbc-day-bg {
+    border-left: 1px solid var(--cal-border) !important;
+}
+
+.rbc-off-range-bg {
+    background: #141414 !important;
+}
+
+.rbc-today {
+    background: rgba(59, 130, 246, 0.05) !important;
+}
+
+/* --- Eventos --- */
+.rbc-event {
+    border-radius: 6px !important;
+    border: none !important;
+    padding: 2px 6px !important;
+    font-size: 0.85rem !important;
+    font-weight: 500 !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    transition: all 0.2s ease;
+}
+
+.rbc-event:hover {
+    transform: scale(1.02);
+    z-index: 10;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Tipos de Eventos (Clases aplicadas dinámicamente) */
+.event-visit {
+    background-color: var(--event-viewing) !important;
+    border-left: 3px solid #065f46 !important;
+}
+
+.event-call {
+    background-color: var(--event-call) !important;
+    border-left: 3px solid #5b21b6 !important;
+}
+
+.event-appointment {
+    background-color: var(--event-meeting) !important;
+    border-left: 3px solid #1e40af !important;
+}
+
+.event-task {
+    background-color: var(--event-task) !important;
+    border-left: 3px solid #92400e !important;
+    color: #1a1a1a !important;
+}
+
+/* --- Corrección Visibilidad Mes y Agenda --- */
+
+/* Forzar color de texto en los días del mes */
+.rbc-date-cell {
+    color: var(--cal-text) !important;
+    font-weight: 500;
+    padding: 6px !important;
+}
+
+/* Mes: asegurar fondo y bordes */
+.rbc-month-row {
+    background-color: var(--cal-bg);
+}
+
+/* Agenda: Estilos específicos */
+.rbc-agenda-view table.rbc-agenda-table {
+    border: none !important;
+}
+
+.rbc-agenda-view table.rbc-agenda-table tbody>tr>td {
+    padding: 12px 10px !important;
+    vertical-align: middle !important;
+    color: var(--cal-text) !important;
+    border-bottom: 1px solid var(--cal-border);
+}
+
+.rbc-agenda-view table.rbc-agenda-table thead>tr>th {
+    color: var(--cal-text);
+    padding: 10px;
+    border-bottom: 2px solid var(--cal-border);
+}
+
+.rbc-agenda-time-cell {
+    text-transform: lowercase;
+    font-size: 0.9em;
+    color: var(--event-meeting) !important;
+    /* Azul para la hora */
+    font-weight: bold;
+}
+
+.rbc-agenda-event-cell {
+    font-weight: 500;
+}
+
+/* Forzar que el calendario ocupe espacio si el flex falla */
+.rbc-calendar {
+    min-height: 500px;
+}
+
+/* Hover en agenda */
+.rbc-agenda-view table.rbc-agenda-table tbody>tr:hover {
+    background-color: var(--cal-surface);
+}
+
+/* --- Modal Estilizado (Glassmorphism) --- */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    /* Z-index muy alto */
+    animation: fadeIn 0.3s ease;
+}
+
+.modal-content {
+    background: #1e1e1e;
+    border: 1px solid #333;
+    padding: 2rem;
+    border-radius: 16px;
+    width: 90%;
+    max-width: 500px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.5);
+    /* Shadow fuerte */
+    position: relative;
+    animation: slideUp 0.3s ease;
+}
+
+/* --- FIX: Visibilidad Grid Semana y Día --- */
+
+.rbc-time-view {
+    background-color: #1e1e1e !important;
+    /* Asegurar fondo base */
+}
+
+/* Líneas de las horas (Horizontales) */
+.rbc-timeslot-group {
+    border-bottom: 1px solid #444 !important;
+    /* Más visible que el border default */
+    min-height: 50px !important;
+}
+
+.rbc-time-slot {
+    border-top: 1px dotted #333 !important;
+    /* Media hora */
+}
+
+/* Columnas de los días (Verticales) */
+.rbc-day-slot {
+    border-left: 1px solid #444 !important;
+    background-color: transparent !important;
+}
+
+/* Encabezados de día en vista semana - DISEÑO PREMIUM Y VISIBLE */
+/* Encabezados de día en vista semana - DISEÑO PREMIUM Y VISIBLE */
+.rbc-calendar .rbc-header {
+    background-color: #2d2d2d !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    padding: 8px 0 !important;
+    /* Más compacto */
+    border-bottom: none !important;
+    border-left: 1px solid #444 !important;
+    text-transform: capitalize !important;
+    font-size: 0.95rem !important;
+    letter-spacing: 0.5px;
+}
+
+/* --- FIX CRÍTICO: OCULTAR FILA DE "TODO EL DÍA" --- */
+/* Eliminamos el contenedor específico que crea el espacio vacío */
+.rbc-allday-cell {
+    display: none !important;
+}
+
+
+/* Encabezado del día "Hoy" */
+.rbc-calendar .rbc-header.rbc-today {
+    background-color: #3b82f6 !important;
+    /* Azul brillante para resaltar HOY */
+    color: white !important;
+    border-bottom: 2px solid #2563eb !important;
+}
+
+/* Eje de horas */
+.rbc-time-gutter .rbc-timeslot-group {
+    background-color: #1a1a1a !important;
+    color: #9ca3af !important;
+    /* Gris más claro para los números de hora */
+    font-weight: 600;
+    border-right: 1px solid #444;
+}
+
+.rbc-today {
+    background-color: rgba(59, 130, 246, 0.1) !important;
+    /* Fondo azul muy suave para la columna de hoy */
+}
+
+.modal-content h2 {
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+    color: white;
+    font-size: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.event-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 10px 14px;
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-radius: 8px;
+    color: white;
+    font-size: 0.95rem;
+    transition: all 0.2s;
+    box-sizing: border-box;
+    /* Crucial para evitar desbordes */
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: var(--event-meeting);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+    background: #333;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 0.9rem;
+    color: #bbb;
+    font-weight: 500;
+}
+
+/* Botones del Modal */
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.btn-cancel {
+    background: transparent;
+    color: #aaa;
+    border: 1px solid #444;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.btn-cancel:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: white;
+}
+
+.btn-save {
+    background: var(--event-meeting);
+    color: white;
+    border: none;
+    padding: 10px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);
+    transition: all 0.2s;
+}
+
+.btn-save:hover {
+    background: #2563eb;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 8px rgba(59, 130, 246, 0.4);
+}
+
+.btn-delete {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    margin-right: auto;
+    /* Push to left */
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.btn-delete:hover {
+    background: rgba(239, 68, 68, 0.2);
+}
+
+/* Animaciones */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}

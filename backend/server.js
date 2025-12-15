@@ -14,6 +14,7 @@ const path = require('path');
 
 // SQLite Database Manager
 const sqliteManager = require('./db/sqlite-manager');
+const emailService = require('./services/emailService');
 const { spawn, exec, execSync } = require('child_process');
 
 // DEBUG: Loguear inicio
@@ -111,7 +112,11 @@ const notifier = require('node-notifier'); // Restaurado
 
 const app = express();
 
-// Sentry Setup for Express (v8+)
+// Sentry Request Handler debe ser el primer middleware
+app.use(Sentry.Handlers.requestHandler());
+app.use(Sentry.Handlers.tracingHandler());
+
+// Sentry Setup for Express (Error Handler)
 Sentry.setupExpressErrorHandler(app);
 
 const getSystemBrowserPath = () => {
@@ -471,6 +476,7 @@ const whatsappClient = new Client({
         executablePath: browserPath || getBundledChromiumPath() || undefined,
         headless: true,
         dumpio: true, // Mostrar logs del navegador en consola
+        ignoreHTTPSErrors: true, // Ignorar errores de certificado
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -479,7 +485,17 @@ const whatsappClient = new Client({
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
+            '--single-process', // Importante para Windows en algunos casos de desconexión
             '--disable-extensions',
+            '--disable-component-extensions-with-background-pages',
+            '--disable-default-apps',
+            '--mute-audio',
+            '--no-default-browser-check',
+            '--autoplay-policy=user-gesture-required',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-infobars',
             // Añadir estos flags para mejorar compatibilidad Windows
             '--disable-software-rasterizer',
             '--disable-gl-drawing-for-tests'
@@ -1633,7 +1649,8 @@ app.post('/api/properties/update', async (req, res) => {
             }
         }
 
-        // Actualizar properties.json consolidado también
+
+
         /* LEGACY: Eliminado para usar solo SQLite
         try {
             if (fs.existsSync(PROPERTIES_JSON_FILE)) {
@@ -1681,6 +1698,68 @@ app.post('/api/properties/update', async (req, res) => {
     }
 });
 
+
+// ============ RUTAS DE CALENDARIO ============
+
+app.get('/api/calendar/events', (req, res) => {
+    try {
+        const { start, end } = req.query;
+        const events = sqliteManager.getEvents(start, end);
+        res.json(events);
+    } catch (err) {
+        console.error('Error fetching events:', err);
+        res.status(500).json({ error: 'Error fetching events' });
+    }
+});
+
+app.post('/api/calendar/events', (req, res) => {
+    try {
+        const event = req.body;
+        // Validación básica
+        if (!event.title || !event.start_date || !event.end_date) {
+            return res.status(400).json({ error: 'Faltan campos requeridos (title, start_date, end_date)' });
+        }
+
+        const newEvent = sqliteManager.createEvent(event);
+        res.json(newEvent);
+    } catch (err) {
+        console.error('Error creating event:', err);
+        res.status(500).json({ error: 'Error creating event' });
+    }
+});
+
+app.put('/api/calendar/events/:id', (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = sqliteManager.updateEvent(id, req.body);
+
+        if (result.changes > 0) {
+            res.json({ success: true });
+        } else {
+            res.status(404).json({ error: 'Evento no encontrado' });
+        }
+    } catch (err) {
+        console.error('Error updating event:', err);
+        res.status(500).json({ error: 'Error updating event' });
+    }
+});
+
+app.delete('/api/calendar/events/:id', (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = sqliteManager.deleteEvent(id);
+
+        if (result.changes > 0) {
+            res.json({ success: true });
+        } else {
+            res.status(404).json({ error: 'Evento no encontrado' });
+        }
+    } catch (err) {
+        console.error('Error deleting event:', err);
+        res.status(500).json({ error: 'Error deleting event' });
+    }
+});
+
 // ============ RUTAS DE CLIENTES ============
 
 // Obtener todos los clientes desde SQLite
@@ -1717,6 +1796,29 @@ app.get('/api/clients', (req, res) => {
 app.post('/api/clients', (req, res) => {
     try {
         const newClient = sqliteManager.insertClient(req.body);
+
+        // --- AUTO-SYNC CALENDAR ---
+        const apptDate = req.body.appointmentDate || req.body.appointment_date;
+        if (apptDate) {
+            try {
+                const startDate = new Date(apptDate);
+                if (!isNaN(startDate.getTime())) {
+                    const endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // 1 hora
+                    sqliteManager.createEvent({
+                        title: `Cita: ${newClient.name}`,
+                        description: `Cita inicial con cliente. Tel: ${newClient.phone}. Notas: ${req.body.notes || ''}`,
+                        start_date: startDate.toISOString(),
+                        end_date: endDate.toISOString(),
+                        all_day: false,
+                        client_id: newClient.id,
+                        type: 'appointment'
+                    });
+                    console.log("📅 Evento de calendario creado para nuevo cliente.");
+                }
+            } catch (calErr) { console.error("Error sync calendario:", calErr); }
+        }
+        // -------------------------
+
         res.json(newClient);
     } catch (error) {
         console.error('Error añadiendo cliente:', error);
@@ -1759,6 +1861,32 @@ app.put('/api/clients/:id', (req, res) => {
         }
 
         sqliteManager.updateClient(req.params.id, req.body);
+
+        // --- AUTO-SYNC CALENDAR (Update) ---
+        const apptDate = req.body.appointmentDate || req.body.appointment_date;
+        if (apptDate) {
+            try {
+                const startDate = new Date(apptDate);
+                if (!isNaN(startDate.getTime())) {
+                    const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
+                    const clientName = client.name || "Cliente"; // Usar nombre existente si no viene en body
+
+                    // Buscar eventos existentes para este cliente en esta fecha aprox para no duplicar a lo loco?
+                    // Por simplicidad, creamos uno nuevo. El usuario puede borrar si sobran.
+                    sqliteManager.createEvent({
+                        title: `Cita: ${req.body.name || clientName}`,
+                        description: `Actualización de cita cliente. Notas: ${req.body.notes || ''}`,
+                        start_date: startDate.toISOString(),
+                        end_date: endDate.toISOString(),
+                        all_day: false,
+                        client_id: req.params.id,
+                        type: 'meeting'
+                    });
+                    console.log("📅 Evento de calendario añadido tras actualización de cliente.");
+                }
+            } catch (calErr) { console.error("Error sync calendario update:", calErr); }
+        }
+        // ----------------------------------
 
         // Obtener el cliente actualizado
         const updatedClient = sqliteManager.getClientById(req.params.id);
@@ -2162,4 +2290,7 @@ app.listen(PORT, () => {
     console.log(`👥 Clientes: http://localhost:${PORT}/api/clients`);
     console.log(`🔧 Fotocasa: POST http://localhost:${PORT}/api/scraper/fotocasa/run`);
     console.log(`🔧 Idealista: POST http://localhost:${PORT}/api/scraper/idealista/run`);
+
+    // Iniciar monitor de email
+    emailService.startMonitoring();
 });

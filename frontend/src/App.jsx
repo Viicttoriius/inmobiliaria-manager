@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Home, Building2, MapPin, Calendar, Phone, ExternalLink, Search, Filter, Play, Users, MessageSquare, Plus, Trash2, Send, RefreshCw, Image as ImageIcon, Pencil, History, Settings, AlertCircle, CheckCircle, Info, X, Bell, LifeBuoy, Upload, Mail, Square } from 'lucide-react'
 import Papa from 'papaparse';
 import UpdateNotification from './components/UpdateNotification';
+import CalendarPanel from './components/CalendarPanel';
 import './App.css'
 
 const API_URL = 'http://localhost:3001/api';
@@ -1501,6 +1502,13 @@ function App() {
             <MessageSquare size={20} />
             <span>Mensajes</span>
           </button>
+          <button
+            className={activeTab === 'calendar' ? 'active' : ''}
+            onClick={() => setActiveTab('calendar')}
+          >
+            <Calendar size={20} />
+            <span>Calendario</span>
+          </button>
         </div>
 
         <main className="main-content">
@@ -1608,9 +1616,9 @@ function App() {
                   <div key={property.id} className="property-card">
                     <div className="property-image">
                       <img
-                        src={property.imgurl !== 'None' ? property.imgurl : 'https://via.placeholder.com/400x300?text=Sin+imagen'}
+                        src={property.imgurl !== 'None' && property.imgurl ? property.imgurl : 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0MDAgMzAwIiB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCI+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0iIzMzMyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBkeT0iLjNlbSIgZmlsbD0iI2ZmZiIgZm9udC1zaXplPSIyMCIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIHRleHQtYW5jaG9yPSJtaWRkbGUiPlNpbiBJbWFnZW48L3RleHQ+PC9zdmc+'}
                         alt={property.Title}
-                        onError={(e) => e.target.src = 'https://via.placeholder.com/400x300?text=Sin+imagen'}
+                        onError={(e) => e.target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0MDAgMzAwIiB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCI+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0iIzMzMyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBkeT0iLjNlbSIgZmlsbD0iI2ZmZiIgZm9udC1zaXplPSIyMCIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIHRleHQtYW5jaG9yPSJtaWRkbGUiPlNpbiBJbWFnZW48L3RleHQ+PC9zdmc+'}
                       />
                       <div className={`property-source ${property.source?.toLowerCase() || 'fotocasa'}`}>{property.source || 'Fotocasa'}</div>
 
@@ -2135,6 +2143,11 @@ function App() {
               )}
             </div>
           )}
+
+
+          {activeTab === 'calendar' && (
+            <CalendarPanel clients={clients} showNotification={showNotification} />
+          )}
         </main>
 
         {/* Modal de Configuración */}
@@ -2518,7 +2531,7 @@ function App() {
         {/* Componente de Notificación de Actualización */}
         <UpdateNotification />
       </div >
-    </ErrorBoundary>
+    </ErrorBoundary >
   )
 }
 

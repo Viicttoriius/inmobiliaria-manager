@@ -1,7 +1,7 @@
 {
   "name": "frontend",
   "private": true,
-  "version": "2.1.0",
+  "version": "2.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,9 +12,11 @@
   "dependencies": {
     "@sentry/electron": "^7.5.0",
     "@tanstack/react-table": "^8.21.3",
+    "date-fns": "^4.1.0",
     "lucide-react": "^0.555.0",
     "papaparse": "^5.5.3",
     "react": "^19.2.0",
+    "react-big-calendar": "^1.19.4",
     "react-dom": "^19.2.0"
   },
   "devDependencies": {

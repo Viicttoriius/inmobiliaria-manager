@@ -1,6 +1,6 @@
 {
   "name": "backend",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -20,6 +20,8 @@
     "csv-parser": "^3.2.0",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "imap-simple": "^5.1.0",
+    "mailparser": "^3.9.1",
     "multer": "^2.0.2",
     "node-fetch": "^2.7.0",
     "node-notifier": "^10.0.1",

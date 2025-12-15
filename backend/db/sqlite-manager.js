@@ -8,9 +8,9 @@ const fs = require('fs');
 // Forzar el uso de la carpeta 'data' local en desarrollo O producción si se desea portabilidad/visibilidad
 // En producción (packaged), path.dirname(process.execPath) es la carpeta del .exe
 // En desarrollo, __dirname sube a backend/db, así que ../.. va a la raíz del proyecto
-const ROOT_PATH = process.env.USER_DATA_PATH 
-    ? process.env.USER_DATA_PATH 
-    : (process.env.NODE_ENV === 'production' 
+const ROOT_PATH = process.env.USER_DATA_PATH
+    ? process.env.USER_DATA_PATH
+    : (process.env.NODE_ENV === 'production'
         ? path.dirname(process.execPath) // Al lado del .exe en producción
         : path.join(__dirname, '..', '..')); // Raíz del proyecto en desarrollo
 
@@ -118,6 +118,59 @@ function initDB() {
         );
 
         CREATE INDEX IF NOT EXISTS idx_messages_client_id ON messages(client_id);
+    `);
+
+    // Create calendar_events table
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS calendar_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            description TEXT,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            all_day INTEGER DEFAULT 0,
+            client_id TEXT,
+            property_id INTEGER,
+            type TEXT DEFAULT 'appointment', -- appointment, viewing, call, task
+            status TEXT DEFAULT 'pending', -- pending, completed, cancelled
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (client_id) REFERENCES clients(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_events_start_date ON calendar_events(start_date);
+        CREATE INDEX IF NOT EXISTS idx_events_client_id ON calendar_events(client_id);
+    `);
+
+    // Migration: Add reminder column if not exists
+    try {
+        const columns = db.prepare("PRAGMA table_info(calendar_events)").all();
+        const hasReminder = columns.some(c => c.name === 'reminder');
+        if (!hasReminder) {
+            db.exec("ALTER TABLE calendar_events ADD COLUMN reminder INTEGER DEFAULT 0"); // minutos antes
+            db.exec("ALTER TABLE calendar_events ADD COLUMN notified INTEGER DEFAULT 0"); // 0: no notificado, 1: notificado
+        }
+    } catch (e) { console.error("Error migrating calendar_events:", e); }
+
+    // Create emails table
+
+    // Create emails table
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS emails (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid INTEGER,
+            from_address TEXT,
+            to_address TEXT,
+            subject TEXT,
+            date TEXT,
+            snippet TEXT,
+            is_read INTEGER DEFAULT 0,
+            has_property_link INTEGER DEFAULT 0,
+            property_url TEXT,
+            processed INTEGER DEFAULT 0, -- 1 si ya se intentó scrapear
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_emails_uid ON emails(uid);
+        CREATE INDEX IF NOT EXISTS idx_emails_processed ON emails(processed);
     `);
 
     console.log('✅ Tablas de base de datos inicializadas correctamente');
@@ -439,13 +492,13 @@ function getClientById(id) {
  */
 function getClientByPhone(phone) {
     if (!phone) return null;
-    
+
     // Check if it's a generated ID (starts with ID_)
     if (phone.startsWith('ID_')) {
         const stmt = db.prepare('SELECT * FROM clients WHERE phone = ?');
         const client = stmt.get(phone);
         if (client) {
-             client.contactHistory = client.contact_history ? JSON.parse(client.contact_history) : [];
+            client.contactHistory = client.contact_history ? JSON.parse(client.contact_history) : [];
         }
         return client;
     }
@@ -459,9 +512,9 @@ function getClientByPhone(phone) {
     // We use a custom function or just REPLACE common separators
     // Since SQLite doesn't have REGEXP_REPLACE by default without extensions, we use LIKE for partials
     // or we try to match the last 9 digits which is common for mobile phones
-    
+
     const last9 = cleanPhone.slice(-9);
-    
+
     // Search for any phone that ends with the last 9 digits of the provided phone
     // Use single quotes for string literals in SQL to avoid "no such column" errors
     const stmt = db.prepare("SELECT * FROM clients WHERE REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', '') LIKE ?");
@@ -611,7 +664,7 @@ function bulkUpsertClients(clients) {
                 if (client.name) {
                     client.name = client.name.trim();
                 }
-                
+
                 // Si no hay teléfono válido pero hay nombre, generar un ID ficticio para permitir la importación
                 // Esto es útil para contactos de email o "chat enviado"
                 if (!client.phone && client.name) {
@@ -622,7 +675,7 @@ function bulkUpsertClients(clients) {
                     console.log(`   ⚠️ Cliente sin teléfono (${client.name}). Asignado ID temporal: ${client.phone}`);
                 }
                 // ------------------------------------
-                
+
                 // Si sigue sin haber identificador (ni teléfono ni nombre), saltar
                 if (!client.phone) {
                     console.warn(`   ⚠️ Saltando cliente sin teléfono ni nombre válido.`);
@@ -653,7 +706,7 @@ function bulkUpsertClients(clients) {
         // Ensure we return the transaction result
         return { added, updated };
     });
-    
+
     // Execute the transaction
     return upsertMany(clients);
 }
@@ -686,6 +739,161 @@ function saveMessage(clientId, type, content, status = 'pending') {
 function getClientMessages(clientId) {
     const stmt = db.prepare('SELECT * FROM messages WHERE client_id = ? ORDER BY created_at DESC');
     return stmt.all(clientId);
+}
+
+// ============ CALENDAR FUNCTIONS ============
+
+/**
+ * Get events within a date range
+ */
+function getEvents(startDate, endDate) {
+    // Si no se especifican fechas, traer los últimos 3 meses y futuros
+    let query = 'SELECT * FROM calendar_events WHERE 1=1';
+    const params = [];
+
+    if (startDate) {
+        query += ' AND end_date >= ?';
+        params.push(startDate);
+    }
+    if (endDate) {
+        query += ' AND start_date <= ?';
+        params.push(endDate);
+    }
+
+    query += ' ORDER BY start_date ASC';
+
+    const stmt = db.prepare(query);
+    const events = stmt.all(...params);
+
+    // Convert booleans
+    return events.map(e => ({
+        ...e,
+        all_day: Boolean(e.all_day)
+    }));
+}
+
+/**
+ * Create a new event
+ */
+function createEvent(event) {
+    const stmt = db.prepare(`
+        INSERT INTO calendar_events (
+            title, description, start_date, end_date, all_day, 
+            client_id, property_id, type, status, reminder, notified
+        ) VALUES (
+            @title, @description, @start_date, @end_date, @all_day,
+            @client_id, @property_id, @type, @status, @reminder, 0
+        )
+    `);
+
+    const data = {
+        title: event.title,
+        description: event.description || '',
+        start_date: event.start_date,
+        end_date: event.end_date,
+        all_day: event.all_day ? 1 : 0,
+        client_id: event.client_id || null,
+        property_id: event.property_id || null,
+        type: event.type || 'appointment',
+        status: 'pending',
+        reminder: event.reminder !== undefined ? event.reminder : 0
+    };
+
+    const info = stmt.run(data);
+    return { id: info.lastInsertRowid, ...data, all_day: Boolean(data.all_day) };
+}
+
+/**
+ * Update an event
+ */
+function updateEvent(id, updates) {
+    const fields = [];
+    const params = [];
+
+    for (const [key, value] of Object.entries(updates)) {
+        if (['title', 'description', 'start_date', 'end_date', 'client_id', 'property_id', 'type', 'status'].includes(key)) {
+            fields.push(`${key} = ?`);
+            params.push(value);
+        } else if (key === 'all_day') {
+            fields.push(`${key} = ?`);
+            params.push(value ? 1 : 0);
+        }
+    }
+
+    if (fields.length === 0) return { changes: 0 };
+
+    params.push(id);
+    const stmt = db.prepare(`UPDATE calendar_events SET ${fields.join(', ')} WHERE id = ?`);
+    const info = stmt.run(...params);
+    return { changes: info.changes };
+}
+
+/**
+ * Delete an event
+ */
+function deleteEvent(id) {
+    const stmt = db.prepare('DELETE FROM calendar_events WHERE id = ?');
+    return stmt.run(id);
+}
+
+/**
+ * Get pending reminders
+ */
+function getPendingReminders() {
+    const stmt = db.prepare(`
+        SELECT * FROM calendar_events 
+        WHERE reminder > 0 
+        AND (notified = 0 OR notified IS NULL)
+        AND status != 'cancelled'
+        AND start_date >= datetime('now', '-1 day') 
+        AND start_date <= datetime('now', '+2 days')
+    `);
+    return stmt.all();
+}
+
+/**
+ * Mark event as notified
+ */
+function markAsNotified(id) {
+    const stmt = db.prepare("UPDATE calendar_events SET notified = 1 WHERE id = ?");
+    return stmt.run(id);
+}
+
+// ============ EMAIL FUNCTIONS ============
+
+function saveEmail(email) {
+    // Check if exists by UID to avoid dupes
+    const check = db.prepare('SELECT id FROM emails WHERE uid = ?').get(email.uid);
+    if (check) return null; // Already exists
+
+    const stmt = db.prepare(`
+        INSERT INTO emails (uid, from_address, to_address, subject, date, snippet, has_property_link, property_url)
+        VALUES (@uid, @from_address, @to_address, @subject, @date, @snippet, @has_property_link, @property_url)
+    `);
+
+    const info = stmt.run(email);
+    return info.lastInsertRowid;
+}
+
+function getEmails(limit = 50, offset = 0) {
+    const stmt = db.prepare('SELECT * FROM emails ORDER BY date DESC LIMIT ? OFFSET ?');
+    return stmt.all(limit, offset);
+}
+
+function getUnprocessedPropertyEmails() {
+    // Get emails from idealista that haven't been processed
+    const stmt = db.prepare(`
+        SELECT * FROM emails 
+        WHERE has_property_link = 1 
+        AND processed = 0 
+        AND from_address LIKE '%idealista%'
+    `);
+    return stmt.all();
+}
+
+function markEmailProcessed(id) {
+    const stmt = db.prepare('UPDATE emails SET processed = 1 WHERE id = ?');
+    return stmt.run(id);
 }
 
 // ============ UTILITY FUNCTIONS ============
@@ -759,5 +967,19 @@ module.exports = {
 
     // Messages
     saveMessage,
-    getClientMessages
+    getClientMessages,
+
+    // Calendar
+    getEvents,
+    createEvent,
+    updateEvent,
+    deleteEvent,
+    getPendingReminders,
+    markAsNotified,
+
+    // Emails
+    saveEmail,
+    getEmails,
+    getUnprocessedPropertyEmails,
+    markEmailProcessed
 };
