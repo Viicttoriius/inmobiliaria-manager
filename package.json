@@ -103,7 +103,9 @@
       "category": "Office"
     },
     "nsis": {
+      "guid": "5f6a9b3c-8d2e-4f1a-9c0b-7e6d5f4a3b2c",
       "oneClick": false,
+      "perMachine": true,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
