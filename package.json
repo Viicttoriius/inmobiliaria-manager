@@ -19,7 +19,6 @@
     "npmRebuild": false,
     "appId": "com.victormunoz.inmobiliaria",
     "productName": "Inmobiliaria Manager",
-    "companyName": "Victor Muñoz Lopez",
     "copyright": "Copyright © 2025 Victor Muñoz Lopez",
     "afterPack": "scripts/afterPack.js",
     "directories": {
