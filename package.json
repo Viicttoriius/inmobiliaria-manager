@@ -16,6 +16,7 @@
     "postinstall": "electron-builder install-app-deps && npm run rebuild-backend"
   },
   "build": {
+    "npmRebuild": false,
     "appId": "com.victormunoz.inmobiliaria",
     "productName": "Inmobiliaria Manager",
     "companyName": "Victor Muñoz Lopez",
