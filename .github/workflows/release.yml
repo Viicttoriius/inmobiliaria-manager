@@ -27,7 +27,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        include:
+          - os: windows-latest
+            arch: x64
+          - os: ubuntu-latest
+            arch: x64
+          - os: macos-latest
+            arch: x64
+          - os: macos-latest
+            arch: arm64
 
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: false
@@ -106,15 +114,19 @@ jobs:
           elif [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
              delete_asset "Inmobiliaria Manager-$VERSION.AppImage"
              delete_asset "latest-linux.yml"
-          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
+          elif [ "${{ matrix.os }}" == "macos-latest" ] && [ "${{ matrix.arch }}" == "x64" ]; then
             delete_asset "Inmobiliaria Manager-$VERSION-mac-x64.zip"
             delete_asset "Inmobiliaria Manager-$VERSION-mac-x64.zip.blockmap"
             delete_asset "Inmobiliaria Manager-$VERSION-mac-x64.dmg"
             delete_asset "Inmobiliaria Manager-$VERSION-mac-x64.dmg.blockmap"
+          elif [ "${{ matrix.os }}" == "macos-latest" ] && [ "${{ matrix.arch }}" == "arm64" ]; then
             delete_asset "Inmobiliaria Manager-$VERSION-mac-arm64.zip"
             delete_asset "Inmobiliaria Manager-$VERSION-mac-arm64.zip.blockmap"
             delete_asset "Inmobiliaria Manager-$VERSION-mac-arm64.dmg"
             delete_asset "Inmobiliaria Manager-$VERSION-mac-arm64.dmg.blockmap"
+          fi
+          
+          if [ "${{ matrix.os }}" == "macos-latest" ]; then
             delete_asset "latest-mac.yml"
           fi
 
@@ -128,22 +140,12 @@ jobs:
           npm run rebuild-backend
           npm run release
 
-      - name: Build/Release Electron App (macOS x64)
+      - name: Build/Release Electron App (macOS)
         if: matrix.os == 'macos-latest'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEBUG: electron-builder
         run: |
-          npm run rebuild-backend:x64
-          npx electron-builder --mac --x64 --publish always
-
-      - name: Build/Release Electron App (macOS arm64)
-        if: matrix.os == 'macos-latest'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DEBUG: electron-builder
-        run: |
-          npm run rebuild-backend:arm64
-          npx electron-builder --mac --arm64 --publish always
+          npm run rebuild-backend:${{ matrix.arch }}
+          npx electron-builder --mac --${{ matrix.arch }} --publish always
