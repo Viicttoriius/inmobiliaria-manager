@@ -1,6 +1,6 @@
 {
   "name": "inmobiliaria-manager",
-  "version": "2.1.0",
+  "version": "2.1.3",
   "description": "Sistema de Gestión Inmobiliaria con Automatización",
   "main": "electron/main.js",
   "author": "Victor Muñoz Lopez",
@@ -18,6 +18,8 @@
   "build": {
     "appId": "com.victormunoz.inmobiliaria",
     "productName": "Inmobiliaria Manager",
+    "companyName": "Victor Muñoz Lopez",
+    "copyright": "Copyright © 2025 Victor Muñoz Lopez",
     "afterPack": "scripts/afterPack.js",
     "directories": {
       "output": "dist"
