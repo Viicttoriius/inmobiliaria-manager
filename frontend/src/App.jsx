@@ -524,10 +524,10 @@ function App() {
         source: p.source,
         Timeago: p.timeago || p.Timeago,
         Municipality: p.location || p.Municipality,
-        Phone: p.phone || p.Phone,
+        Phone: p.phone || p.Phone || (p.extra_data ? ((typeof p.extra_data === 'string' ? JSON.parse(p.extra_data) : p.extra_data).phone || (typeof p.extra_data === 'string' ? JSON.parse(p.extra_data) : p.extra_data).Phone) : '') || '',
         hab: p.habitaciones || p.hab,
         m2: p.metros || p.m2,
-        Advertiser: p.extra_data ? ((typeof p.extra_data === 'string' ? JSON.parse(p.extra_data) : p.extra_data).advertiser || '') : (p.Advertiser || '')
+        Advertiser: p.extra_data ? ((typeof p.extra_data === 'string' ? JSON.parse(p.extra_data) : p.extra_data).advertiser || (typeof p.extra_data === 'string' ? JSON.parse(p.extra_data) : p.extra_data).Advertiser || '') : (p.Advertiser || '')
       }));
 
       // Detección de nuevas propiedades

@@ -449,6 +449,30 @@ checkPythonDependencies();
 
 const PORT = 3001;
 
+const DATA_DIR = path.join(__dirname, '.wwebjs_auth'); // Usar directorio local para evitar problemas de permisos
+const SESSION_DIR = path.join(DATA_DIR, 'session');
+
+// Función para limpiar caché de WhatsApp al inicio
+const cleanWhatsAppCache = () => {
+    try {
+        const cachePath = path.join(DATA_DIR, '.wwebjs_cache');
+        if (fs.existsSync(cachePath)) {
+            console.log('🧹 Limpiando caché antigua de WhatsApp...');
+            fs.rmSync(cachePath, { recursive: true, force: true });
+        }
+        // También limpiar cache local de versiones si existe en otro lado
+        const localCachePath = path.join(__dirname, '.wwebjs_cache');
+         if (fs.existsSync(localCachePath)) {
+            console.log('🧹 Limpiando caché local de WhatsApp...');
+            fs.rmSync(localCachePath, { recursive: true, force: true });
+        }
+    } catch (e) {
+        console.warn('⚠️ No se pudo limpiar la caché de WhatsApp:', e.message);
+    }
+};
+
+cleanWhatsAppCache();
+
 // --- CONFIGURACIÓN WHATSAPP LOCAL ---
 // --- CONFIGURACIÓN WHATSAPP LOCAL ---
 console.log('🔄 Inicializando cliente de WhatsApp...');
@@ -465,10 +489,13 @@ const whatsappClient = new Client({
     }),
     authTimeoutMs: 120000,
     qrMaxRetries: 0,
-    // Fix para "Cannot read properties of null (reading '1')" en LocalWebCache
+    // Configuración robusta para evitar errores de cache/versión
     webVersionCache: {
-        type: 'none'
+        type: 'remote',
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
     },
+    // Añadido para intentar mitigar problemas de timeout/evaluación en mac
+    restartOnAuthFail: true,
     puppeteer: {
         // Si browserPath es undefined, intentamos usar el bundled
         executablePath: browserPath || getBundledChromiumPath() || undefined,
@@ -1006,8 +1033,8 @@ app.get('/api/properties', (req, res) => {
                 hab: prop.habitaciones || extraData.hab || 'None',
                 m2: prop.metros || extraData.m2 || 'None',
                 Municipality: prop.location || prop.direccion || extraData.Municipality || '',
-                Advertiser: extraData.Advertiser || '',
-                Phone: prop.phone || extraData.Phone || 'None',
+                Advertiser: extraData.advertiser || extraData.Advertiser || '',
+                Phone: prop.phone || extraData.phone || extraData.Phone || 'None',
 
                 // Metadatos
                 property_type: prop.property_type || '',
