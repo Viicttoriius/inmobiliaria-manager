@@ -24,12 +24,40 @@ try:
 except AttributeError:
     pass
 
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+
 # Constantes URLs
 URLS = {
     "viviendas": "https://www.idealista.com/areas/venta-viviendas/?shape=%28%28ecamF%7Cng%40jx%5Bs%7Ej%40foAyeXlxLig%60%40nt%40ihCzdo%40%60b%60Bm%7D%7DA%7EsH%29%29&ordenado-por=fecha-publicacion-desc",
     "locales": "https://www.idealista.com/areas/venta-locales/?shape=%28%28ecamF%7Cng%40jx%5Bs%7Ej%40foAyeXlxLig%60%40nt%40ihCzdo%40%60b%60Bm%7D%7DA%7EsH%29%29&ordenado-por=fecha-publicacion-desc",
     "terrenos": "https://www.idealista.com/areas/venta-terrenos/?shape=%28%28ecamF%7Cng%40jx%5Bs%7Ej%40foAyeXlxLig%60%40nt%40ihCzdo%40%60b%60Bm%7D%7DA%7EsH%29%29&ordenado-por=fecha-publicacion-desc"
 }
+
+def construct_idealista_url(base_full_url, page_num):
+    """
+    Construye la URL de Idealista inyectando /pagina-X en el path.
+    Ej: .../venta-locales/pagina-2?shape=...
+    """
+    if page_num <= 1:
+        return base_full_url
+        
+    try:
+        parsed = urlparse(base_full_url)
+        path = parsed.path # /areas/venta-locales/
+        query = parsed.query
+        
+        # Eliminar slash final si existe para añadir pagina-X
+        if path.endswith('/'):
+            path = path[:-1]
+            
+        # Construir nuevo path
+        new_path = f"{path}/pagina-{page_num}"
+        
+        new_parsed = parsed._replace(path=new_path)
+        return urlunparse(new_parsed)
+    except Exception as e:
+        print(f"Error construyendo URL paginada: {e}")
+        return base_full_url
 
 def setup_driver(headless=False): # Default to visible for Idealista to reduce blocks
     system = platform.system()
@@ -84,19 +112,103 @@ def setup_driver(headless=False): # Default to visible for Idealista to reduce b
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     return driver
 
-def scrape_idealista(property_type="viviendas", limit=1):
-    print(f"Iniciando scraper Idealista para {property_type}...")
-    driver = setup_driver(headless=False) # Forzamos visual para evitar bloqueos Cloudflare
+def extract_detail_data(driver, url, known_data=None):
+    """
+    Verifica si la página actual (ya cargada en driver) es particular
+    y extrae los datos. Retorna dict o None.
+    """
+    if known_data is None:
+        known_data = {}
+        
+    is_particular = False
+    
+    # Verificar texto "Particular" o clase professional-name
+    try:
+        prof_name = driver.find_element(By.CLASS_NAME, 'professional-name')
+        name_text = prof_name.find_element(By.CLASS_NAME, 'name').text
+        if "Particular" in name_text or "particular" in name_text.lower():
+            is_particular = True
+    except:
+        if "Particular" in driver.page_source:
+             is_particular = True
+
+    if not is_particular:
+        return None
+
+    print("    ✅ ES PARTICULAR! Extrayendo datos...")
+    
+    # Intentar ver el teléfono (click en botón)
+    phone = "No disponible"
+    try:
+        # Buscar botón de teléfono
+        phone_btn = WebDriverWait(driver, 3).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "a.see-phones-btn"))
+        )
+        driver.execute_script("arguments[0].click();", phone_btn)
+        time.sleep(1)
+        
+        # Extraer número
+        phone_elem = WebDriverWait(driver, 3).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".phone-number-block p"))
+        )
+        phone = phone_elem.text.strip()
+    except Exception as ex_phone:
+        pass
+
+    # Construir objeto base con lo que ya sabemos
+    prop_data = {
+        "source": "idealista",
+        "property_type": known_data.get("property_type", "viviendas"),
+        "title": known_data.get("title", driver.title),
+        "price": known_data.get("price", "0"),
+        "url": url,
+        "image_url": known_data.get("image_url", ""),
+        "description": "", 
+        "phone": phone,
+        "location": "", 
+        "advertiser": "Particular",
+        "scrape_date": datetime.now().isoformat()
+    }
+    
+    # Extraer precio si no lo tenemos
+    if prop_data["price"] == "0":
+        try:
+            price_elem = driver.find_element(By.CSS_SELECTOR, '.info-data-price span')
+            prop_data["price"] = price_elem.text
+        except: pass
+
+    # Extraer descripción
+    try:
+        desc_elem = driver.find_element(By.CSS_SELECTOR, '.comment')
+        prop_data["description"] = desc_elem.text
+    except: pass
+    
+    # Extraer ubicación
+    try:
+        loc_elem = driver.find_element(By.ID, 'headerMap')
+        prop_data["location"] = loc_elem.text
+    except: pass
+    
+    # Si no teníamos imagen del listado, intentar del detalle
+    if not prop_data["image_url"]:
+        try:
+            main_img = driver.find_element(By.CSS_SELECTOR, '.main-image img')
+            prop_data["image_url"] = main_img.get_attribute('src')
+        except: pass
+
+    return prop_data
+
+def process_page(url, property_type):
+    """
+    Procesa una página individual de Idealista: abre navegador, extrae, cierra.
+    """
+    print(f"  Procesando página: {url}")
+    driver = setup_driver(headless=False)
     properties = []
     
     try:
-        url = URLS.get(property_type)
-        if not url:
-            print("Tipo de propiedad no válido")
-            return []
-
         driver.get(url)
-        time.sleep(random.uniform(3, 6)) # Esperar carga + Cloudflare
+        time.sleep(random.uniform(4, 7)) # Esperar carga + Cloudflare
         
         # Aceptar cookies si aparecen
         try:
@@ -108,7 +220,7 @@ def scrape_idealista(property_type="viviendas", limit=1):
 
         # Obtener artículos
         articles = driver.find_elements(By.TAG_NAME, 'article')
-        print(f"Encontrados {len(articles)} artículos en la lista.")
+        print(f"  Encontrados {len(articles)} artículos.")
         
         candidates = []
 
@@ -118,107 +230,120 @@ def scrape_idealista(property_type="viviendas", limit=1):
                 try:
                     logo = article.find_element(By.CLASS_NAME, 'logo-branding')
                     if logo:
-                        # print("Saltando agencia (logo detectado)")
                         continue
                 except:
                     pass # No tiene logo, es candidato
                 
-                # Obtener link
+                # Obtener link e imagen
                 link_elem = article.find_element(By.CSS_SELECTOR, 'a.item-link')
                 url_detail = link_elem.get_attribute('href')
                 
-                # Obtener algunos datos preliminares
                 title = link_elem.text
                 price_elem = article.find_element(By.CSS_SELECTOR, 'span.item-price')
                 price = price_elem.text if price_elem else "0"
                 
+                # Intentar obtener imagen del listado
+                image_url = ""
+                try:
+                    img_elem = article.find_element(By.CSS_SELECTOR, 'img')
+                    src = img_elem.get_attribute('src')
+                    data_src = img_elem.get_attribute('data-src')
+                    image_url = data_src if data_src else src
+                except:
+                    pass
+
                 candidates.append({
                     "url": url_detail,
                     "title": title,
-                    "price": price
+                    "price": price,
+                    "image_url": image_url,
+                    "property_type": property_type
                 })
                 
             except Exception as e:
                 continue
                 
-        print(f"Candidatos (posibles particulares): {len(candidates)}")
+        print(f"  Candidatos (posibles particulares): {len(candidates)}")
         
         # 2. Verificar cada candidato entrando al detalle
         for cand in candidates:
             try:
-                print(f"Verificando: {cand['url']}")
+                print(f"    Verificando: {cand['url']}")
                 driver.get(cand['url'])
-                time.sleep(random.uniform(2, 4))
+                time.sleep(random.uniform(3, 5))
                 
-                is_particular = False
+                prop_data = extract_detail_data(driver, cand['url'], cand)
                 
-                # Verificar texto "Particular" o clase professional-name
-                try:
-                    prof_name = driver.find_element(By.CLASS_NAME, 'professional-name')
-                    name_text = prof_name.find_element(By.CLASS_NAME, 'name').text
-                    if "Particular" in name_text or "particular" in name_text.lower():
-                        is_particular = True
-                except:
-                    # Fallback check
-                    if "Particular" in driver.page_source:
-                         is_particular = True
-
-                if is_particular:
-                    print("✅ ES PARTICULAR! Extrayendo datos...")
-                    
-                    # Intentar ver el teléfono (click en botón)
-                    phone = "No disponible"
-                    try:
-                        phone_btn = driver.find_element(By.CSS_SELECTOR, '#contact-phones-container a.see-phones-btn')
-                        driver.execute_script("arguments[0].click();", phone_btn)
-                        time.sleep(1)
-                        # Buscar el número que aparece
-                        phone_elem = driver.find_element(By.CSS_SELECTOR, '.phone-number-block') # Selector aproximado
-                        phone = phone_elem.text
-                    except:
-                        # Fallback a ver si aparece en el texto
-                        pass
-
-                    prop_data = {
-                        "source": "idealista",
-                        "property_type": property_type,
-                        "title": cand['title'],
-                        "price": cand['price'],
-                        "url": cand['url'],
-                        "description": "", # TBD
-                        "phone": phone,
-                        "location": "", # TBD
-                        "advertiser": "Particular",
-                        "scrape_date": datetime.now().isoformat()
-                    }
-                    
-                    # Extraer descripción
-                    try:
-                        desc = driver.find_element(By.CSS_SELECTOR, '.comment').text
-                        prop_data["description"] = desc
-                    except: pass
-                    
-                    # Extraer ubicación
-                    try:
-                        loc = driver.find_element(By.ID, 'headerMap').text
-                        prop_data["location"] = loc
-                    except: pass
-
+                if prop_data:
                     properties.append(prop_data)
                 else:
-                    print("❌ No es particular.")
+                    print("    ❌ No es particular.")
                     
             except Exception as e:
-                print(f"Error verificando {cand['url']}: {e}")
+                print(f"    Error verificando candidato: {e}")
                 continue
 
     except Exception as e:
-        print(f"Error global en scraper: {e}")
+        print(f"  ⚠️ Error en página {url}: {e}")
+    finally:
+        if driver:
+            print("  🛑 Cerrando navegador (fin de página)...")
+            try:
+                driver.quit()
+            except: pass
+            
+    return properties
+
+def scrape_single_listing(url):
+    """
+    Scrapea una url individual (para alertas de correo).
+    """
+    print(f"Scrapeando listing individual: {url}")
+    driver = setup_driver(headless=False)
+    result = None
+    try:
+        driver.get(url)
+        time.sleep(random.uniform(3, 6))
+        
+        # Cookies
+        try:
+            cookie_btn = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.ID, 'didomi-notice-agree-button')))
+            cookie_btn.click()
+            time.sleep(1)
+        except: pass
+        
+        result = extract_detail_data(driver, url)
+        
+    except Exception as e:
+        print(f"Error scraping single url: {e}")
     finally:
         if driver:
             driver.quit()
+    return [result] if result else []
+
+
+def scrape_idealista(property_type="viviendas", max_pages=3):
+    print(f"Iniciando scraper Idealista para {property_type} (Max páginas: {max_pages})...")
+    
+    base_url = URLS.get(property_type)
+    if not base_url:
+        print("Tipo de propiedad no válido")
+        return []
+        
+    all_properties = []
+    
+    for page in range(1, max_pages + 1):
+        url = construct_idealista_url(base_url, page)
+        print(f"\n--- Iniciando Página {page} ---")
+        
+        page_props = process_page(url, property_type)
+        all_properties.extend(page_props)
+        
+        # Pequeña pausa entre reinicios de navegador
+        if page < max_pages:
+            time.sleep(random.uniform(2, 4))
             
-    return properties
+    return all_properties
 
 def save_to_json(properties):
     if not properties:

@@ -66,30 +66,49 @@ def scrape_single_url(url):
             print("✅ ES PARTICULAR")
             
             # Extract basic data
-            title = ""
-            try: title = driver.find_element(By.CSS_SELECTOR, '.main-info__title-main').text
+            title = driver.title
+            try: 
+                title_elem = driver.find_element(By.CSS_SELECTOR, '.main-info__title-main')
+                title = title_elem.text
             except: pass
             
             price = "0"
-            try: price = driver.find_element(By.CSS_SELECTOR, '.info-data-price').text
+            try: 
+                price_elem = driver.find_element(By.CSS_SELECTOR, '.info-data-price span')
+                price = price_elem.text
             except: pass
             
             phone = "No disponible"
             try:
-                phone_btn = driver.find_element(By.CSS_SELECTOR, '#contact-phones-container a.see-phones-btn')
+                # Buscar botón de teléfono
+                phone_btn = WebDriverWait(driver, 3).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "a.see-phones-btn"))
+                )
                 driver.execute_script("arguments[0].click();", phone_btn)
-                time.sleep(2)
-                phone_elem = driver.find_element(By.CSS_SELECTOR, '.phone-number-block')
-                phone = phone_elem.text
+                time.sleep(1)
+                
+                # Extraer número
+                phone_elem = WebDriverWait(driver, 3).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, ".phone-number-block p"))
+                )
+                phone = phone_elem.text.strip()
             except:
                 pass
             
+            # Imagen
+            image_url = ""
+            try:
+                main_img = driver.find_element(By.CSS_SELECTOR, '.main-image img')
+                image_url = main_img.get_attribute('src')
+            except: pass
+
             result = {
                 "source": "idealista",
                 "title": title,
                 "price": price,
                 "url": url,
                 "phone": phone,
+                "image_url": image_url,
                 "advertiser": "Particular",
                 "property_type": "inbox_alert",
                 "date": datetime.now().isoformat()

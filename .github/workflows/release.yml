@@ -9,7 +9,21 @@ permissions:
   contents: write
 
 jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Delete Release if exists
+        uses: author/delete-release@v4
+        with:
+          release-name: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
   build:
+    needs: cleanup
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -90,8 +104,10 @@ jobs:
           if [ "${{ matrix.os }}" == "windows-latest" ]; then
             delete_asset "Inmobiliaria Manager Setup $VERSION.exe"
             delete_asset "Inmobiliaria Manager Setup $VERSION.exe.blockmap"
+            delete_asset "latest.yml"
           elif [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
              delete_asset "Inmobiliaria Manager-$VERSION.AppImage"
+             delete_asset "latest-linux.yml"
           elif [ "${{ matrix.os }}" == "macos-latest" ]; then
             delete_asset "Inmobiliaria Manager-$VERSION-mac-x64.zip"
             delete_asset "Inmobiliaria Manager-$VERSION-mac-x64.zip.blockmap"
@@ -101,6 +117,7 @@ jobs:
             delete_asset "Inmobiliaria Manager-$VERSION-mac-arm64.zip.blockmap"
             delete_asset "Inmobiliaria Manager-$VERSION-mac-arm64.dmg"
             delete_asset "Inmobiliaria Manager-$VERSION-mac-arm64.dmg.blockmap"
+            delete_asset "latest-mac.yml"
           fi
 
       - name: Build/Release Electron App (Windows/Linux)

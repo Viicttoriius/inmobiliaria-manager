@@ -2,6 +2,13 @@
 
 Todas las cambios notables de este proyecto serán documentados en este archivo.
 
+## [2.1.9] - 2025-12-15
+### Fixed
+- **CI/CD**: Solucionado error 422 en la subida de releases. Implementado sistema de limpieza automática de releases y assets previos para evitar colisiones en GitHub Actions.
+- **Scraper Idealista**: Añadido soporte para "Locales" y "Terrenos" en el scraper manual.
+- **Scraper Idealista**: Implementada navegación robusta con cierre y reapertura de navegador por página para evitar bloqueos.
+- **Scraper Idealista**: Mejorada extracción de teléfonos (click automático en "Ver teléfono") y detección de anunciantes particulares.
+
 ## [2.1.8] - 2025-12-15
 ### Fixed
 - **Scrapers**: Corregido bucle infinito en paginación de Fotocasa. Ahora el scraper navega correctamente entre páginas y respeta los filtros de búsqueda.
