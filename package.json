@@ -1,6 +1,6 @@
 {
   "name": "inmobiliaria-manager",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "description": "Sistema de Gestión Inmobiliaria con Automatización",
   "main": "electron/main.js",
   "author": "Victor Muñoz Lopez",
@@ -93,7 +93,11 @@
     "linux": {
       "icon": "build/icon.png",
       "target": "AppImage",
-      "category": "Office"
+      "category": "Office",
+      "executableName": "inmobiliaria-manager",
+      "artifactName": "${productName}-${version}-linux.${ext}",
+      "synopsis": "Sistema de Gestión Inmobiliaria",
+      "description": "Gestión de propiedades y clientes con automatización."
     },
     "nsis": {
       "guid": "5f6a9b3c-8d2e-4f1a-9c0b-7e6d5f4a3b2c",

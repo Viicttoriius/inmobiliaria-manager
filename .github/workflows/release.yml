@@ -130,15 +130,31 @@ jobs:
             delete_asset "latest-mac.yml"
           fi
 
-      - name: Build/Release Electron App (Windows/Linux)
-        if: matrix.os != 'macos-latest'
+      - name: Install Linux Dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y libopenjp2-7-dev libgdk-pixbuf2.0-dev libnotify-bin build-essential
+
+      - name: Build/Release Electron App (Windows)
+        if: matrix.os == 'windows-latest'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEBUG: electron-builder
         run: |
           npm run rebuild-backend
-          npm run release
+          npx electron-builder --win --publish always
+
+      - name: Build/Release Electron App (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEBUG: electron-builder
+        run: |
+          npm run rebuild-backend
+          npx electron-builder --linux --publish always
 
       - name: Build/Release Electron App (macOS)
         if: matrix.os == 'macos-latest'
