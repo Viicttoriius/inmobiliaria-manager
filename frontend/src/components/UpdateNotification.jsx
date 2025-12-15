@@ -29,6 +29,14 @@ const UpdateNotification = () => {
             setUpdateInfo(data.info);
             setIsVisible(true);
             break;
+          case 'not-available':
+            setUpdateStatus('uptodate');
+            setIsVisible(true);
+            // Auto-ocultar después de 4 segundos si está actualizado
+            setTimeout(() => {
+              setIsVisible(false);
+            }, 4000);
+            break;
           case 'error':
             setUpdateStatus('error');
             setError(data.error);
@@ -135,6 +143,24 @@ const UpdateNotification = () => {
             <RefreshCw className="w-4 h-4" />
             Reiniciar e Instalar
           </button>
+        </div>
+      )}
+
+      {updateStatus === 'uptodate' && (
+        <div className="space-y-4">
+          <div className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg border border-gray-100 dark:border-gray-600 flex items-start gap-3">
+             <div className="bg-blue-100 dark:bg-blue-900 rounded-full p-1 flex-shrink-0">
+                <CheckCircle className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+             </div>
+             <div>
+                <p className="text-sm text-gray-800 dark:text-gray-200 font-bold">
+                    Estás actualizado
+                </p>
+                <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                    No hay nuevas actualizaciones disponibles en este momento.
+                </p>
+             </div>
+          </div>
         </div>
       )}
 

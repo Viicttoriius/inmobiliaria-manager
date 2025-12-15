@@ -327,6 +327,15 @@ autoUpdater.on('update-not-available', (info) => {
 
 autoUpdater.on('error', (err) => {
   console.log('Error in auto-updater. ' + err);
+  
+  // Si el error es 404 buscando latest.yml, probablemente no hay actualizaciones o la release no está lista.
+  // Tratamos esto como "no hay actualizaciones" para evitar asustar al usuario.
+  if (err.message && err.message.includes('404') && err.message.includes('latest.yml')) {
+    console.log('Suppressing 404 error for latest.yml - treating as update-not-available');
+    if (mainWindow) mainWindow.webContents.send('update-status', { status: 'not-available', info: { version: 'latest' } });
+    return;
+  }
+
   if (mainWindow) mainWindow.webContents.send('update-status', { status: 'error', error: err.message });
 });
 

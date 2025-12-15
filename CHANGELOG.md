@@ -2,6 +2,11 @@
 
 Todas las cambios notables de este proyecto serán documentados en este archivo.
 
+## [2.1.6] - 2025-12-15
+### Fixed
+- **Updater**: Mejorada la experiencia de usuario al buscar actualizaciones. Ahora muestra "Estás actualizado" en lugar de un error 404 si no se encuentra información de nueva versión.
+- **Updater**: Suprimido mensaje de error técnico (HttpError: 404 latest.yml) en la interfaz.
+
 ## [2.1.5] - 2025-12-15
 ### Fixed
 - **WhatsApp**: Corregido error de inicialización del navegador (timeout/selector) en versión empaquetada.
