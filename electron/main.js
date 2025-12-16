@@ -96,10 +96,26 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../frontend/dist/index.html'));
   }
 
-  // Comprobar actualizaciones al iniciar
+    // Comprobar actualizaciones al iniciar
   if (!isDev) {
     autoUpdater.autoDownload = false;
-    autoUpdater.checkForUpdates();
+    
+    // Manejo de errores de actualización para evitar ruido en Sentry
+    autoUpdater.on('error', (error) => {
+        const msg = error.message || '';
+        // Ignorar error 404 (común cuando no hay release para la plataforma actual)
+        if (msg.includes('404') || msg.includes('Cannot find latest')) {
+            console.warn('⚠️ AutoUpdater: No se encontró actualización (posiblemente falta el archivo YAML). Ignorando.');
+        } else {
+            console.error('❌ AutoUpdater Error:', error);
+            Sentry.captureException(error);
+        }
+    });
+
+    autoUpdater.checkForUpdates().catch(err => {
+        // Catch inicial por si falla síncronamente
+        console.warn('⚠️ AutoUpdater check failed:', err.message);
+    });
   }
 }
 
@@ -127,6 +143,19 @@ function startBackend() {
   
   // Archivo de logs del proceso principal (para debug en producción)
   const mainLogPath = path.join(userDataPath, 'main.log');
+
+  // Rotación de logs main
+  try {
+      if (fs.existsSync(mainLogPath)) {
+          const stats = fs.statSync(mainLogPath);
+          if (stats.size > 5 * 1024 * 1024) { // 5MB
+              const backupPath = mainLogPath + '.old';
+              if (fs.existsSync(backupPath)) fs.unlinkSync(backupPath);
+              fs.renameSync(mainLogPath, backupPath);
+          }
+      }
+  } catch (e) {}
+
   const logToFile = (msg) => {
     try {
       const timestamp = new Date().toISOString();

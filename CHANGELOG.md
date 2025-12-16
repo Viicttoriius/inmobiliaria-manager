@@ -2,6 +2,15 @@
 
 Todas las cambios notables de este proyecto serán documentados en este archivo.
 
+## [2.2.11] - 2025-12-16
+### Fixed
+- **Estabilidad Crítica**: Solucionado error `ENOSPC: no space left on device` que podía bloquear la aplicación. Implementada rotación inteligente de logs (límite 5MB) para evitar el llenado del disco.
+- **Auto-Updater**: Corregido falso positivo en reporte de errores (404 Not Found para `latest-mac.yml`). Ahora el sistema gestiona silenciosamente la ausencia de actualizaciones para plataformas no publicadas en lugar de reportarlo como fallo crítico a Sentry.
+
+## [2.2.10] - 2025-12-16
+### Fixed
+- **Hotfix**: Corrección de ruta en imports de backend.
+
 ## [2.1.14] - 2025-12-15
 ### Fixed
 - **macOS Build Isolation**: Corregido error de arquitectura `incompatible architecture (have (arm64), need (x86_64h))` en Macs Intel. Se ha reescrito el pipeline de GitHub Actions para separar completamente las builds de x64 y arm64 en máquinas virtuales diferentes, evitando la contaminación cruzada de módulos nativos como `better-sqlite3`.

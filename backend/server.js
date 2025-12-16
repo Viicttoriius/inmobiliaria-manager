@@ -19,11 +19,39 @@ const { spawn, exec, execSync } = require('child_process');
 
 // DEBUG: Loguear inicio
 const LOG_FILE = path.join(process.env.USER_DATA_PATH || process.env.APPDATA || '.', 'backend_debug.log');
+
+// Rotación de logs simple al inicio: Si supera 5MB, reiniciar
+try {
+    if (fs.existsSync(LOG_FILE)) {
+        const stats = fs.statSync(LOG_FILE);
+        if (stats.size > 5 * 1024 * 1024) { // 5MB
+            const backupPath = LOG_FILE + '.old';
+            if (fs.existsSync(backupPath)) fs.unlinkSync(backupPath);
+            fs.renameSync(LOG_FILE, backupPath);
+            console.log('📝 Log rotado debido al tamaño.');
+        }
+    }
+} catch (e) {
+    console.error('Error rotando logs:', e);
+}
+
 const log = (msg) => {
     try {
         const timestamp = new Date().toISOString();
         fs.appendFileSync(LOG_FILE, `[${timestamp}] ${msg}\n`);
-    } catch (e) { }
+    } catch (e) { 
+        // Si falla escribir (ej. disco lleno), intentar liberar espacio borrando el .old
+        if (e.code === 'ENOSPC') {
+            try {
+                const backupPath = LOG_FILE + '.old';
+                if (fs.existsSync(backupPath)) {
+                    fs.unlinkSync(backupPath);
+                    // Reintentar una vez
+                    fs.appendFileSync(LOG_FILE, `[${timestamp}] ${msg} (Recovered from ENOSPC)\n`);
+                }
+            } catch (err) {}
+        }
+    }
 };
 
 log('🚀 Backend iniciando...');
