@@ -2,6 +2,12 @@
 
 Todas las cambios notables de este proyecto serán documentados en este archivo.
 
+## [2.2.16] - 2025-12-16
+### Fixed
+- **Scraper Idealista**: Sincronización completa de la lógica de extracción entre el scraper individual y el masivo para garantizar consistencia en los datos.
+- **Extracción de Contacto**: Solucionado bug donde nombres de particulares con paréntesis o formatos complejos eran ignorados. Ahora se capturan como candidatos y se limpian correctamente.
+- **Teléfonos**: Reforzada la lógica de extracción de teléfonos con validación por regex y múltiples selectores de respaldo para evitar "No disponible".
+
 ## [2.2.15] - 2025-12-16
 ### Improved
 - **Instalador de Windows**: Se ha mejorado el instalador para detectar y cerrar automáticamente la aplicación si está abierta antes de iniciar la instalación/actualización, evitando el error de "Reintentar" por archivos bloqueados.
