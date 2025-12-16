@@ -81,27 +81,53 @@ def scrape_single_url(url):
             # Extract Contact Name
             contact_name = "Particular"
             try:
-                prof_name = driver.find_element(By.CLASS_NAME, 'professional-name')
-                contact_name = prof_name.find_element(By.CLASS_NAME, 'name').text.strip()
-            except: pass
+                # Estrategia 1: Clase professional-name (antigua)
+                try:
+                    prof_name = driver.find_element(By.CLASS_NAME, 'professional-name')
+                    contact_name = prof_name.find_element(By.CLASS_NAME, 'name').text.strip()
+                except:
+                    # Estrategia 2: Selector más genérico para nombre de anunciante
+                    name_elem = driver.find_element(By.CSS_SELECTOR, '.advertiser-name, .contact-data .name, .about-advertiser-name')
+                    contact_name = name_elem.text.strip()
+            except: 
+                # Estrategia 3: Buscar texto "Particular" cerca
+                pass
 
             # Extract Phone Number
             phone = "No disponible"
             try:
                 # Scroll to phone button to ensure visibility
-                phone_btn = WebDriverWait(driver, 5).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "a.see-phones-btn"))
-                )
-                driver.execute_script("arguments[0].scrollIntoView(true);", phone_btn)
-                time.sleep(1)
-                driver.execute_script("arguments[0].click();", phone_btn)
-                time.sleep(2)
+                # Intentar varios selectores para el botón de teléfono
+                phone_btn_selectors = ["a.see-phones-btn", "button.see-phones-btn", ".phone-cta", "button.btn-phone"]
+                phone_btn = None
                 
-                # Extraer número
-                phone_elem = WebDriverWait(driver, 5).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, ".phone-number-block p"))
-                )
-                phone = phone_elem.text.strip()
+                for selector in phone_btn_selectors:
+                    try:
+                        phone_btn = WebDriverWait(driver, 2).until(
+                            EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+                        )
+                        if phone_btn: break
+                    except: continue
+                
+                if phone_btn:
+                    driver.execute_script("arguments[0].scrollIntoView(true);", phone_btn)
+                    time.sleep(1)
+                    # Click JS forzado
+                    driver.execute_script("arguments[0].click();", phone_btn)
+                    time.sleep(2)
+                    
+                    # Extraer número - Intentar varios selectores
+                    phone_text_selectors = [".phone-number-block p", ".phone", ".contact-phones", ".first-phone"]
+                    for selector in phone_text_selectors:
+                        try:
+                            phone_elem = WebDriverWait(driver, 2).until(
+                                EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+                            )
+                            phone = phone_elem.text.strip()
+                            if phone: break
+                        except: continue
+                else:
+                    print("    ⚠️ No se encontró botón de teléfono")
             except Exception as e:
                 print(f"    ⚠️ No se pudo extraer teléfono: {e}")
                 pass

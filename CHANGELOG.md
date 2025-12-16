@@ -2,6 +2,13 @@
 
 Todas las cambios notables de este proyecto serán documentados en este archivo.
 
+## [2.2.12] - 2025-12-16
+### Added
+- **Inteligencia Artificial**: Actualizado el catálogo de modelos OpenRouter disponibles. Ahora incluye opciones gratuitas más potentes: GPT-4o OSS 120B/20B, DeepSeek R1 Chimera, Llama 3.3 70B y DeepSeek V3.1 Nex.
+
+### Fixed
+- **Scraper Idealista**: Solucionado problema de extracción de "Nombre de Contacto" y "Teléfono" en anuncios de particulares. Se han implementado múltiples estrategias de selectores CSS y clicks forzados para garantizar la captura de datos ante cambios en el DOM de la web.
+
 ## [2.2.11] - 2025-12-16
 ### Fixed
 - **Estabilidad Crítica**: Solucionado error `ENOSPC: no space left on device` que podía bloquear la aplicación. Implementada rotación inteligente de logs (límite 5MB) para evitar el llenado del disco.
