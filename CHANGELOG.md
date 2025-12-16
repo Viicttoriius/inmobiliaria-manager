@@ -2,6 +2,12 @@
 
 Todas las cambios notables de este proyecto serán documentados en este archivo.
 
+## [2.2.14] - 2025-12-16
+### Fixed
+- **Actualización de Propiedades**: Solucionado error crítico donde la actualización manual de propiedades reportaba "0 propiedades actualizadas" al no guardar correctamente los datos en la base de datos SQLite.
+- **Scraper Idealista**: Mejorada la estrategia de extracción de nombres de contacto en anuncios de particulares, añadiendo múltiples selectores de respaldo para mayor precisión.
+- **Backend Persistence**: Ahora la ruta `/api/properties/update` realiza un "upsert" directo a SQLite, garantizando que los datos frescos estén disponibles inmediatamente en la UI.
+
 ## [2.2.13] - 2025-12-16
 ### Fixed
 - **IA Análisis**: Corrección del endpoint de IA para usar correctamente la clave de API configurada y fallback robusto a análisis estadístico en caso de fallo de conexión.

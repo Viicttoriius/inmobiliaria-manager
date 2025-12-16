@@ -1702,7 +1702,12 @@ app.post('/api/properties/update', async (req, res) => {
              return res.json({ success: true, updatedCount: 0, message: "No se obtuvieron datos actualizados.", newClientsCount: 0 });
         }
 
-        // 3. Actualizar archivos persistentes (Código Original Lógica)
+        // 3. Actualizar Base de Datos SQLite (CRÍTICO: La fuente de verdad)
+        console.log(`💾 Guardando ${updatedProperties.length} propiedades actualizadas en SQLite...`);
+        const dbStats = sqliteManager.bulkInsertProperties(updatedProperties);
+        console.log(`   ✅ SQLite Stats: ${dbStats.inserted} nuevas, ${dbStats.updated} actualizadas`);
+
+        // 4. Actualizar archivos persistentes (Legacy / Backup)
         const allProperties = [];
         const files = fs.readdirSync(PROPERTIES_DIR);
         files.forEach(file => {

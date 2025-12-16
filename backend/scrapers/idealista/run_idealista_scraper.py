@@ -140,20 +140,33 @@ def extract_detail_data(driver, url, known_data=None):
     # Extract Contact Name
     contact_name = "Particular"
     try:
-        # Estrategia 1: Clase professional-name (antigua)
-        try:
-            prof_name = driver.find_element(By.CLASS_NAME, 'professional-name')
-            contact_name = prof_name.find_element(By.CLASS_NAME, 'name').text.strip()
-        except:
-            # Estrategia 2: Selector más genérico
-            name_elem = driver.find_element(By.CSS_SELECTOR, '.advertiser-name, .contact-data .name, .about-advertiser-name')
-            contact_name = name_elem.text.strip()
+        name_selectors = [
+            '.professional-name .name',
+            '.advertiser-name', 
+            '.contact-data .name', 
+            '.about-advertiser-name',
+            '.contact-name',
+            'div.name'
+        ]
+        
+        for selector in name_selectors:
+            try:
+                name_elem = driver.find_element(By.CSS_SELECTOR, selector)
+                extracted_name = name_elem.text.strip()
+                if extracted_name and "particular" not in extracted_name.lower():
+                    contact_name = extracted_name
+                    break
+                elif extracted_name and len(extracted_name) > 3:
+                        contact_name = extracted_name
+            except: continue
             
         # Limpieza: Si el nombre contiene "Particular" (redundante), intentar limpiarlo
         if "particular" in contact_name.lower() and len(contact_name) > 15:
-             contact_name = contact_name.replace("Particular", "").replace("particular", "").strip()
+                contact_name = contact_name.replace("Particular", "").replace("particular", "").strip()
              
-    except: pass
+    except Exception as e:
+        print(f"    ⚠️ Error extrayendo nombre: {e}")
+        pass
 
     # Intentar ver el teléfono (click en botón)
     phone = "No disponible"

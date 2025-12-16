@@ -1,6 +1,6 @@
 {
   "name": "inmobiliaria-manager",
-  "version": "2.2.13",
+  "version": "2.2.14",
   "description": "Sistema de Gestión Inmobiliaria con Automatización",
   "main": "electron/main.js",
   "author": "Victor Muñoz Lopez",
