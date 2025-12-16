@@ -89,6 +89,10 @@ def scrape_single_url(url):
                     # Estrategia 2: Selector más genérico para nombre de anunciante
                     name_elem = driver.find_element(By.CSS_SELECTOR, '.advertiser-name, .contact-data .name, .about-advertiser-name')
                     contact_name = name_elem.text.strip()
+                    
+                # Limpieza
+                if "particular" in contact_name.lower() and len(contact_name) > 15:
+                    contact_name = contact_name.replace("Particular", "").replace("particular", "").strip()
             except: 
                 # Estrategia 3: Buscar texto "Particular" cerca
                 pass
@@ -117,7 +121,7 @@ def scrape_single_url(url):
                     time.sleep(2)
                     
                     # Extraer número - Intentar varios selectores
-                    phone_text_selectors = [".phone-number-block p", ".phone", ".contact-phones", ".first-phone"]
+                    phone_text_selectors = [".phone-number-block p", ".phone", ".contact-phones", ".first-phone", ".phone-number-block div", ".phone-number-block span"]
                     for selector in phone_text_selectors:
                         try:
                             phone_elem = WebDriverWait(driver, 2).until(

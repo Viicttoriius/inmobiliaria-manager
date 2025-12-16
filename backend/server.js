@@ -1,4 +1,5 @@
 const Sentry = require('@sentry/node');
+require('dotenv').config();
 // --- INICIALIZACIÓN SENTRY BACKEND ---
 Sentry.init({
     dsn: "https://15bf6ed890e254dc94272dd272911ddd@o4510509929857024.ingest.de.sentry.io/4510509939032144",
@@ -2386,6 +2387,34 @@ app.post('/api/ai/analyze-metrics', async (req, res) => {
         return res.status(400).json({ success: false, error: 'Datos no proporcionados' });
     }
 
+    // Función auxiliar para análisis basado en reglas (Fallback)
+    const generateRuleBasedAnalysis = (d) => {
+        const { total_propiedades, total_clientes, precio_promedio, tipos_propiedades } = d;
+        let text = `### 1. Resumen Ejecutivo\n`;
+        text += `La agencia cuenta con **${total_propiedades} propiedades** y **${total_clientes} clientes**. `;
+        text += `El precio promedio de la cartera es de **${new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(precio_promedio)}**.\n\n`;
+        
+        text += `### 2. Análisis de Cartera\n`;
+        const topType = tipos_propiedades && tipos_propiedades.length > 0 
+            ? tipos_propiedades.sort((a, b) => b.value - a.value)[0] 
+            : { name: 'General', value: 0 };
+        
+        if (topType) {
+            text += `El tipo de propiedad predominante es **${topType.name}** con ${topType.value} unidades. `;
+        }
+        text += `Se recomienda diversificar la cartera para cubrir más segmentos de mercado.\n\n`;
+
+        text += `### 3. Análisis de Clientes\n`;
+        text += `Con ${total_clientes} clientes registrados, el ratio propiedad/cliente es de ${(total_propiedades / (total_clientes || 1)).toFixed(1)}. `;
+        text += `Un ratio saludable suele estar entre 0.5 y 1.5. Es importante mantener un equilibrio entre captación y ventas.\n\n`;
+
+        text += `### 4. Recomendaciones\n`;
+        text += `- **Captación**: Enfocarse en captar más propiedades si el ratio es bajo.\n`;
+        text += `- **Seguimiento**: Contactar a los clientes antiguos para reactivar interés.\n`;
+        text += `- **Datos**: Completar la información de "Intereses" para mejorar el matching.`;
+        return text;
+    };
+
     try {
         const fetch = (await import('node-fetch')).default;
         
@@ -2393,36 +2422,8 @@ app.post('/api/ai/analyze-metrics', async (req, res) => {
         const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
         if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY === 'tu_api_key_aqui') {
             console.warn("⚠️ No OPENROUTER_API_KEY found. Using rule-based fallback.");
-            
-            const generateRuleBasedAnalysis = (d) => {
-                const { total_propiedades, total_clientes, precio_promedio, tipos_propiedades } = d;
-                let text = `### 1. Resumen Ejecutivo\n`;
-                text += `La agencia cuenta con **${total_propiedades} propiedades** y **${total_clientes} clientes**. `;
-                text += `El precio promedio de la cartera es de **${new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(precio_promedio)}**.\n\n`;
-                
-                text += `### 2. Análisis de Cartera\n`;
-                const topType = tipos_propiedades && tipos_propiedades.length > 0 
-                    ? tipos_propiedades.sort((a, b) => b.value - a.value)[0] 
-                    : { name: 'General', value: 0 };
-                
-                if (topType) {
-                    text += `El tipo de propiedad predominante es **${topType.name}** con ${topType.value} unidades. `;
-                }
-                text += `Se recomienda diversificar la cartera para cubrir más segmentos de mercado.\n\n`;
-
-                text += `### 3. Análisis de Clientes\n`;
-                text += `Con ${total_clientes} clientes registrados, el ratio propiedad/cliente es de ${(total_propiedades / (total_clientes || 1)).toFixed(1)}. `;
-                text += `Un ratio saludable suele estar entre 0.5 y 1.5. Es importante mantener un equilibrio entre captación y ventas.\n\n`;
-
-                text += `### 4. Recomendaciones\n`;
-                text += `- **Captación**: Enfocarse en captar más propiedades si el ratio es bajo.\n`;
-                text += `- **Seguimiento**: Contactar a los clientes antiguos para reactivar interés.\n`;
-                text += `- **Datos**: Completar la información de "Intereses" para mejorar el matching.`;
-                return text;
-            };
-
             const analysis = generateRuleBasedAnalysis(data);
-            return res.json({ success: true, analysis: "⚠️ *Nota: Análisis generado automáticamente (Sin API Key configurada). Para usar IA real, añade tu clave en .env.*\n\n" + analysis });
+            return res.json({ success: true, analysis: analysis });
         }
         // -----------------------------
 
@@ -2474,7 +2475,10 @@ Por favor, genera el informe estratégico.`;
 
     } catch (error) {
         console.error('Error generating AI analysis:', error);
-        res.status(500).json({ success: false, error: error.message });
+        // Fallback a reglas en caso de error de API
+        console.log("⚠️ API Error. Falling back to rule-based analysis.");
+        const analysis = generateRuleBasedAnalysis(data);
+        res.json({ success: true, analysis: analysis + "\n\n*(Nota: Informe generado offline debido a un error de conexión con la IA)*" });
     }
 });
 

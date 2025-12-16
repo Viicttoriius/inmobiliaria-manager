@@ -2,6 +2,12 @@
 
 Todas las cambios notables de este proyecto serán documentados en este archivo.
 
+## [2.2.13] - 2025-12-16
+### Fixed
+- **IA Análisis**: Corrección del endpoint de IA para usar correctamente la clave de API configurada y fallback robusto a análisis estadístico en caso de fallo de conexión.
+- **Scraper Idealista**: Unificada la lógica de extracción de datos (teléfono y nombre) entre el scraper masivo y el individual para garantizar consistencia.
+- **Frontend**: Corrección en las tarjetas de propiedad para mostrar adecuadamente los datos de anunciantes "Particular" y teléfonos "No disponible" de Idealista.
+
 ## [2.2.12] - 2025-12-16
 ### Added
 - **Inteligencia Artificial**: Actualizado el catálogo de modelos OpenRouter disponibles. Ahora incluye opciones gratuitas más potentes: GPT-4o OSS 120B/20B, DeepSeek R1 Chimera, Llama 3.3 70B y DeepSeek V3.1 Nex.
