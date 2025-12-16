@@ -1,4 +1,9 @@
 !macro customInit
+  ; Intentar cerrar la aplicación si está corriendo
+  nsExec::Exec 'taskkill /F /IM "inmobiliaria-manager.exe"'
+  nsExec::Exec 'taskkill /F /IM "Inmobiliaria Manager.exe"'
+  Sleep 2000
+
   ; Verificar si Microsoft Edge está instalado
   ; Revisamos claves de registro comunes y rutas de archivo
   

@@ -2,6 +2,11 @@
 
 Todas las cambios notables de este proyecto serán documentados en este archivo.
 
+## [2.2.15] - 2025-12-16
+### Improved
+- **Instalador de Windows**: Se ha mejorado el instalador para detectar y cerrar automáticamente la aplicación si está abierta antes de iniciar la instalación/actualización, evitando el error de "Reintentar" por archivos bloqueados.
+- **Cierre de Aplicación**: El proceso de backend ahora se termina de manera forzada (`SIGKILL`) al cerrar la aplicación, asegurando que no queden procesos "zombie" bloqueando actualizaciones futuras.
+
 ## [2.2.14] - 2025-12-16
 ### Fixed
 - **Actualización de Propiedades**: Solucionado error crítico donde la actualización manual de propiedades reportaba "0 propiedades actualizadas" al no guardar correctamente los datos en la base de datos SQLite.

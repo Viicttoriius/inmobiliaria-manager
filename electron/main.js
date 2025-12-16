@@ -326,9 +326,14 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  app.isQuitting = true;
   if (backendProcess) {
     console.log('Matando proceso backend...');
-    backendProcess.kill();
+    try {
+      process.kill(backendProcess.pid, 'SIGKILL'); // Forzar cierre inmediato
+    } catch (e) {
+      console.error('Error matando backend:', e);
+    }
   }
 });
 
