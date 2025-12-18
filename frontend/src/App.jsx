@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { Home, Building2, MapPin, Calendar, Phone, ExternalLink, Search, Filter, Play, Users, MessageSquare, Plus, Trash2, Send, RefreshCw, Image as ImageIcon, Pencil, History, Settings, AlertCircle, CheckCircle, Info, X, Bell, LifeBuoy, Upload, Mail, Square, BarChart2 } from 'lucide-react'
+import { Home, Building2, MapPin, Calendar, Phone, ExternalLink, Search, Filter, Play, Users, MessageSquare, Plus, Trash2, Send, RefreshCw, Image as ImageIcon, Pencil, History, Settings, AlertCircle, CheckCircle, Info, X, Bell, LifeBuoy, Upload, Mail, Square, BarChart2, Bot } from 'lucide-react'
 import Papa from 'papaparse';
 import UpdateNotification from './components/UpdateNotification';
 import CalendarPanel from './components/CalendarPanel';
 import MetricsPanel from './components/MetricsPanel';
 import InboxPanel from './components/InboxPanel';
 import EditPropertyModal from './components/EditPropertyModal';
+import ChatModal from './components/ChatModal';
 import './App.css'
 
 const API_URL = 'http://localhost:3001/api';
@@ -131,7 +132,9 @@ function App() {
   const [activeTab, setActiveTab] = useState('properties')
   const [whatsAppModalOpen, setWhatsAppModalOpen] = useState(false);
   const [whatsAppUrl, setWhatsAppUrl] = useState('');
-  const [scrapingInProgress, setScrapingInProgress] = useState({ 
+  const [chatModalOpen, setChatModalOpen] = useState(false);
+  const [chatClient, setChatClient] = useState(null);
+  const [scrapingInProgress, setScrapingInProgress] = useState({  
     fotocasa_viviendas: false, fotocasa_locales: false, fotocasa_terrenos: false,
     idealista_viviendas: false, idealista_locales: false, idealista_terrenos: false
   });
@@ -165,6 +168,8 @@ function App() {
   const [savingEmail, setSavingEmail] = useState(false);
   const [scraperConfig, setScraperConfig] = useState({ fotocasa: { enabled: false, interval: "60" } });
   const [savingScraperConfig, setSavingScraperConfig] = useState(false);
+  const [aiConfig, setAiConfig] = useState({ model: 'openai/gpt-oss-20b:free', script: 'initial_contact' });
+  const [savingAiConfig, setSavingAiConfig] = useState(false);
   const [pythonPathInput, setPythonPathInput] = useState('');
   const [savingPythonPath, setSavingPythonPath] = useState(false);
 
@@ -484,6 +489,7 @@ function App() {
   const [generatedMessage, setGeneratedMessage] = useState('')
   const [generatingMessage, setGeneratingMessage] = useState(false)
   const [selectedModel, setSelectedModel] = useState('openai/gpt-oss-20b:free');
+  const [selectedScript, setSelectedScript] = useState('initial_contact');
   const [selectedChannel, setSelectedChannel] = useState('whatsapp');
   const [updatingProperties, setUpdatingProperties] = useState(false);
   const [updateLog, setUpdateLog] = useState([]);
@@ -1048,6 +1054,30 @@ function App() {
     }
   };
 
+  useEffect(() => {
+    if (configModalOpen) {
+        setAiConfig({
+            model: localStorage.getItem('whatsapp_default_model') || 'openai/gpt-oss-20b:free',
+            script: localStorage.getItem('whatsapp_default_script') || 'initial_contact'
+        });
+    }
+  }, [configModalOpen]);
+
+  const handleSaveAIConfig = () => {
+    setSavingAiConfig(true);
+    localStorage.setItem('whatsapp_default_model', aiConfig.model);
+    localStorage.setItem('whatsapp_default_script', aiConfig.script);
+    
+    // También actualizar el estado de selectedModel/Script si se desea que afecte inmediatamente al panel principal
+    setSelectedModel(aiConfig.model);
+    setSelectedScript(aiConfig.script);
+
+    setTimeout(() => {
+        setSavingAiConfig(false);
+        showNotification('Configuración de IA guardada', 'success');
+    }, 500);
+  };
+
   const handleCleanup = async () => {
     requestConfirm({
       title: 'Limpiar Archivos Temporales',
@@ -1305,7 +1335,8 @@ function App() {
           clientPhone: client.phone,
           properties: props,
           preferences: client.preferences || '',
-          model: selectedModel
+          model: selectedModel,
+          scriptType: selectedScript
         })
       })
 
@@ -2346,8 +2377,8 @@ function App() {
                               {client.whatsappLink ? (
                                 <button 
                                   onClick={() => {
-                                      setWhatsAppUrl(client.whatsappLink);
-                                      setWhatsAppModalOpen(true);
+                                      setChatClient(client);
+                                      setChatModalOpen(true);
                                   }}
                                   style={{ 
                                     background: 'none', 
@@ -2416,7 +2447,24 @@ function App() {
                 </div>
 
                 <div className="config-panel">
-                  <h3>3. Selecciona Modelo IA</h3>
+                  <h3>3. Tipo de Guion</h3>
+                  <select
+                    value={selectedScript}
+                    onChange={(e) => setSelectedScript(e.target.value)}
+                    className="model-selector"
+                  >
+                    <option value="initial_contact">Contacto Inicial (General)</option>
+                    <option value="specific_link">Contacto Específico (con Link)</option>
+                    <option value="objection_agency">Manejo de Objeción (Inmobiliaria)</option>
+                    <option value="followup_15min">Seguimiento Rápido (15 min)</option>
+                    <option value="followup_20min">Seguimiento (20 min)</option>
+                    <option value="followup_next_day">Seguimiento (Día Siguiente)</option>
+                  </select>
+                  <small>Selecciona la plantilla de mensaje</small>
+                </div>
+
+                <div className="config-panel">
+                  <h3>4. Selecciona Modelo IA</h3>
                   <select
                     value={selectedModel}
                     onChange={(e) => setSelectedModel(e.target.value)}
@@ -2432,7 +2480,7 @@ function App() {
                 </div>
 
                 <div className="config-panel">
-                  <h3>4. Canal de Envío</h3>
+                  <h3>5. Canal de Envío</h3>
                   <select
                     value={selectedChannel}
                     onChange={(e) => setSelectedChannel(e.target.value)}
@@ -2678,6 +2726,48 @@ function App() {
                 </div>
 
                 <div className="config-section">
+                  <h4><Bot size={20} /> Inteligencia Artificial</h4>
+                  <p className="config-info">
+                    Configura el comportamiento por defecto de la IA para las respuestas automáticas.
+                  </p>
+                  
+                  <div className="form-group">
+                      <label>Modelo de IA por defecto:</label>
+                      <select 
+                        value={aiConfig.model} 
+                        onChange={e => setAiConfig({...aiConfig, model: e.target.value})}
+                        style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', width: '100%' }}
+                      >
+                          <option value="openai/gpt-oss-20b:free">GPT-3.5 Free (OpenRouter)</option>
+                          <option value="google/gemini-pro:free">Gemini Pro Free</option>
+                          <option value="mistralai/mistral-7b-instruct:free">Mistral 7B Free</option>
+                      </select>
+                  </div>
+
+                  <div className="form-group">
+                      <label>Guion (Script) por defecto:</label>
+                      <select 
+                        value={aiConfig.script} 
+                        onChange={e => setAiConfig({...aiConfig, script: e.target.value})}
+                        style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', width: '100%' }}
+                      >
+                          <option value="initial_contact">Captación Inicial (Vendedor)</option>
+                          <option value="follow_up">Seguimiento General</option>
+                          <option value="meeting_request">Solicitar Cita</option>
+                      </select>
+                  </div>
+
+                  <button 
+                    onClick={handleSaveAIConfig} 
+                    className="save-btn" 
+                    disabled={savingAiConfig}
+                    style={{ marginTop: '1rem', backgroundColor: '#8b5cf6' }}
+                  >
+                    {savingAiConfig ? 'Guardando...' : 'Guardar Preferencias IA'}
+                  </button>
+                </div>
+
+                <div className="config-section">
                   <h4><RefreshCw size={20} /> Actualizaciones</h4>
                   <p className="config-info">
                     Comprueba si hay nuevas versiones de la aplicación disponibles.
@@ -2888,6 +2978,19 @@ function App() {
           onClose={() => setWhatsAppModalOpen(false)} 
           url={whatsAppUrl} 
         />
+
+        {/* Modal de Chat */}
+        {chatModalOpen && chatClient && (
+            <ChatModal
+                client={chatClient}
+                onClose={() => {
+                    setChatModalOpen(false);
+                    setChatClient(null);
+                }}
+                API_URL={API_URL}
+                showNotification={showNotification}
+            />
+        )}
 
         {/* Modal de Edición de Propiedad */}
         <EditPropertyModal

@@ -35,19 +35,25 @@ const getConfig = () => {
     return config;
 };
 
-// GET /api/inbox - Get list of emails
+// GET /api/inbox - Get list of emails (Optimized)
 router.get('/', async (req, res) => {
-    const config = getConfig();
-    if (!config.user || !config.password) {
-        return res.status(400).json({ error: 'Email not configured' });
-    }
-
     let connection = null;
     try {
-        console.log('🔌 Conectando a IMAP para obtener inbox...');
-        connection = await imaps.connect({ imap: config });
+        const config = getConfig();
+        console.log('🔌 Conectando a IMAP con usuario:', config.user);
+
+        // Validar configuración
+        if (!config.user || !config.password) {
+            console.error('❌ Credenciales de email no configuradas o incompletas.');
+            return res.status(400).json({ error: 'Credenciales de email no configuradas' });
+        }
+
+        // Timeout manual para la conexión (15 segundos)
+        const connectPromise = imaps.connect({ imap: config });
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 15000));
         
-        console.log('📂 Abriendo INBOX...');
+        connection = await Promise.race([connectPromise, timeoutPromise]);
+
         await connection.openBox('INBOX');
 
         const searchCriteria = ['ALL'];
@@ -57,41 +63,50 @@ router.get('/', async (req, res) => {
             struct: true
         };
 
-        console.log('🔍 Buscando correos...');
-        // Fetch last 50 emails
+        // Obtener últimos 20 correos
         const messages = await connection.search(searchCriteria, fetchOptions);
         
-        // Sort by date desc and take last 50
-        const sortedMessages = messages.sort((a, b) => {
-            return new Date(b.attributes.date) - new Date(a.attributes.date);
-        }).slice(0, 50);
+        // Ordenar por fecha descendente y tomar los últimos 20
+        // Nota: IMAP devuelve en orden de llegada, pero mejor asegurar
+        messages.sort((a, b) => new Date(b.attributes.date) - new Date(a.attributes.date));
+        const recentMessages = messages.slice(0, 20);
 
-        const emails = await Promise.all(sortedMessages.map(async (item) => {
-            const headerPart = item.parts.find(p => p.which === 'HEADER');
-            // We don't parse the full body here for speed, just header
-            return {
-                uid: item.attributes.uid,
-                seq: item.seq,
-                date: item.attributes.date,
-                from: headerPart.body.from ? headerPart.body.from[0] : 'Unknown',
-                subject: headerPart.body.subject ? headerPart.body.subject[0] : '(No Subject)',
-                flags: item.attributes.flags
-            };
+        console.log(`📨 Recuperados ${recentMessages.length} correos.`);
+
+        const emails = await Promise.all(recentMessages.map(async (item) => {
+            const all = item.parts.find(part => part.which === 'TEXT');
+            const id = item.attributes.uid;
+            const idHeader = "Imap-Id: " + id + "\r\n";
+            const simpleParserPromise = simpleParser(idHeader + all.body);
+            
+            try {
+                const mail = await simpleParserPromise;
+                return {
+                    uid: item.attributes.uid,
+                    from: item.parts.find(p => p.which === 'HEADER').body.from[0],
+                    subject: item.parts.find(p => p.which === 'HEADER').body.subject[0],
+                    date: item.attributes.date,
+                    body: mail.text ? mail.text.substring(0, 200) + '...' : '(Sin vista previa)'
+                };
+            } catch (err) {
+                 return {
+                    uid: item.attributes.uid,
+                    from: item.parts.find(p => p.which === 'HEADER').body.from ? item.parts.find(p => p.which === 'HEADER').body.from[0] : 'Desconocido',
+                    subject: item.parts.find(p => p.which === 'HEADER').body.subject ? item.parts.find(p => p.which === 'HEADER').body.subject[0] : 'Sin asunto',
+                    date: item.attributes.date,
+                    body: '(Error analizando cuerpo)'
+                };
+            }
         }));
 
+        connection.end();
         res.json(emails);
-    } catch (err) {
-        console.error('Error fetching inbox:', err);
-        if (err.textCode === 'AUTHENTICATIONFAILED' || (err.message && err.message.includes('Invalid credentials'))) {
-            return res.status(401).json({ error: 'Credenciales inválidas. Revise su configuración de email.' });
-        }
-        res.status(500).json({ error: err.message });
-    } finally {
+    } catch (error) {
+        console.error('❌ Error fetching emails:', error);
         if (connection) {
-            try {
-                connection.end();
-            } catch (e) { console.error('Error cerrando conexión IMAP:', e); }
+             try { connection.end(); } catch(e) {}
         }
+        res.status(500).json({ error: error.message });
     }
 });
 

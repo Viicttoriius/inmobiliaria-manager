@@ -15,6 +15,7 @@ const path = require('path');
 
 // SQLite Database Manager
 const sqliteManager = require('./db/sqlite-manager');
+const whatsappScripts = require('./templates/whatsappScripts');
 const emailService = require('./services/emailService');
 const { spawn, exec, execSync } = require('child_process');
 
@@ -519,6 +520,8 @@ const whatsappClient = new Client({
         dataPath: WHATSAPP_DATA_DIR // Ruta base para datos de sesión
     }),
     authTimeoutMs: 120000,
+    // Forzar User-Agent a nivel de cliente para evitar detección como MacOS
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 InmobiliariaManager/1.0',
     qrMaxRetries: 0,
     // Desactivamos la caché persistente para evitar errores de regex en index.html
     // y forzamos el uso de la versión más reciente compatible (o la que descargue)
@@ -557,7 +560,8 @@ const whatsappClient = new Client({
             '--disable-gl-drawing-for-tests',
             '--disable-features=HttpsFirstBalancedModeAutoEnable', // Fix para error net::ERR_BLOCKED_BY_CLIENT
             '--disable-features=Translate', // Desactivar traducción
-            '--disable-features=site-per-process' // Ahorro de memoria
+            '--disable-features=site-per-process', // Ahorro de memoria
+            '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
         ],
         timeout: 60000 // Aumentar timeout de inicialización de puppeteer
     }
@@ -599,6 +603,51 @@ whatsappClient.on('ready', () => {
     isWhatsAppReady = true;
     whatsappState = 'CONNECTED';
     currentQR = null; // Ya no se necesita QR
+});
+
+// Escuchar mensajes entrantes
+whatsappClient.on('message', async msg => {
+    try {
+        // Ignorar mensajes de grupos o estados
+        if (msg.from.includes('@g.us') || msg.from.includes('status')) return;
+
+        console.log(`📩 Mensaje recibido de ${msg.from}: ${msg.body.substring(0, 50)}...`);
+
+        // Buscar cliente por teléfono
+        const phone = msg.from.replace('@c.us', '');
+        let client = sqliteManager.getClientByPhone(phone);
+
+        // Si no existe, crear uno básico (opcional, pero útil para chat)
+        if (!client) {
+            console.log(`   ⚠️ Cliente desconocido (${phone}). Creando registro básico...`);
+            try {
+                const newClient = {
+                    name: msg._data.notifyName || 'WhatsApp Contact',
+                    phone: phone,
+                    status: 'Nuevo',
+                    source: 'WhatsApp Incoming',
+                    created_at: new Date().toISOString()
+                };
+                client = sqliteManager.insertClient(newClient);
+            } catch (e) {
+                console.error('Error creando cliente automático:', e);
+            }
+        }
+
+        if (client) {
+            // Guardar mensaje en historial
+            sqliteManager.saveMessage(client.id, 'whatsapp', msg.body, 'received');
+            console.log(`   ✅ Mensaje guardado para cliente ${client.name} (${client.id})`);
+            
+            // Actualizar estado de "respondido" si es necesario
+            if (client.answered === 0) {
+                 sqliteManager.updateClient(client.id, { answered: 1, response: msg.body });
+            }
+        }
+
+    } catch (err) {
+        console.error('Error procesando mensaje entrante:', err);
+    }
 });
 
 whatsappClient.on('authenticated', () => {
@@ -2272,89 +2321,82 @@ app.delete('/api/clients/:id', (req, res) => {
 
 // ============ MENSAJERÍA CON IA (OpenRouter) ============
 
-// Generar mensaje personalizado con OpenRouter
+// Obtener historial de mensajes de un cliente
+app.get('/api/messages/:clientId', (req, res) => {
+    try {
+        const messages = sqliteManager.getClientMessages(req.params.clientId);
+        res.json(messages);
+    } catch (error) {
+        console.error('Error obteniendo mensajes:', error);
+        res.status(500).json({ error: 'Error obteniendo mensajes' });
+    }
+});
+
+// Generar mensaje con IA (o Template)
 app.post('/api/messages/generate', async (req, res) => {
-    const { clientName, clientPhone, properties, preferences, model, template } = req.body;
+    const { clientName, clientPhone, properties, preferences, model, template, scriptType, history } = req.body;
+
+    // Unificar template y scriptType
+    const effectiveTemplate = scriptType || template;
+    const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
     try {
-        const propertyLink = properties && properties.length > 0 ? properties[0].url : '';
-        
-        // Plantillas definidas por el usuario
-        const templates = {
-            intro: `Hola, buenos días. Soy Alex Aldazabal Dufurneaux, agente inmobiliario en IAD, estoy ubicado en Dénia. Me pongo en contacto porque tengo clientes interesados en inmuebles con las características del que usted tiene en venta. ¿Podríamos concertar una visita para conocerlo? Así podré presentarlo correctamente y ofrecerle una opción de venta rápida, segura y sin compromiso. Trabajo con una estrategia de marketing muy efectiva y siempre priorizo un trato directo y transparente. Quedo a su disposición. ¡Un saludo y que tenga un excelente día! Alex – IAD Inmobiliaria`,
+        // 1. CASO SIN HISTORIAL: Retornar plantilla estática (si existe)
+        if (effectiveTemplate && whatsappScripts[effectiveTemplate] && (!history || history.length === 0)) {
+            let message = whatsappScripts[effectiveTemplate].text;
             
-            agency_objection: `Muy buenos días estimada Este es el anuncio, ¿es correcto? ¿Sigue disponible? ${propertyLink} Soy asesor inmobiliario independiente y tengo un cliente que busca un 'lo que sea' en 'el barrio' por 'presupuesto maximo', puedo ir a visitar 'dia y hora'?`,
-            
-            still_available: `Perdón ¿Sigue a la venta?`,
-            
-            follow_up: `Hola de nuevo, no quiero molestar, este es mi último mensaje, si sigue a la venta, mi cliente estará encantada de saber más de su vivienda, si no está disponible o no le interesa, perdón por la molestias 😊✌️`
-        };
+            // Reemplazo básico de variables si es necesario
+            if (effectiveTemplate === 'specific_link' && properties && properties.length > 0) {
+                const link = properties[0].ad_link || properties[0].url || 'https://www.idealista.com';
+                message = message.replace('{{LINK}}', link);
+            }
 
-        // Si se solicita una plantilla específica, devolverla directamente
-        if (template && templates[template]) {
-             return res.json({ message: templates[template], source: 'template_script' });
+            return res.json({ message, source: 'script_template' });
         }
 
-        const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-
-        // Si no hay API key, usar template básico
+        // 3. GENERACIÓN CON IA (Con Historial o sin template definido)
         if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY === 'tu_api_key_aqui') {
-            const message = generateBasicTemplate(clientName, clientPhone, properties, preferences);
-            return res.json({ message, source: 'template' });
-        }
-
-        // Lógica específica del usuario para el contexto
-        const tipo = properties.length > 0 ? (properties[0].property_type || 'inmueble').toLowerCase() : 'inmueble';
-        let contextoEspecifico = "";
-        let tipoPropiedadParaPrompt = "";
-
-        if (tipo.includes("terreno")) {
-            contextoEspecifico = "clientes interesados en comprar **terrenos**";
-            tipoPropiedadParaPrompt = "el terreno";
-        } else if (tipo.includes("inmueble") || tipo.includes("piso") || tipo.includes("casa") || tipo.includes("vivienda")) {
-            contextoEspecifico = "clientes interesados en comprar **inmuebles** con las características del que tiene anunciado";
-            tipoPropiedadParaPrompt = "el piso/propiedad";
-        } else {
-            contextoEspecifico = "clientes interesados en comprar **propiedades** como la que tiene anunciada";
-            tipoPropiedadParaPrompt = "la propiedad";
+             // Fallback si no hay API Key pero hay historial (no podemos generar dinámico)
+             return res.json({ message: "Error: No API Key configured for AI responses.", source: 'error' });
         }
 
         const AGENTE = "Alex Aldazabal Dufurneaux";
-        const COMPANIA_Y_LOCALIDAD = "soy Agente Inmobiliario de IAD radico en Denia";
+        const COMPANIA = "IAD Inmobiliaria";
+        
+        let systemPrompt = "";
+        let goalText = "";
 
-        // Definir prompts base según el tipo de plantilla
-        let basePrompt = "";
-        let exampleScript = "";
+        // Determinar el OBJETIVO basado en el script seleccionado
+        if (effectiveTemplate && whatsappScripts[effectiveTemplate]) {
+            goalText = whatsappScripts[effectiveTemplate].text;
+            systemPrompt = `Eres ${AGENTE} de ${COMPANIA}. Tu objetivo es seguir la estrategia del siguiente GUION, pero adaptándote a la conversación actual con el cliente (${clientName}).
 
-        if (template === 'agency_objection') {
-            basePrompt = `Genera un mensaje de respuesta a una objeción o contacto inicial directo preguntando por disponibilidad. Dirígete a ${clientName}.
-El emisor es ${AGENTE}.
-Menciona que eres asesor inmobiliario independiente y tienes un cliente buscando en la zona.
-Pregunta si pueden ir a visitar.
-Usa este estilo como guía:
-"Muy buenos días estimada. Este es el anuncio, ¿es correcto? ¿Sigue disponible? ${propertyLink} Soy asesor inmobiliario independiente y tengo un cliente que busca un inmueble en la zona, ¿puedo ir a visitar?"`;
-        } else if (template === 'follow_up') {
-            basePrompt = `Genera un mensaje de seguimiento final (último contacto) cordial y educado. Dirígete a ${clientName}.
-El emisor es ${AGENTE}.
-El objetivo es saber si sigue a la venta para un cliente interesado, o despedirse si no hay interés.
-Usa este estilo como guía:
-"Hola de nuevo, no quiero molestar, este es mi último mensaje. Si sigue a la venta, mi cliente estará encantada de saber más de su vivienda. Si no está disponible o no le interesa, perdón por la molestias 😊✌️"`;
-        } else if (template === 'still_available') {
-             basePrompt = `Genera un mensaje corto y directo preguntando si la propiedad sigue a la venta.
-Usa este estilo: "Perdón ¿Sigue a la venta?"`;
+GUION ORIGINAL (REFERENCIA DE ESTILO Y OBJETIVO):
+"${goalText}"
+
+INSTRUCCIONES:
+- Analiza el historial de conversación.
+- Si el cliente responde positivamente, avanza hacia el cierre (cita/visita).
+- Si el cliente tiene dudas, respóndelas usando la información del guion como base (valoración real, clientes cualificados, etc.).
+- Si el cliente se desvía, redirige sutilmente al objetivo del guion.
+- MANTÉN EL TONO profesional, cercano y directo del guion original.
+- NO copies el guion palabra por palabra si ya no tiene sentido en el contexto (ej. no te vuelvas a presentar si ya lo hiciste).
+- Sé conciso y natural.`;
+
         } else {
-            // Default: INTRO / CAPTACIÓN
-            basePrompt = `Genera un mensaje de contacto inmobiliario cordial y profesional para WhatsApp. Dirígete a ${clientName}. 
-El emisor es ${AGENTE}, ${COMPANIA_Y_LOCALIDAD}. 
-El motivo es: el emisor tiene ${contextoEspecifico}. 
-Finaliza preguntando si pueden quedar para conocer ${tipoPropiedadParaPrompt} y obtener más información, deseando un excelente día. 
-El mensaje debe ser directo, conciso y seguir la estructura de la plantilla proporcionada: 
-"Hola, mi nombre es Alex Aldazabal Dufurneaux, soy Agente Inmobiliario de IAD radico en Denia, le contacto porque tengo la posibilidad de captar clientes interesados en comprar inmuebles con las características del que tiene anunciado, ¿Podemos quedar para conocer el piso y poder tener mas información?, será un placer atenderle, le deseo un excelente día."`;
+            // Fallback genérico si no hay script seleccionado o es desconocido
+             systemPrompt = `Eres ${AGENTE} de ${COMPANIA}. Estás contactando a ${clientName} sobre su propiedad.
+Objetivo: Concertar una visita para captar el inmueble.
+Tono: Profesional, empático y directo.`;
         }
 
-        const prompt = basePrompt;
+        // Añadir contexto de historial
+        let historyContext = "";
+        if (history && history.length > 0) {
+            historyContext = history.map(m => `${m.type === 'received' ? 'Cliente' : 'Yo'}: ${m.content}`).join('\n');
+        }
 
-        // Llamar a OpenRouter
+        // Llamada a OpenRouter
         const fetch = (await import('node-fetch')).default;
         const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
@@ -2367,32 +2409,26 @@ El mensaje debe ser directo, conciso y seguir la estructura de la plantilla prop
             body: JSON.stringify({
                 model: model || 'openai/gpt-oss-20b:free',
                 messages: [
-                    {
-                        role: 'user',
-                        content: prompt
-                    }
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: historyContext ? `HISTORIAL DE CONVERSACIÓN:\n${historyContext}\n\nGenera la respuesta adecuada continuando la conversación.` : "Genera el mensaje inicial." }
                 ],
                 temperature: 0.7,
-                max_tokens: 1000
+                max_tokens: 500
             })
         });
 
         const data = await response.json();
-
+        
         if (data.choices && data.choices[0]) {
-            const message = data.choices[0].message.content;
-            res.json({ message, source: 'openrouter' });
+            res.json({ message: data.choices[0].message.content, source: 'openrouter' });
         } else {
-            // Fallback a template básico si falla la IA
-            const message = generateBasicTemplate(clientName, clientPhone, properties, preferences);
-            res.json({ message, source: 'template' });
+            console.error('AI Response error:', data);
+            throw new Error('No response from AI');
         }
 
     } catch (error) {
         console.error('Error generando mensaje con IA:', error);
-        // Fallback a template básico
-        const message = generateBasicTemplate(req.body.clientName, req.body.clientPhone, req.body.properties, req.body.preferences);
-        res.json({ message, source: 'template' });
+        res.status(500).json({ error: 'Error generating message' });
     }
 });
 

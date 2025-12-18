@@ -3,6 +3,8 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
+
 
 // Determine database path based on environment
 // Forzar el uso de la carpeta 'data' local en desarrollo O producción si se desea portabilidad/visibilidad
@@ -275,6 +277,33 @@ function getPropertyByUrl(url) {
  * Insert or update a property (upsert)
  */
 function upsertProperty(property) {
+    // 1. Normalizar URL para evitar duplicados por slash final
+    let url = property.url.trim();
+    if (url.endsWith('/')) {
+        url = url.slice(0, -1);
+    }
+
+    // 2. Buscar si ya existe la propiedad (con o sin slash)
+    // Esto es necesario porque ON CONFLICT solo funciona con coincidencia exacta
+    const existing = db.prepare('SELECT url, extra_data FROM properties WHERE url = ? OR url = ?').get(url, url + '/');
+    
+    if (existing) {
+        // Usar la URL existente para asegurar que el UPDATE funcione
+        property.url = existing.url;
+        
+        // Preservar extra_data si no viene en el nuevo objeto
+        if (!property.extra_data && existing.extra_data) {
+             try {
+                 const oldExtra = JSON.parse(existing.extra_data);
+                 const newExtra = property.extra_data ? JSON.parse(property.extra_data) : {};
+                 property.extra_data = JSON.stringify({ ...oldExtra, ...newExtra });
+             } catch (e) {}
+        }
+    } else {
+        // Si es nueva, usamos la URL normalizada (sin slash)
+        property.url = url;
+    }
+
     const stmt = db.prepare(`
         INSERT INTO properties (
             url, title, price, direccion, location, habitaciones, banos, metros,
@@ -286,23 +315,23 @@ function upsertProperty(property) {
             @publication_date, @last_updated, @image_url, @features, @extra_data
         )
         ON CONFLICT(url) DO UPDATE SET
-            title = excluded.title,
-            price = excluded.price,
-            direccion = excluded.direccion,
-            location = excluded.location,
-            habitaciones = excluded.habitaciones,
-            banos = excluded.banos,
-            metros = excluded.metros,
-            phone = excluded.phone,
-            description = excluded.description,
-            property_type = excluded.property_type,
-            source = excluded.source,
-            timeago = excluded.timeago,
+            title = COALESCE(excluded.title, title),
+            price = COALESCE(excluded.price, price),
+            direccion = COALESCE(excluded.direccion, direccion),
+            location = COALESCE(excluded.location, location),
+            habitaciones = COALESCE(excluded.habitaciones, habitaciones),
+            banos = COALESCE(excluded.banos, banos),
+            metros = COALESCE(excluded.metros, metros),
+            phone = COALESCE(excluded.phone, phone),
+            description = COALESCE(excluded.description, description),
+            property_type = COALESCE(excluded.property_type, property_type),
+            source = COALESCE(excluded.source, source),
+            timeago = COALESCE(excluded.timeago, timeago),
             scrape_date = excluded.scrape_date,
-            publication_date = excluded.publication_date,
+            publication_date = COALESCE(excluded.publication_date, publication_date),
             last_updated = datetime('now'),
-            image_url = excluded.image_url,
-            features = excluded.features,
+            image_url = COALESCE(excluded.image_url, image_url),
+            features = COALESCE(excluded.features, features),
             extra_data = excluded.extra_data
     `);
 
@@ -326,17 +355,84 @@ function upsertProperty(property) {
         image_url: property.image_url || property.imgurl || property.Imagen || null,
         features: property.features ? JSON.stringify(property.features) : null,
         // Guardar campos adicionales en extra_data para no perder información
-        extra_data: JSON.stringify({
+        extra_data: typeof property.extra_data === 'string' ? property.extra_data : JSON.stringify({
             Advertiser: property.Advertiser || property.advertiser || null,
             Phone: property.Phone || property.phone || null,
             imgurl: property.imgurl || property.image_url || null,
             hab: property.hab || property.habitaciones || null,
             m2: property.m2 || property.metros || null,
-            ...property.extra_data
+            ...(property.extra_data || {})
         })
     };
+    
+    // Log para depuración del título
+    if (!data.title) {
+        console.warn(`⚠️ UpsertProperty: Título vacío para URL ${data.url}`);
+    }
 
-    return stmt.run(data);
+    const result = stmt.run(data);
+
+    // --- AUTO-CREATE CLIENT FROM PROPERTY (Fotocasa Pattern) ---
+    try {
+        ensureClientFromProperty(data);
+    } catch (e) {
+        console.error('Error auto-creating client from property:', e);
+    }
+
+    return result;
+}
+
+/**
+ * Helper to ensure a client exists for the property advertiser
+ */
+function ensureClientFromProperty(propertyData) {
+    if (!propertyData.phone) return;
+
+    // Clean phone
+    let phone = String(propertyData.phone).replace(/[^0-9+]/g, '');
+    if (phone.length < 9) return; // Invalid phone
+
+    // Check if client exists
+    const existingClient = getClientByPhone(phone);
+    if (existingClient) return; // Already exists
+
+    // Parse extra_data for name
+    let advertiserName = 'Anunciante';
+    try {
+        if (typeof propertyData.extra_data === 'string') {
+            const extra = JSON.parse(propertyData.extra_data);
+            advertiserName = extra.Advertiser || extra.advertiser || extra.nombre || 'Anunciante';
+        } else if (propertyData.extra_data) {
+             advertiserName = propertyData.extra_data.Advertiser || propertyData.extra_data.advertiser || 'Anunciante';
+        }
+    } catch (e) {}
+    
+    // Fallback if name is still generic but we have title
+    if (advertiserName === 'Anunciante' && propertyData.source === 'Manual') {
+        // Maybe nothing
+    }
+
+    const newClient = {
+        id: crypto.randomUUID(),
+        name: advertiserName,
+        phone: phone,
+        email: '',
+        location: propertyData.location || '',
+        ad_link: propertyData.url,
+        status: 'Importado', // Or 'Nuevo'
+        source: 'Propiedad ' + (propertyData.source || 'Scraper'),
+        created_at: new Date().toISOString(),
+        notes: `Creado automáticamente desde propiedad: ${propertyData.title || propertyData.url}`
+    };
+
+    // Generate WhatsApp link
+    if (!newClient.whatsapp_link) {
+         const cleanPhone = newClient.phone.replace(/\D/g, '');
+         newClient.whatsapp_link = `https://wa.me/${cleanPhone}`;
+    }
+
+    insertClient(newClient);
+    console.log(`👤 Cliente creado automáticamente desde propiedad: ${newClient.name} (${newClient.phone})`);
 }
 
 /**
