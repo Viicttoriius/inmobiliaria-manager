@@ -151,6 +151,15 @@ def scrape_single_url(url):
                      contact_name = cleaned
 
             try:
+                # 0. User specific selector (Hidden input in .particular)
+                try:
+                    user_name_input = driver.find_element(By.CSS_SELECTOR, '.particular input[name="user-name"]')
+                    val = user_name_input.get_attribute('value')
+                    if val and len(val) > 2:
+                        contact_name = val.strip()
+                        sys.stderr.write(f"    🔍 Nombre encontrado por input hidden: {contact_name}\n")
+                except: pass
+
                 name_selectors = [
                     '.professional-name .name',
                     '.advertiser-name', 
@@ -334,7 +343,7 @@ def scrape_single_url(url):
                 "phone": phone,
                 "image_url": image_url,
                 "advertiser": contact_name,
-                "property_type": "inbox_alert",
+                "property_type": "terreno" if "terreno" in title.lower() or "parcela" in title.lower() else "vivienda",
                 "date": datetime.now().isoformat(),
                 "extra_data": extra_data
             }

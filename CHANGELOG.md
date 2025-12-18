@@ -2,6 +2,13 @@
 
 Todas las cambios notables de este proyecto serán documentados en este archivo.
 
+## [2.2.20] - 2025-12-18
+### Fixed
+- **Scraper Idealista**: Corregida la clasificación de tipo de propiedad. Ahora detecta "terrenos" y "parcelas" en el título en lugar de marcar todo como "vivienda".
+- **Extracción de Nombres**: Añadido soporte prioritario para extraer el nombre real del particular desde inputs ocultos (`user-name`), solucionando casos donde se extraía un nombre genérico.
+- **Actualización de Clientes**: Mejorada la lógica en `sqlite-manager` para que, si un cliente ya existe por teléfono pero tiene nombre genérico ("Particular", "Anunciante"), se actualice automáticamente con el nombre real extraído.
+- **Email Inbox**: Aumentado el timeout de conexión IMAP de 15s a 40s para evitar errores de conexión (500 Internal Server Error) causados por el throttling de Gmail.
+
 ## [2.2.16] - 2025-12-16
 ### Fixed
 - **Scraper Idealista**: Sincronización completa de la lógica de extracción entre el scraper individual y el masivo para garantizar consistencia en los datos.

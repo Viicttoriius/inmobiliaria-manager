@@ -152,6 +152,15 @@ def extract_detail_data(driver, url, known_data=None):
              contact_name = cleaned
 
     try:
+        # 0. User specific selector (Hidden input in .particular)
+        try:
+            user_name_input = driver.find_element(By.CSS_SELECTOR, '.particular input[name="user-name"]')
+            val = user_name_input.get_attribute('value')
+            if val and len(val) > 2:
+                contact_name = val.strip()
+                sys.stderr.write(f"    🔍 Nombre encontrado por input hidden: {contact_name}\n")
+        except: pass
+
         name_selectors = [
             '.professional-name .name',
             '.advertiser-name', 

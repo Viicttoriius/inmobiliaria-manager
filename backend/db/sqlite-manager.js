@@ -392,10 +392,6 @@ function ensureClientFromProperty(propertyData) {
     let phone = String(propertyData.phone).replace(/[^0-9+]/g, '');
     if (phone.length < 9) return; // Invalid phone
 
-    // Check if client exists
-    const existingClient = getClientByPhone(phone);
-    if (existingClient) return; // Already exists
-
     // Parse extra_data for name
     let advertiserName = 'Anunciante';
     try {
@@ -406,6 +402,26 @@ function ensureClientFromProperty(propertyData) {
              advertiserName = propertyData.extra_data.Advertiser || propertyData.extra_data.advertiser || 'Anunciante';
         }
     } catch (e) {}
+
+    // Check if client exists
+    const existingClient = getClientByPhone(phone);
+    if (existingClient) {
+        // Update name if it was generic and we found a better one
+        const isGeneric = (name) => !name || name === 'Particular' || name === 'Anunciante' || name.match(/^Cliente \d+$/) || name.includes('Usuario');
+        
+        // Check if advertiserName is actually better (not generic)
+        const isNewNameGeneric = isGeneric(advertiserName);
+
+        if (isGeneric(existingClient.name) && !isNewNameGeneric) {
+             try {
+                updateClient(existingClient.id, { name: advertiserName });
+                console.log(`👤 Cliente actualizado con mejor nombre: ${advertiserName} (${phone})`);
+             } catch (e) {
+                console.error('Error updating client name:', e);
+             }
+        }
+        return;
+    }
     
     // Fallback if name is still generic but we have title
     if (advertiserName === 'Anunciante' && propertyData.source === 'Manual') {

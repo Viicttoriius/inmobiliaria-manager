@@ -14,7 +14,7 @@ const getConfig = () => {
         port: 993,
         tls: true,
         tlsOptions: { rejectUnauthorized: false },
-        authTimeout: 10000
+        authTimeout: 30000
     };
 
     // Try to load from local config file
@@ -48,9 +48,9 @@ router.get('/', async (req, res) => {
             return res.status(400).json({ error: 'Credenciales de email no configuradas' });
         }
 
-        // Timeout manual para la conexión (15 segundos)
+        // Timeout manual para la conexión (40 segundos)
         const connectPromise = imaps.connect({ imap: config });
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 15000));
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 40000));
         
         connection = await Promise.race([connectPromise, timeoutPromise]);
 

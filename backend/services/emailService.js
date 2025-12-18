@@ -23,7 +23,7 @@ async function checkEmails() {
         port: 993,
         tls: true,
         tlsOptions: { rejectUnauthorized: false }, // Bypass SSL verification errors
-        authTimeout: 10000
+        authTimeout: 30000
     };
 
     // Try to load from local config file
