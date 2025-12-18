@@ -2,6 +2,14 @@
 
 Todas las cambios notables de este proyecto serán documentados en este archivo.
 
+## [2.2.22] - 2025-12-18
+### Fixed
+- **ChatModal**: Corregido error de doble ruta en peticiones HTTP (`/api/api`) que causaba errores 404.
+- **WhatsApp Modal**: Ahora muestra el nombre del cliente en el encabezado.
+- **Base de Datos**: Mejorada la normalización de URLs para evitar duplicados eliminando parámetros de consulta (`?query=`).
+### Changed
+- **Configuración IA**: Simplificado el modal de configuración eliminando la selección manual de scripts (usa `initial_contact` por defecto).
+
 ## [2.2.21] - 2025-12-18
 ### Fixed
 - **Scraper Idealista**: Corregida la clasificación de tipo de propiedad. Ahora detecta "terrenos" y "parcelas" en el título en lugar de marcar todo como "vivienda".

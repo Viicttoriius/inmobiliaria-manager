@@ -259,11 +259,16 @@ function getAllProperties({ page = 1, limit = 100, filters = {} } = {}) {
 }
 
 /**
- * Get a single property by URL
+ * Get a single property by URL (robust)
  */
 function getPropertyByUrl(url) {
-    const stmt = db.prepare('SELECT * FROM properties WHERE url = ?');
-    const property = stmt.get(url);
+    let cleanUrl = url.trim();
+    // Normalización robusta: quitar slash final y query params
+    cleanUrl = cleanUrl.split('?')[0];
+    if (cleanUrl.endsWith('/')) cleanUrl = cleanUrl.slice(0, -1);
+
+    const stmt = db.prepare('SELECT * FROM properties WHERE url = ? OR url = ?');
+    const property = stmt.get(cleanUrl, cleanUrl + '/');
 
     if (property) {
         property.features = property.features ? JSON.parse(property.features) : [];
@@ -277,8 +282,9 @@ function getPropertyByUrl(url) {
  * Insert or update a property (upsert)
  */
 function upsertProperty(property) {
-    // 1. Normalizar URL para evitar duplicados por slash final
+    // 1. Normalizar URL para evitar duplicados por slash final y query params
     let url = property.url.trim();
+    url = url.split('?')[0];
     if (url.endsWith('/')) {
         url = url.slice(0, -1);
     }

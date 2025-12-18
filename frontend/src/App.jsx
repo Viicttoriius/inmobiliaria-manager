@@ -13,7 +13,7 @@ const API_URL = 'http://localhost:3001/api';
 const NOTIFICATION_SOUND_URL = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
 
 // WhatsApp Modal Component
-const WhatsAppModal = ({ isOpen, onClose, url }) => {
+const WhatsAppModal = ({ isOpen, onClose, url, clientName }) => {
   if (!isOpen) return null;
 
   // Detectar si estamos en Electron (por el User Agent o API expuesta)
@@ -33,7 +33,7 @@ const WhatsAppModal = ({ isOpen, onClose, url }) => {
       <div className="modal-content whatsapp-modal" onClick={e => e.stopPropagation()} style={{ width: '90%', height: '90%', maxWidth: '1200px', display: 'flex', flexDirection: 'column', padding: 0 }}>
         <div className="modal-header-custom" style={{ padding: '1rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#075E54', color: 'white' }}>
           <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <MessageSquare size={20} /> WhatsApp Web
+            <MessageSquare size={20} /> WhatsApp Web {clientName ? `- ${clientName}` : ''}
           </h3>
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
              <a href={finalUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'white', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -132,6 +132,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('properties')
   const [whatsAppModalOpen, setWhatsAppModalOpen] = useState(false);
   const [whatsAppUrl, setWhatsAppUrl] = useState('');
+  const [whatsAppClientName, setWhatsAppClientName] = useState('');
   const [chatModalOpen, setChatModalOpen] = useState(false);
   const [chatClient, setChatClient] = useState(null);
   const [scrapingInProgress, setScrapingInProgress] = useState({  
@@ -2446,22 +2447,7 @@ function App() {
                   <small>Ve a la pestaña "Clientes" para seleccionar destinatarios</small>
                 </div>
 
-                <div className="config-panel">
-                  <h3>3. Tipo de Guion</h3>
-                  <select
-                    value={selectedScript}
-                    onChange={(e) => setSelectedScript(e.target.value)}
-                    className="model-selector"
-                  >
-                    <option value="initial_contact">Contacto Inicial (General)</option>
-                    <option value="specific_link">Contacto Específico (con Link)</option>
-                    <option value="objection_agency">Manejo de Objeción (Inmobiliaria)</option>
-                    <option value="followup_15min">Seguimiento Rápido (15 min)</option>
-                    <option value="followup_20min">Seguimiento (20 min)</option>
-                    <option value="followup_next_day">Seguimiento (Día Siguiente)</option>
-                  </select>
-                  <small>Selecciona la plantilla de mensaje</small>
-                </div>
+                {/* 3. Tipo de Guion - Eliminado para simplificar */}
 
                 <div className="config-panel">
                   <h3>4. Selecciona Modelo IA</h3>
@@ -2744,19 +2730,6 @@ function App() {
                       </select>
                   </div>
 
-                  <div className="form-group">
-                      <label>Guion (Script) por defecto:</label>
-                      <select 
-                        value={aiConfig.script} 
-                        onChange={e => setAiConfig({...aiConfig, script: e.target.value})}
-                        style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', width: '100%' }}
-                      >
-                          <option value="initial_contact">Captación Inicial (Vendedor)</option>
-                          <option value="follow_up">Seguimiento General</option>
-                          <option value="meeting_request">Solicitar Cita</option>
-                      </select>
-                  </div>
-
                   <button 
                     onClick={handleSaveAIConfig} 
                     className="save-btn" 
@@ -2977,6 +2950,7 @@ function App() {
           isOpen={whatsAppModalOpen} 
           onClose={() => setWhatsAppModalOpen(false)} 
           url={whatsAppUrl} 
+          clientName={whatsAppClientName}
         />
 
         {/* Modal de Chat */}

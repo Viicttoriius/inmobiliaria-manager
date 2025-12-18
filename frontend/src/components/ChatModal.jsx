@@ -32,7 +32,7 @@ const ChatModal = ({ client, onClose, API_URL, onSendMessage, showNotification }
 
   const fetchMessages = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/messages/${client.id}`);
+      const response = await fetch(`${API_URL}/messages/${client.id}`);
       if (response.ok) {
         const data = await response.json();
         // Only update if different (simple check)
@@ -55,7 +55,7 @@ const ChatModal = ({ client, onClose, API_URL, onSendMessage, showNotification }
 
     setSending(true);
     try {
-      const response = await fetch(`${API_URL}/api/messages/send`, {
+      const response = await fetch(`${API_URL}/messages/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -91,7 +91,7 @@ const ChatModal = ({ client, onClose, API_URL, onSendMessage, showNotification }
       const defaultScript = localStorage.getItem('whatsapp_default_script') || 'initial_contact';
       const defaultModel = localStorage.getItem('whatsapp_default_model') || 'openai/gpt-oss-20b:free';
 
-      const response = await fetch(`${API_URL}/api/messages/generate`, {
+      const response = await fetch(`${API_URL}/messages/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -129,27 +129,43 @@ const ChatModal = ({ client, onClose, API_URL, onSendMessage, showNotification }
       <div className="modal-content chat-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px', height: '80vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
         
         {/* Header */}
-        <div className="modal-header-custom" style={{ padding: '1rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc' }}>
+        <div className="modal-header-custom" style={{ 
+            padding: '1rem', 
+            borderBottom: '1px solid var(--border)', 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            backgroundColor: 'var(--surface)',
+            color: 'var(--text)'
+        }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ background: '#22c55e', color: 'white', padding: '8px', borderRadius: '50%' }}>
+            <div style={{ background: 'var(--primary)', color: 'white', padding: '8px', borderRadius: '50%' }}>
                 <User size={20} />
             </div>
             <div>
-                <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{client.name}</h3>
-                <span style={{ fontSize: '0.8rem', color: '#64748b' }}>{client.phone}</span>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text)' }}>{client.name}</h3>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{client.phone}</span>
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
             <X size={24} />
           </button>
         </div>
 
         {/* Messages Area */}
-        <div className="chat-messages" style={{ flex: 1, overflowY: 'auto', padding: '1rem', backgroundColor: '#efeae2', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div className="chat-messages" style={{ 
+            flex: 1, 
+            overflowY: 'auto', 
+            padding: '1rem', 
+            backgroundColor: 'var(--background)', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '10px' 
+        }}>
           {loading ? (
-            <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Cargando conversación...</div>
+            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>Cargando conversación...</div>
           ) : messages.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b', fontStyle: 'italic' }}>
+            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
                 No hay mensajes previos. ¡Inicia la conversación!
             </div>
           ) : (
@@ -159,14 +175,16 @@ const ChatModal = ({ client, onClose, API_URL, onSendMessage, showNotification }
                     <div key={msg.id || index} style={{ 
                         alignSelf: isMe ? 'flex-end' : 'flex-start',
                         maxWidth: '80%',
-                        backgroundColor: isMe ? '#dcf8c6' : 'white',
+                        backgroundColor: isMe ? '#005c4b' : 'var(--surface)',
+                        color: isMe ? '#e9edef' : 'var(--text)',
                         padding: '8px 12px',
                         borderRadius: '8px',
-                        boxShadow: '0 1px 1px rgba(0,0,0,0.1)',
-                        position: 'relative'
+                        boxShadow: '0 1px 1px rgba(0,0,0,0.2)',
+                        position: 'relative',
+                        border: isMe ? 'none' : '1px solid var(--border)'
                     }}>
                         <div style={{ fontSize: '0.95rem', whiteSpace: 'pre-wrap' }}>{msg.content}</div>
-                        <div style={{ fontSize: '0.7rem', color: '#999', textAlign: 'right', marginTop: '4px' }}>
+                        <div style={{ fontSize: '0.7rem', color: isMe ? '#8696a0' : 'var(--text-secondary)', textAlign: 'right', marginTop: '4px' }}>
                             {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             {isMe && <span style={{ marginLeft: '4px' }}>{msg.status === 'read' ? '✓✓' : '✓'}</span>}
                         </div>
@@ -178,7 +196,11 @@ const ChatModal = ({ client, onClose, API_URL, onSendMessage, showNotification }
         </div>
 
         {/* Input Area */}
-        <div className="chat-input" style={{ padding: '1rem', borderTop: '1px solid #e5e7eb', backgroundColor: 'white' }}>
+        <div className="chat-input" style={{ 
+            padding: '1rem', 
+            borderTop: '1px solid var(--border)', 
+            backgroundColor: 'var(--surface)' 
+        }}>
             <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
                 <button 
                     onClick={handleGenerateReply} 
@@ -186,11 +208,11 @@ const ChatModal = ({ client, onClose, API_URL, onSendMessage, showNotification }
                     title="Sugerir respuesta con IA"
                     style={{ 
                         background: 'none', 
-                        border: '1px solid #e2e8f0', 
+                        border: '1px solid var(--border)', 
                         borderRadius: '8px', 
                         padding: '10px', 
                         cursor: 'pointer',
-                        color: '#8b5cf6'
+                        color: 'var(--primary)'
                     }}
                 >
                     {generating ? <RefreshCw size={20} className="spinning" /> : <Bot size={20} />}
@@ -206,10 +228,12 @@ const ChatModal = ({ client, onClose, API_URL, onSendMessage, showNotification }
                         flex: 1, 
                         padding: '10px', 
                         borderRadius: '8px', 
-                        border: '1px solid #e2e8f0', 
+                        border: '1px solid var(--border)', 
                         resize: 'none',
                         fontFamily: 'inherit',
-                        minHeight: '44px'
+                        minHeight: '44px',
+                        background: 'var(--background)',
+                        color: 'var(--text)'
                     }}
                 />
                 
@@ -217,7 +241,7 @@ const ChatModal = ({ client, onClose, API_URL, onSendMessage, showNotification }
                     onClick={handleSend}
                     disabled={sending || !newMessage.trim()}
                     style={{ 
-                        background: '#22c55e', 
+                        background: 'var(--primary)', 
                         color: 'white', 
                         border: 'none', 
                         borderRadius: '8px', 
@@ -231,7 +255,7 @@ const ChatModal = ({ client, onClose, API_URL, onSendMessage, showNotification }
                     {sending ? <RefreshCw size={20} className="spinning" /> : <Send size={20} />}
                 </button>
             </div>
-            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '5px', textAlign: 'center' }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '5px', textAlign: 'center' }}>
                 Enter para enviar, Shift+Enter para salto de línea.
             </div>
         </div>

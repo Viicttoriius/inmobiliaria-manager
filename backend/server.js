@@ -2031,6 +2031,7 @@ app.post('/api/properties/update', async (req, res) => {
         console.log(`   ✅ SQLite Stats: ${dbStats.inserted} nuevas, ${dbStats.updated} actualizadas`);
 
         // 4. Actualizar archivos persistentes (Legacy / Backup)
+        // Mantenemos esto por compatibilidad, pero la respuesta al frontend se basará en el éxito del scraping/SQLite
         const allProperties = [];
         const files = fs.readdirSync(PROPERTIES_DIR);
         files.forEach(file => {
@@ -2052,7 +2053,14 @@ app.post('/api/properties/update', async (req, res) => {
         const updatesByFile = {};
 
         updatedProperties.forEach(updatedProp => {
-            const match = allProperties.find(p => p.url === updatedProp.url);
+            // Normalizar URL para comparación (quitar slash final si existe)
+            const cleanUrl = updatedProp.url.replace(/\/$/, '');
+            
+            const match = allProperties.find(p => {
+                const pClean = p.url.replace(/\/$/, '');
+                return pClean === cleanUrl;
+            });
+
             if (match) {
                 if (!updatesByFile[match.originalFile]) updatesByFile[match.originalFile] = [];
                 updatesByFile[match.originalFile].push(updatedProp);
@@ -2067,7 +2075,14 @@ app.post('/api/properties/update', async (req, res) => {
                     let modified = false;
 
                     updatesByFile[fileName].forEach(update => {
-                        const propIndex = fileData.properties.findIndex(p => p.url === update.url);
+                        // Normalizar URL para búsqueda
+                        const updateUrlClean = update.url.replace(/\/$/, '');
+                        
+                        const propIndex = fileData.properties.findIndex(p => {
+                            const pUrlClean = (p.url || '').replace(/\/$/, '');
+                            return pUrlClean === updateUrlClean;
+                        });
+
                         if (propIndex !== -1) {
                             fileData.properties[propIndex] = {
                                 ...fileData.properties[propIndex],
@@ -2096,7 +2111,11 @@ app.post('/api/properties/update', async (req, res) => {
             if (newClientMatches) newClientsCount = newClientMatches.length;
         } catch (e) {}
 
-        res.json({ success: true, updatedCount: successCount, newClientsCount });
+        // Usamos updatedProperties.length como la cuenta real de éxito (propiedades scrapeadas y guardadas en DB)
+        // Fallback a dbStats si por alguna razón updatedProperties estuviera vacío pero dbStats no (raro)
+        const finalCount = updatedProperties.length || (dbStats.inserted + dbStats.updated);
+        
+        res.json({ success: true, updatedCount: finalCount, newClientsCount });
 
     } catch (error) {
         console.error('❌ Error en el proceso de actualización de propiedades:', error);
