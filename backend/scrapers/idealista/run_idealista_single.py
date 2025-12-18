@@ -5,6 +5,7 @@ import time
 import os
 import secrets
 import platform
+import random
 from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -13,6 +14,10 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service as ChromeService
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.options import Options as ChromeOptions
+# Importar Edge también para compatibilidad completa como en el scraper principal
+from webdriver_manager.microsoft import EdgeChromiumDriverManager
+from selenium.webdriver.edge.options import Options as EdgeOptions
+from selenium.webdriver.edge.service import Service as EdgeService
 
 # Configurar salida UTF-8
 try:
@@ -21,35 +26,81 @@ try:
 except AttributeError:
     pass
 
-def setup_driver():
-    options = ChromeOptions()
-    # options.add_argument('--headless=new') # Idealista needs visual usually
-    options.add_argument('--start-maximized')
-    options.add_argument('--disable-blink-features=AutomationControlled')
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option('useAutomationExtension', False)
-    
-    service = ChromeService(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=options)
+def setup_driver(headless=False):
+    system = platform.system()
+    options = None
+    service = None
+    driver = None
+
+    if system == 'Windows':
+        options = EdgeOptions()
+        options.use_chromium = True
+        options.add_argument('--start-maximized')
+        if headless:
+            options.add_argument('--headless')
+        
+        # Anti-detection
+        options.add_argument('--disable-blink-features=AutomationControlled')
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option('useAutomationExtension', False)
+        
+        try:
+            service = EdgeService(EdgeChromiumDriverManager().install())
+            driver = webdriver.Edge(service=service, options=options)
+        except Exception as e:
+            # Fallback a Chrome
+            sys.stderr.write(f"Edge falló ({e}), intentando Chrome...\n")
+            options = ChromeOptions()
+            if headless: options.add_argument('--headless=new')
+            options.add_argument('--start-maximized')
+            options.add_argument('--disable-blink-features=AutomationControlled')
+            options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            options.add_experimental_option('useAutomationExtension', False)
+            service = ChromeService(ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=service, options=options)
+            
+    else: # Linux/Mac
+        options = ChromeOptions()
+        if headless: options.add_argument('--headless=new')
+        options.add_argument('--start-maximized')
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--disable-blink-features=AutomationControlled')
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option('useAutomationExtension', False)
+        
+        # User Agent Random / Specific for macOS
+        if system == 'Darwin':
+             options.add_argument('user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+        else:
+             options.add_argument('user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+        
+        options.add_argument('--lang=es-ES')
+        
+        service = ChromeService(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=options)
+
+    # Stealth JS
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-    
     return driver
 
 def scrape_single_url(url):
-    print(f"Scraping single URL: {url}")
-    driver = setup_driver()
+    # Usar stderr para logs para no ensuciar stdout (que es para el JSON final)
+    sys.stderr.write(f"Scraping single URL: {url}\n")
+    driver = setup_driver(headless=False) # Visual para evitar bloqueos
     result = None
 
     try:
         driver.get(url)
-        time.sleep(5) 
-
+        time.sleep(random.uniform(4, 7)) # Espera aleatoria más humana
+        
         # Cookies
         try:
             # Didomi (most common)
             try:
                 cookie_btn = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.ID, 'didomi-notice-agree-button')))
                 cookie_btn.click()
+                time.sleep(1)
             except:
                 # Other potential cookie buttons
                 for selector in ["button[data-testid='accept-cookies-button']", ".cookie-consent-accept", "#accept-cookies", "button.didomi-components-button"]:
@@ -58,7 +109,7 @@ def scrape_single_url(url):
                         btn.click()
                         break
                     except: pass
-            time.sleep(2)
+            time.sleep(1)
         except:
             pass
 
@@ -72,10 +123,10 @@ def scrape_single_url(url):
             if "Particular" in name_text or "particular" in name_text.lower():
                 is_particular = True
         except:
-             if "Particular" in driver.page_source: is_particular = True
+            if "Particular" in driver.page_source: is_particular = True
 
         if is_particular:
-            print("✅ ES PARTICULAR")
+            sys.stderr.write("✅ ES PARTICULAR\n")
             
             # Extract basic data
             title = driver.title
@@ -112,7 +163,9 @@ def scrape_single_url(url):
                     '#advertiserName',
                     'div[class*="advertiser-name"]',
                     '.advertiser-data .name',
-                    '.contact-detail .name'
+                    '.contact-detail .name',
+                    '.user-name',
+                    '.header-user-name'
                 ]
                 
                 candidate_name = None
@@ -124,13 +177,15 @@ def scrape_single_url(url):
                             extracted_name = name_elem.text.strip()
                             if not extracted_name or len(extracted_name) <= 2: continue
                             
+                            # Log para debug
+                            sys.stderr.write(f"    🔍 Candidato nombre encontrado ({selector}): {extracted_name}\n")
+
                             # Prioridad: Nombre sin "particular"
                             if "particular" not in extracted_name.lower():
                                 contact_name = extracted_name
                                 break
                             else:
                                 # Si tiene particular, guardarlo como candidato por si acaso
-                                # Evitamos guardar solo "Particular"
                                 if extracted_name.lower() != "particular":
                                     candidate_name = extracted_name
                                     
@@ -141,20 +196,13 @@ def scrape_single_url(url):
                 if contact_name == "Particular" and candidate_name:
                      contact_name = candidate_name
 
-                # Si sigue siendo Particular, intentar buscar por texto cercano
-                if contact_name == "Particular":
-                     try:
-                        # Buscar elementos que contengan texto y estén cerca de "Contactar"
-                        pass 
-                     except: pass
-
                 # Limpieza final
                 if "particular" in contact_name.lower():
                     cleaned_final = contact_name.replace("Particular", "").replace("particular", "").strip()
                     if len(cleaned_final) > 2:
                         contact_name = cleaned_final
             except Exception as e:
-                print(f"    ⚠️ Error extrayendo nombre: {e}")
+                sys.stderr.write(f"    ⚠️ Error extrayendo nombre: {e}\n")
                 pass
 
             # Extract Phone Number
@@ -164,19 +212,29 @@ def scrape_single_url(url):
                 phone_btn_selectors = ["a.see-phones-btn", "button.see-phones-btn", ".phone-cta", "button.btn-phone", ".contact-phones-btn", ".more-info-phone"]
                 phone_btn = None
                 
+                # 1. Try CSS Selectors
                 for selector in phone_btn_selectors:
                     try:
-                        phone_btn = WebDriverWait(driver, 3).until(
+                        phone_btn = WebDriverWait(driver, 2).until(
                             EC.presence_of_element_located((By.CSS_SELECTOR, selector))
                         )
-                        if phone_btn: break
+                        if phone_btn: 
+                            sys.stderr.write(f"    📞 Botón encontrado por CSS: {selector}\n")
+                            break
                     except: continue
                 
+                # 2. Try XPath Text Search if CSS fails
+                if not phone_btn:
+                    try:
+                        phone_btn = driver.find_element(By.XPATH, "//button[contains(., 'teléfono') or contains(., 'Call')]")
+                        sys.stderr.write("    📞 Botón encontrado por XPath\n")
+                    except: pass
+
                 if phone_btn:
                     driver.execute_script("arguments[0].scrollIntoView(true);", phone_btn)
                     time.sleep(1)
                     
-                    # Intentar click JS y normal
+                    # Intentar click JS y normal con ActionChains
                     clicked = False
                     try:
                         driver.execute_script("arguments[0].click();", phone_btn)
@@ -201,7 +259,8 @@ def scrape_single_url(url):
                             "a[href^='tel:']", # Selector muy robusto
                             ".contact-phone",
                             ".phone-cta",
-                            ".contact-phones-btn"
+                            ".contact-phones-btn",
+                            "span.phone"
                         ]
                         
                         for selector in phone_text_selectors:
@@ -212,11 +271,13 @@ def scrape_single_url(url):
                                         href = elem.get_attribute("href")
                                         if href and "tel:" in href:
                                             phone = href.replace("tel:", "").strip()
+                                            sys.stderr.write(f"    📱 Teléfono encontrado por href: {phone}\n")
                                             break
                                 else:
                                     phone_elems = driver.find_elements(By.CSS_SELECTOR, selector)
                                     for phone_elem in phone_elems:
                                         p_text = phone_elem.text.strip()
+                                        sys.stderr.write(f"    🔍 Candidato teléfono ({selector}): {p_text}\n")
                                         # Limpiar y validar que parezca un teléfono (números y espacios/guiones)
                                         if p_text:
                                             # Eliminar caracteres no numéricos excepto +
@@ -228,9 +289,9 @@ def scrape_single_url(url):
                                 if phone != "No disponible": break
                             except: continue
                 else:
-                    print("    ⚠️ No se encontró botón de teléfono")
+                    sys.stderr.write("    ⚠️ No se encontró botón de teléfono\n")
             except Exception as e:
-                print(f"    ⚠️ No se pudo extraer teléfono: {e}")
+                sys.stderr.write(f"    ⚠️ No se pudo extraer teléfono: {e}\n")
                 pass
             
             # Extract Image
@@ -259,8 +320,6 @@ def scrape_single_url(url):
                 stats_text = stats_elem.text.strip()
             except: pass
             
-            # Combine update info into a single string or keep separate? 
-            # User asked to extract them. I will add them to the result.
             extra_data = {
                 "date_update_text": date_update_text,
                 "stats_text": stats_text,
@@ -280,12 +339,13 @@ def scrape_single_url(url):
                 "extra_data": extra_data
             }
         else:
-            print("❌ No es particular o es agencia.")
+            sys.stderr.write("❌ No es particular o es agencia.\n")
             
     except Exception as e:
-        print(f"Error scraping url: {e}")
+        sys.stderr.write(f"Error scraping url: {e}\n")
     finally:
-        driver.quit()
+        if driver:
+            driver.quit()
         
     return result
 
@@ -298,4 +358,4 @@ if __name__ == "__main__":
         else:
             print(json.dumps({"error": "Not found or not particular"}))
     else:
-        print("No URL provided")
+        sys.stderr.write("No URL provided\n")

@@ -3,10 +3,10 @@ const simpleParser = require('mailparser').simpleParser;
 const sqliteManager = require('../db/sqlite-manager');
 const fs = require('fs');
 const path = require('path');
-const { exec } = require('child_process');
 
 let isRunning = false;
 let checkInterval = null;
+let onUrlFoundCallback = null;
 
 // Config
 const CHECK_INTERVAL_MS = 60000 * 5; // 5 minutos
@@ -14,22 +14,22 @@ const CHECK_INTERVAL_MS = 60000 * 5; // 5 minutos
 async function checkEmails() {
     if (isRunning) return;
     isRunning = true;
-    console.log('📧 Chequeando correos de Idealista...');
+    console.log('📧 Chequeando correos de alertas inmobiliarias...');
 
-    // Load credentials from storage or DB
-    // Assuming config storage in a json file for now as per previous code context
-    // or using environment variables if set
     let config = {
         user: process.env.EMAIL_USER,
         password: process.env.EMAIL_PASS,
         host: 'imap.gmail.com',
         port: 993,
         tls: true,
-        authTimeout: 3000
+        tlsOptions: { rejectUnauthorized: false }, // Bypass SSL verification errors
+        authTimeout: 10000
     };
 
-    // Try to load from local config file created by UI
-    const CONFIG_FILE = path.join(__dirname, '..', 'data', 'email_config.json');
+    // Try to load from local config file
+    const BASE_PATH = process.env.USER_DATA_PATH || path.join(__dirname, '..', '..');
+    const CONFIG_FILE = path.join(BASE_PATH, 'data', 'email_config.json');
+    
     try {
         if (fs.existsSync(CONFIG_FILE)) {
             const savedConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
@@ -52,37 +52,60 @@ async function checkEmails() {
         const connection = await imaps.connect({ imap: config });
         await connection.openBox('INBOX');
 
-        const searchCriteria = [
-            'UNSEEN',
-            ['FROM', 'idealista'] // Filter idealista emails
-        ];
-
+        // Buscar correos no leídos
+        const searchCriteria = ['UNSEEN'];
         const fetchOptions = {
             bodies: ['HEADER', 'TEXT'],
             markSeen: true
         };
 
         const messages = await connection.search(searchCriteria, fetchOptions);
-        console.log(`📧 Encontrados ${messages.length} nuevos correos de Idealista.`);
+        
+        // Filtrar por remitentes de interés
+        const targetSenders = ['enviosfotocasa@fotocasa.es', 'noresponder@idealista.com'];
+        
+        const relevantMessages = messages.filter(item => {
+            const header = item.parts.find(p => p.which === 'HEADER');
+            const fromLine = header.body.from ? header.body.from[0] : '';
+            return targetSenders.some(sender => fromLine.includes(sender));
+        });
 
-        for (const item of messages) {
+        if (relevantMessages.length > 0) {
+            console.log(`📧 Encontrados ${relevantMessages.length} correos relevantes.`);
+        }
+
+        for (const item of relevantMessages) {
             const all = item.parts.find(part => part.which === 'TEXT');
             const id = item.attributes.uid;
             const idHeader = "Imap-Id: " + id + "\r\n";
+            const header = item.parts.find(p => p.which === 'HEADER');
+            const fromLine = header.body.from ? header.body.from[0] : '';
 
             const mail = await simpleParser(idHeader + all.body);
 
-            // Extract URL from body
-            // Idealista often puts the main link in a button or clean href
-            // We look for patterns like https://www.idealista.com/inmueble/12345678/
-            const urlRegex = /https:\/\/www\.idealista\.com\/inmueble\/\d+\/?/;
-            const match = mail.text ? mail.text.match(urlRegex) : (mail.html ? mail.html.match(urlRegex) : null);
+            // Determinar fuente
+            const source = fromLine.includes('fotocasa') ? 'fotocasa' : 'idealista';
 
-            const propertyUrl = match ? match[0] : null;
+            // Extraer URL
+            let propertyUrl = null;
+            
+            // Regex ajustada para cada portal
+            if (source === 'idealista') {
+                const urlRegex = /https:\/\/www\.idealista\.com\/inmueble\/\d+\/?/;
+                const match = mail.text ? mail.text.match(urlRegex) : (mail.html ? mail.html.match(urlRegex) : null);
+                propertyUrl = match ? match[0] : null;
+            } else if (source === 'fotocasa') {
+                // Fotocasa URLs can be complex, often redirected. Looking for detail pattern.
+                // Example: https://www.fotocasa.es/es/comprar/vivienda/madrid-capital/aire-acondicionado-calefaccion-parking-jardin-terraza-trastero-ascensor-piscina/188358686/d
+                const urlRegex = /https:\/\/www\.fotocasa\.es\/es\/[\w-]+\/[\w-]+\/[\w-]+\/[\w-]+\/\d+\/d/;
+                const match = mail.text ? mail.text.match(urlRegex) : (mail.html ? mail.html.match(urlRegex) : null);
+                propertyUrl = match ? match[0] : null;
+            }
 
+            // Guardar email en DB (historial)
             await sqliteManager.saveEmail({
                 uid: id,
-                from_address: mail.from.text,
+                from_address: mail.from ? mail.from.text : fromLine,
                 to_address: mail.to ? mail.to.text : '',
                 subject: mail.subject,
                 date: mail.date ? mail.date.toISOString() : new Date().toISOString(),
@@ -92,59 +115,32 @@ async function checkEmails() {
             });
 
             if (propertyUrl) {
-                console.log(`🏠 URL Detectada: ${propertyUrl}`);
-                // Trigger python scraper immediately or mark for batch?
-                // For now, let's trigger single processing
-                processEmailUrl(propertyUrl);
+                console.log(`🏠 URL Detectada (${source}): ${propertyUrl}`);
+                if (onUrlFoundCallback) {
+                    onUrlFoundCallback(propertyUrl, source);
+                }
             }
         }
 
         connection.end();
     } catch (error) {
-        console.error('❌ Error conectando IMAP:', error.message);
+        console.error('❌ Error chequeando emails:', error.message);
+        if (error.textCode === 'AUTHENTICATIONFAILED' || (error.message && error.message.includes('Invalid credentials'))) {
+            console.error('⛔ Deteniendo monitor de email por credenciales inválidas. Por favor configure credenciales correctas.');
+            if (checkInterval) clearInterval(checkInterval);
+            checkInterval = null;
+        }
     } finally {
         isRunning = false;
     }
 }
 
-function processEmailUrl(url) {
-    console.log(`🔎 Iniciando scraper automático para: ${url}`);
-
-    const pythonScript = path.join(__dirname, '..', 'scrapers', 'idealista', 'run_idealista_single.py');
-    // Using simple python call
-    const cmd = `python "${pythonScript}" "${url}"`;
-
-    exec(cmd, (error, stdout, stderr) => {
-        if (error) {
-            console.error(`Error script python: ${error.message}`);
-            return;
-        }
-        try {
-            const result = JSON.parse(stdout);
-            if (result.error) {
-                console.log(`⚠️ Scraper returned error: ${result.error}`);
-            } else if (result.advertiser === 'Particular') {
-                console.log('🎉 PROPIEDAD DE PARTICULAR CAPTURADA:', result.title);
-                // Save to DB via backend logic? 
-                // Or maybe the script outputting JSON is enough if we capture it here
-                // We should add it to sqlite properties table.
-                // Assuming sqliteManager has addProperty.
-                // But sqliteManager stores differently.
-                // For now just log it. Real integration requires mapping.
-            } else {
-                console.log('ℹ️ Descartado (No particular)');
-            }
-        } catch (e) {
-            console.log("Output no JSON:", stdout);
-        }
-    });
-}
-
-function startMonitoring() {
+function startMonitoring(callback) {
     if (checkInterval) clearInterval(checkInterval);
-    checkEmails(); // Run once immediately
+    onUrlFoundCallback = callback;
+    checkEmails(); // Ejecutar inmediatamente
     checkInterval = setInterval(checkEmails, CHECK_INTERVAL_MS);
-    console.log('📧 Monitor de Email Iniciado.');
+    console.log('📧 Monitor de Email Iniciado (Fotocasa/Idealista).');
 }
 
 function stopMonitoring() {

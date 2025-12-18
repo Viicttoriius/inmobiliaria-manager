@@ -56,7 +56,7 @@ def construct_idealista_url(base_full_url, page_num):
         new_parsed = parsed._replace(path=new_path)
         return urlunparse(new_parsed)
     except Exception as e:
-        print(f"Error construyendo URL paginada: {e}")
+        sys.stderr.write(f"Error construyendo URL paginada: {e}\n")
         return base_full_url
 
 def setup_driver(headless=False): # Default to visible for Idealista to reduce blocks
@@ -82,7 +82,7 @@ def setup_driver(headless=False): # Default to visible for Idealista to reduce b
             driver = webdriver.Edge(service=service, options=options)
         except Exception as e:
             # Fallback a Chrome
-            print(f"Edge falló ({e}), intentando Chrome...")
+            sys.stderr.write(f"Edge falló ({e}), intentando Chrome...\n")
             options = ChromeOptions()
             if headless: options.add_argument('--headless=new')
             options.add_argument('--start-maximized')
@@ -103,7 +103,10 @@ def setup_driver(headless=False): # Default to visible for Idealista to reduce b
         options.add_experimental_option('useAutomationExtension', False)
         
         # User Agent Random
-        options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+        if system == 'Darwin':
+             options.add_argument('user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+        else:
+             options.add_argument('user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
         
         service = ChromeService(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=options)
@@ -137,7 +140,7 @@ def extract_detail_data(driver, url, known_data=None):
     if not is_particular:
         return None
 
-    print("    ✅ ES PARTICULAR! Extrayendo datos...")
+    sys.stderr.write("    ✅ ES PARTICULAR! Extrayendo datos...\n")
     
     # Extract Contact Name
     contact_name = "Particular"
@@ -196,7 +199,7 @@ def extract_detail_data(driver, url, known_data=None):
                  contact_name = cleaned_final
              
     except Exception as e:
-        print(f"    ⚠️ Error extrayendo nombre: {e}")
+        sys.stderr.write(f"    ⚠️ Error extrayendo nombre: {e}\n")
         pass
 
     # Intentar ver el teléfono (click en botón)
@@ -269,9 +272,9 @@ def extract_detail_data(driver, url, known_data=None):
                         if phone != "No disponible": break
                     except: continue
         else:
-             print("    ⚠️ No se encontró botón de teléfono")
+             sys.stderr.write("    ⚠️ No se encontró botón de teléfono\n")
     except Exception as ex_phone:
-        print(f"    ⚠️ No se pudo extraer teléfono: {ex_phone}")
+        sys.stderr.write(f"    ⚠️ No se pudo extraer teléfono: {ex_phone}\n")
         pass
 
     # Construir objeto base con lo que ya sabemos
@@ -345,7 +348,7 @@ def process_page(url, property_type):
     """
     Procesa una página individual de Idealista: abre navegador, extrae, cierra.
     """
-    print(f"  Procesando página: {url}")
+    sys.stderr.write(f"  Procesando página: {url}\n")
     driver = setup_driver(headless=False)
     properties = []
     
@@ -363,7 +366,7 @@ def process_page(url, property_type):
 
         # Obtener artículos
         articles = driver.find_elements(By.TAG_NAME, 'article')
-        print(f"  Encontrados {len(articles)} artículos.")
+        sys.stderr.write(f"  Encontrados {len(articles)} artículos.\n")
         
         candidates = []
 
@@ -406,12 +409,12 @@ def process_page(url, property_type):
             except Exception as e:
                 continue
                 
-        print(f"  Candidatos (posibles particulares): {len(candidates)}")
+        sys.stderr.write(f"  Candidatos (posibles particulares): {len(candidates)}\n")
         
         # 2. Verificar cada candidato entrando al detalle
         for cand in candidates:
             try:
-                print(f"    Verificando: {cand['url']}")
+                sys.stderr.write(f"    Verificando: {cand['url']}\n")
                 driver.get(cand['url'])
                 time.sleep(random.uniform(3, 5))
                 
@@ -420,17 +423,17 @@ def process_page(url, property_type):
                 if prop_data:
                     properties.append(prop_data)
                 else:
-                    print("    ❌ No es particular.")
+                    sys.stderr.write("    ❌ No es particular.\n")
                     
             except Exception as e:
-                print(f"    Error verificando candidato: {e}")
+                sys.stderr.write(f"    Error verificando candidato: {e}\n")
                 continue
 
     except Exception as e:
-        print(f"  ⚠️ Error en página {url}: {e}")
+        sys.stderr.write(f"  ⚠️ Error en página {url}: {e}\n")
     finally:
         if driver:
-            print("  🛑 Cerrando navegador (fin de página)...")
+            sys.stderr.write("  🛑 Cerrando navegador (fin de página)...\n")
             try:
                 driver.quit()
             except: pass
@@ -441,7 +444,7 @@ def scrape_single_listing(url):
     """
     Scrapea una url individual (para alertas de correo).
     """
-    print(f"Scrapeando listing individual: {url}")
+    sys.stderr.write(f"Scrapeando listing individual: {url}\n")
     driver = setup_driver(headless=False)
     result = None
     try:
@@ -458,7 +461,7 @@ def scrape_single_listing(url):
         result = extract_detail_data(driver, url)
         
     except Exception as e:
-        print(f"Error scraping single url: {e}")
+        sys.stderr.write(f"Error scraping single url: {e}\n")
     finally:
         if driver:
             driver.quit()
@@ -466,18 +469,18 @@ def scrape_single_listing(url):
 
 
 def scrape_idealista(property_type="viviendas", max_pages=3):
-    print(f"Iniciando scraper Idealista para {property_type} (Max páginas: {max_pages})...")
+    sys.stderr.write(f"Iniciando scraper Idealista para {property_type} (Max páginas: {max_pages})...\n")
     
     base_url = URLS.get(property_type)
     if not base_url:
-        print("Tipo de propiedad no válido")
+        sys.stderr.write("Tipo de propiedad no válido\n")
         return []
         
     all_properties = []
     
     for page in range(1, max_pages + 1):
         url = construct_idealista_url(base_url, page)
-        print(f"\n--- Iniciando Página {page} ---")
+        sys.stderr.write(f"\n--- Iniciando Página {page} ---\n")
         
         page_props = process_page(url, property_type)
         
@@ -508,7 +511,7 @@ def save_to_json(properties, suffix=""):
     with open(filepath, 'w', encoding='utf-8') as f:
         json.dump({"properties": properties}, f, ensure_ascii=False, indent=2) # Wrap in object like other scrapers?
         
-    print(f"Guardado en: {filepath}")
+    sys.stderr.write(f"Guardado en: {filepath}\n")
 
 if __name__ == "__main__":
     # Leer argumentos

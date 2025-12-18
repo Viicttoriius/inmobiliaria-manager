@@ -544,6 +544,22 @@ function insertClient(client) {
         )
     `);
 
+    // Auto-generate WhatsApp link if phone is present and link is missing
+    let whatsappLink = client.whatsappLink || client.whatsapp_link || null;
+    if (!whatsappLink && (client.phone || client.Phone)) {
+        const rawPhone = client.phone || client.Phone;
+        // Basic cleaning: remove non-digits
+        const cleanPhone = rawPhone.replace(/\D/g, '');
+        if (cleanPhone.length >= 9) { // Simple check
+             // Add country code if missing (assuming ES +34 for now if starts with 6 or 7, or just use raw if it has CC)
+             // But usually local numbers. Let's assume input might have it or not. 
+             // Ideally we'd use a lib like google-libphonenumber but let's keep it simple as requested.
+             // If it starts with 34, keep it. If not, add 34? 
+             // Let's just append to wa.me/
+             whatsappLink = `https://wa.me/${cleanPhone}`;
+        }
+    }
+
     const data = {
         id: client.id || Date.now().toString() + Math.random().toString(36).substr(2, 9),
         name: client.name || null,
@@ -552,7 +568,7 @@ function insertClient(client) {
         email: client.email || null,
         location: client.location || null,
         ad_link: client.adLink || client.ad_link || null,
-        whatsapp_link: client.whatsappLink || client.whatsapp_link || null,
+        whatsapp_link: whatsappLink,
         status: client.status || 'pending',
         property_type: client.propertyType || client.property_type || null,
         interest: client.interest || null,
@@ -1015,6 +1031,72 @@ function getDatabaseStats() {
 // Initialize database on module load
 initDB();
 
+/**
+ * Update a property by ID (manual edit)
+ */
+function updatePropertyById(id, data) {
+    // Construir query dinámica
+    const fields = [];
+    const params = [];
+
+    // Mapeo de campos frontend -> DB
+    const fieldMap = {
+        'title': 'title',
+        'price': 'price',
+        'description': 'description',
+        'phone': 'phone',
+        'habitaciones': 'habitaciones',
+        'banos': 'banos',
+        'metros': 'metros',
+        'location': 'location',
+        'municipality': 'location', // Alias
+        'property_type': 'property_type',
+        'notes': 'notes' // Si existe
+    };
+
+    // Campos especiales que van en extra_data
+    const extraFields = ['Advertiser', 'advertiser'];
+    
+    // Obtener propiedad actual para preservar extra_data
+    const currentStmt = db.prepare('SELECT * FROM properties WHERE id = ?');
+    const current = currentStmt.get(id);
+    
+    if (!current) return { changes: 0 };
+
+    let currentExtra = current.extra_data ? JSON.parse(current.extra_data) : {};
+    let extraUpdated = false;
+
+    for (const [key, value] of Object.entries(data)) {
+        // Campos directos
+        if (fieldMap[key.toLowerCase()] || fieldMap[key]) {
+            const dbField = fieldMap[key.toLowerCase()] || fieldMap[key];
+            fields.push(`${dbField} = ?`);
+            params.push(value);
+        } 
+        // Campos extra
+        else if (extraFields.includes(key) || extraFields.includes(key.toLowerCase())) {
+            currentExtra[key] = value;
+            extraUpdated = true;
+        }
+    }
+
+    if (extraUpdated) {
+        fields.push('extra_data = ?');
+        params.push(JSON.stringify(currentExtra));
+    }
+    
+    // Always update last_updated
+    fields.push("last_updated = datetime('now')");
+
+    if (fields.length === 0) return { changes: 0 };
+
+    params.push(id);
+    
+    const query = `UPDATE properties SET ${fields.join(', ')} WHERE id = ?`;
+    const stmt = db.prepare(query);
+    return stmt.run(...params);
+}
+
 // Export all functions
 module.exports = {
     db,
@@ -1030,6 +1112,7 @@ module.exports = {
     bulkInsertProperties,
     deleteProperty,
     getPropertiesCount,
+    updatePropertyById,
 
     // Clients
     getAllClients,

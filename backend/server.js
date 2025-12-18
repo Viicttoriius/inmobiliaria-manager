@@ -1093,6 +1093,73 @@ app.get('/api/properties', (req, res) => {
     }
 });
 
+// DELETE /api/properties/:id - Eliminar propiedad
+app.delete('/api/properties/:id', (req, res) => {
+    try {
+        const id = req.params.id;
+        // Si el ID parece una URL (contiene http), usamos deleteProperty(url)
+        // Pero sqliteManager tiene deleteProperty(url).
+        // Vamos a asumir que si pasamos un ID numérico, deberíamos tener una función para borrar por ID.
+        // Como sqliteManager solo expuso deleteProperty(url), vamos a obtener la URL por ID primero o modificar sqliteManager.
+        // Para simplificar y dado que el frontend puede pasar la URL codificada:
+        
+        let url = decodeURIComponent(id);
+        
+        // Si es un ID numérico (ej. "15"), buscamos la URL primero
+        // Pero para ser prácticos, añadiremos deletePropertyById en sqliteManager o usamos SQL directo aquí si fuera necesario.
+        // Mejor: usar deleteProperty de sqliteManager que espera URL.
+        // Frontend debe enviar encodeURIComponent(property.url).
+        
+        const result = sqliteManager.deleteProperty(url);
+        
+        if (result.changes > 0) {
+            res.json({ success: true });
+        } else {
+            // Intentar borrar por ID si la URL falló (por si acaso pasaron un ID)
+             const stmt = sqliteManager.db.prepare('DELETE FROM properties WHERE id = ?');
+             const resultId = stmt.run(id);
+             if (resultId.changes > 0) {
+                 res.json({ success: true });
+             } else {
+                 res.status(404).json({ error: 'Propiedad no encontrada' });
+             }
+        }
+    } catch (error) {
+        console.error('Error eliminando propiedad:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Endpoint para actualizar una propiedad (Edición Manual)
+app.put('/api/properties/:id', (req, res) => {
+    try {
+        const id = req.params.id;
+        const data = req.body;
+        // console.log('Updating property:', id, data); // Debug
+        const result = sqliteManager.updatePropertyById(id, data);
+        if (result.changes > 0) {
+            res.json({ success: true });
+        } else {
+            // Si changes es 0, puede ser que no exista o que los datos sean idénticos.
+            // Verificamos si existe
+            const exists = sqliteManager.db.prepare('SELECT id FROM properties WHERE id = ?').get(id);
+            if (!exists) {
+                res.status(404).json({ error: 'Propiedad no encontrada' });
+            } else {
+                // Existe pero no hubo cambios (o solo se actualizó last_updated si la lógica lo permite)
+                res.json({ success: true, message: 'No changes detected but confirmed existence' });
+            }
+        }
+    } catch (error) {
+        console.error('Error actualizando propiedad:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Mount Inbox Routes
+const inboxRoutes = require('./routes/inbox');
+app.use('/api/inbox', inboxRoutes);
+
 // Obtener estadísticas de la base de datos
 app.get('/api/stats', (req, res) => {
     try {
@@ -1575,6 +1642,206 @@ const UPDATE_SCRAPER = path.join(__dirname, 'scrapers/update_scraper.py');
 
 const IDEALISTA_SCRAPER_SINGLE = path.join(__dirname, 'scrapers/idealista/run_idealista_single.py');
 
+// Función helper para procesar actualizaciones de propiedades
+async function processPropertyUpdates(urls) {
+    if (!urls || urls.length === 0) return { success: false, error: 'No URLs provided' };
+
+    console.log(`🔄 [Helper] Actualizando ${urls.length} propiedades...`);
+    
+    // Separar URLs por plataforma
+    const idealistaUrls = urls.filter(u => u.includes('idealista'));
+    const otherUrls = urls.filter(u => !u.includes('idealista')); // Fotocasa y otros
+
+    const pythonExecutable = getPythonExecutable();
+    let updatedProperties = [];
+    let combinedErrorData = '';
+
+    try {
+        // --- 1. PROCESAR IDEALISTA (Uno a uno) ---
+        if (idealistaUrls.length > 0) {
+            console.log(`🔎 Procesando ${idealistaUrls.length} propiedades de Idealista...`);
+            for (const url of idealistaUrls) {
+                try {
+                    const result = await new Promise((resolve) => {
+                        const proc = spawn(pythonExecutable, [IDEALISTA_SCRAPER_SINGLE, url], {
+                            env: { ...process.env, PYTHONIOENCODING: 'utf-8', USER_DATA_PATH: BASE_PATH },
+                            shell: false
+                        });
+                        
+                        let stdout = '';
+                        let stderr = '';
+                        proc.stdout.on('data', d => stdout += d.toString());
+                        proc.stderr.on('data', d => stderr += d.toString());
+                        
+                        proc.on('close', (code) => {
+                            if (code !== 0) {
+                                console.error(`❌ Idealista scraper falló para ${url}`);
+                                combinedErrorData += `[Idealista ${url}] ${stderr}\n`;
+                                resolve(null);
+                            } else {
+                                try {
+                                    const jsonStartIndex = stdout.indexOf('{');
+                                    const jsonEndIndex = stdout.lastIndexOf('}');
+                                    
+                                    if (jsonStartIndex !== -1 && jsonEndIndex !== -1) {
+                                        const jsonStr = stdout.substring(jsonStartIndex, jsonEndIndex + 1);
+                                        const data = JSON.parse(jsonStr);
+                                        if (!data.error) resolve(data);
+                                        else resolve(null);
+                                    } else {
+                                        console.warn("Invalid JSON output from Idealista scraper:", stdout);
+                                        resolve(null);
+                                    }
+                                } catch (e) {
+                                    console.error("Error parsing Idealista JSON:", e);
+                                    resolve(null);
+                                }
+                            }
+                        });
+                    });
+
+                    if (result) updatedProperties.push(result);
+                } catch (e) {
+                    console.error(`Error loop Idealista: ${e}`);
+                }
+            }
+        }
+
+        // --- 2. PROCESAR OTROS (Fotocasa - Batch) ---
+        if (otherUrls.length > 0) {
+            console.log(`🔎 Procesando ${otherUrls.length} propiedades de Fotocasa/Otros...`);
+            
+            // Crear archivo temporal
+            const updateDir = path.join(DATA_DIR, 'update');
+            if (!fs.existsSync(updateDir)) fs.mkdirSync(updateDir, { recursive: true });
+            const tempUrlsFile = path.join(updateDir, `temp_urls_${Date.now()}.json`);
+            fs.writeFileSync(tempUrlsFile, JSON.stringify(otherUrls));
+
+            // Ejecutar batch scraper
+            await new Promise((resolve, reject) => {
+                const pythonProcess = spawn(pythonExecutable, [UPDATE_SCRAPER, tempUrlsFile], {
+                    env: { ...process.env, PYTHONIOENCODING: 'utf-8', USER_DATA_PATH: BASE_PATH },
+                    shell: false
+                });
+
+                let rawData = '';
+                
+                pythonProcess.stdout.on('data', (data) => rawData += data.toString());
+                pythonProcess.stderr.on('data', (data) => {
+                    combinedErrorData += data.toString();
+                    if (data.toString().includes('Error') || data.toString().includes('Procesando')) {
+                        console.log(`      [Python] ${data.toString().trim()}`);
+                    }
+                });
+
+                pythonProcess.on('close', (code) => {
+                    // Borrar temp file
+                    try { if (fs.existsSync(tempUrlsFile)) fs.unlinkSync(tempUrlsFile); } catch (e) {}
+
+                    if (code !== 0) {
+                        console.error(`❌ Batch scraper falló con código ${code}`);
+                        resolve(); 
+                    } else {
+                        try {
+                            const jsonStartIndex = rawData.indexOf('[');
+                            const jsonEndIndex = rawData.lastIndexOf(']');
+                            if (jsonStartIndex !== -1 && jsonEndIndex !== -1) {
+                                const jsonString = rawData.substring(jsonStartIndex, jsonEndIndex + 1);
+                                const batchResults = JSON.parse(jsonString);
+                                updatedProperties = [...updatedProperties, ...batchResults];
+                            }
+                        } catch (e) {
+                            console.error("Error parseando salida batch:", e);
+                        }
+                        resolve();
+                    }
+                });
+            });
+        }
+
+        if (updatedProperties.length === 0) {
+             if (combinedErrorData) {
+                 console.warn("⚠️ No se obtuvieron propiedades, pero hubo logs:", combinedErrorData.substring(0, 200));
+             }
+             return { success: true, updatedCount: 0, message: "No se obtuvieron datos actualizados.", newClientsCount: 0 };
+        }
+
+        console.log(`💾 Guardando ${updatedProperties.length} propiedades actualizadas en SQLite...`);
+        const dbStats = sqliteManager.bulkInsertProperties(updatedProperties);
+        console.log(`   ✅ SQLite Stats: ${dbStats.inserted} nuevas, ${dbStats.updated} actualizadas`);
+
+        const allProperties = [];
+        const files = fs.readdirSync(PROPERTIES_DIR);
+        files.forEach(file => {
+            if (path.extname(file) === '.json') {
+                const filePath = path.join(PROPERTIES_DIR, file);
+                try {
+                    const fileContent = fs.readFileSync(filePath, 'utf8');
+                    const data = JSON.parse(fileContent);
+                    if (data && Array.isArray(data.properties)) {
+                        data.properties.forEach(p => {
+                            if (p.url) allProperties.push({ url: p.url, originalFile: file });
+                        });
+                    }
+                } catch (e) { }
+            }
+        });
+
+        let successCount = 0;
+        const updatesByFile = {};
+
+        updatedProperties.forEach(updatedProp => {
+            const match = allProperties.find(p => p.url === updatedProp.url);
+            if (match) {
+                if (!updatesByFile[match.originalFile]) updatesByFile[match.originalFile] = [];
+                updatesByFile[match.originalFile].push(updatedProp);
+            }
+        });
+
+        for (const fileName in updatesByFile) {
+            const filePath = path.join(PROPERTIES_DIR, fileName);
+            if (fs.existsSync(filePath)) {
+                try {
+                    const fileData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                    let modified = false;
+
+                    updatesByFile[fileName].forEach(update => {
+                        const propIndex = fileData.properties.findIndex(p => p.url === update.url);
+                        if (propIndex !== -1) {
+                            fileData.properties[propIndex] = {
+                                ...fileData.properties[propIndex],
+                                ...update,
+                                lastUpdated: new Date().toISOString()
+                            };
+                            modified = true;
+                            successCount++;
+                        }
+                    });
+
+                    if (modified) {
+                        fs.writeFileSync(filePath, JSON.stringify(fileData, null, 2));
+                        console.log(`💾 Archivo ${fileName} actualizado con ${updatesByFile[fileName].length} cambios.`);
+                    }
+                } catch (e) {
+                    console.error(`Error actualizando archivo ${fileName}:`, e);
+                }
+            }
+        }
+
+        let newClientsCount = 0;
+        try {
+            const newClientMatches = combinedErrorData.match(/Nuevo cliente añadido/g);
+            if (newClientMatches) newClientsCount = newClientMatches.length;
+        } catch (e) {}
+
+        return { success: true, updatedCount: successCount, newClientsCount };
+
+    } catch (error) {
+        console.error('❌ Error en el proceso de actualización de propiedades:', error);
+        return { success: false, error: 'Error interno en el proceso de actualización.' };
+    }
+}
+
 // Actualizar propiedades seleccionadas
 app.post('/api/properties/update', async (req, res) => {
     const { urls } = req.body;
@@ -1618,12 +1885,19 @@ app.post('/api/properties/update', async (req, res) => {
                             } else {
                                 try {
                                     // Idealista script prints JSON at the end
-                                    const jsonStr = stdout.trim(); 
-                                    if (jsonStr) {
+                                    // Robust parsing: Find the first { and last }
+                                    const jsonStartIndex = stdout.indexOf('{');
+                                    const jsonEndIndex = stdout.lastIndexOf('}');
+                                    
+                                    if (jsonStartIndex !== -1 && jsonEndIndex !== -1) {
+                                        const jsonStr = stdout.substring(jsonStartIndex, jsonEndIndex + 1);
                                         const data = JSON.parse(jsonStr);
                                         if (!data.error) resolve(data);
                                         else resolve(null);
-                                    } else resolve(null);
+                                    } else {
+                                        console.warn("Invalid JSON output from Idealista scraper:", stdout);
+                                        resolve(null);
+                                    }
                                 } catch (e) {
                                     console.error("Error parsing Idealista JSON:", e);
                                     resolve(null);
@@ -2000,9 +2274,27 @@ app.delete('/api/clients/:id', (req, res) => {
 
 // Generar mensaje personalizado con OpenRouter
 app.post('/api/messages/generate', async (req, res) => {
-    const { clientName, clientPhone, properties, preferences, model } = req.body;
+    const { clientName, clientPhone, properties, preferences, model, template } = req.body;
 
     try {
+        const propertyLink = properties && properties.length > 0 ? properties[0].url : '';
+        
+        // Plantillas definidas por el usuario
+        const templates = {
+            intro: `Hola, buenos días. Soy Alex Aldazabal Dufurneaux, agente inmobiliario en IAD, estoy ubicado en Dénia. Me pongo en contacto porque tengo clientes interesados en inmuebles con las características del que usted tiene en venta. ¿Podríamos concertar una visita para conocerlo? Así podré presentarlo correctamente y ofrecerle una opción de venta rápida, segura y sin compromiso. Trabajo con una estrategia de marketing muy efectiva y siempre priorizo un trato directo y transparente. Quedo a su disposición. ¡Un saludo y que tenga un excelente día! Alex – IAD Inmobiliaria`,
+            
+            agency_objection: `Muy buenos días estimada Este es el anuncio, ¿es correcto? ¿Sigue disponible? ${propertyLink} Soy asesor inmobiliario independiente y tengo un cliente que busca un 'lo que sea' en 'el barrio' por 'presupuesto maximo', puedo ir a visitar 'dia y hora'?`,
+            
+            still_available: `Perdón ¿Sigue a la venta?`,
+            
+            follow_up: `Hola de nuevo, no quiero molestar, este es mi último mensaje, si sigue a la venta, mi cliente estará encantada de saber más de su vivienda, si no está disponible o no le interesa, perdón por la molestias 😊✌️`
+        };
+
+        // Si se solicita una plantilla específica, devolverla directamente
+        if (template && templates[template]) {
+             return res.json({ message: templates[template], source: 'template_script' });
+        }
+
         const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
         // Si no hay API key, usar template básico
@@ -2030,13 +2322,37 @@ app.post('/api/messages/generate', async (req, res) => {
         const AGENTE = "Alex Aldazabal Dufurneaux";
         const COMPANIA_Y_LOCALIDAD = "soy Agente Inmobiliario de IAD radico en Denia";
 
-        // Construir el prompt EXACTO solicitado
-        const prompt = `Genera un mensaje de contacto inmobiliario cordial y profesional para WhatsApp. Dirígete a ${clientName}. 
+        // Definir prompts base según el tipo de plantilla
+        let basePrompt = "";
+        let exampleScript = "";
+
+        if (template === 'agency_objection') {
+            basePrompt = `Genera un mensaje de respuesta a una objeción o contacto inicial directo preguntando por disponibilidad. Dirígete a ${clientName}.
+El emisor es ${AGENTE}.
+Menciona que eres asesor inmobiliario independiente y tienes un cliente buscando en la zona.
+Pregunta si pueden ir a visitar.
+Usa este estilo como guía:
+"Muy buenos días estimada. Este es el anuncio, ¿es correcto? ¿Sigue disponible? ${propertyLink} Soy asesor inmobiliario independiente y tengo un cliente que busca un inmueble en la zona, ¿puedo ir a visitar?"`;
+        } else if (template === 'follow_up') {
+            basePrompt = `Genera un mensaje de seguimiento final (último contacto) cordial y educado. Dirígete a ${clientName}.
+El emisor es ${AGENTE}.
+El objetivo es saber si sigue a la venta para un cliente interesado, o despedirse si no hay interés.
+Usa este estilo como guía:
+"Hola de nuevo, no quiero molestar, este es mi último mensaje. Si sigue a la venta, mi cliente estará encantada de saber más de su vivienda. Si no está disponible o no le interesa, perdón por la molestias 😊✌️"`;
+        } else if (template === 'still_available') {
+             basePrompt = `Genera un mensaje corto y directo preguntando si la propiedad sigue a la venta.
+Usa este estilo: "Perdón ¿Sigue a la venta?"`;
+        } else {
+            // Default: INTRO / CAPTACIÓN
+            basePrompt = `Genera un mensaje de contacto inmobiliario cordial y profesional para WhatsApp. Dirígete a ${clientName}. 
 El emisor es ${AGENTE}, ${COMPANIA_Y_LOCALIDAD}. 
 El motivo es: el emisor tiene ${contextoEspecifico}. 
 Finaliza preguntando si pueden quedar para conocer ${tipoPropiedadParaPrompt} y obtener más información, deseando un excelente día. 
 El mensaje debe ser directo, conciso y seguir la estructura de la plantilla proporcionada: 
 "Hola, mi nombre es Alex Aldazabal Dufurneaux, soy Agente Inmobiliario de IAD radico en Denia, le contacto porque tengo la posibilidad de captar clientes interesados en comprar inmuebles con las características del que tiene anunciado, ¿Podemos quedar para conocer el piso y poder tener mas información?, será un placer atenderle, le deseo un excelente día."`;
+        }
+
+        const prompt = basePrompt;
 
         // Llamar a OpenRouter
         const fetch = (await import('node-fetch')).default;
@@ -2519,6 +2835,20 @@ app.listen(PORT, () => {
     console.log(`🔧 Fotocasa: POST http://localhost:${PORT}/api/scraper/fotocasa/run`);
     console.log(`🔧 Idealista: POST http://localhost:${PORT}/api/scraper/idealista/run`);
 
-    // Iniciar monitor de email
-    emailService.startMonitoring();
+    // Iniciar monitor de email con callback para procesar URLs
+    emailService.startMonitoring(async (url, source) => {
+        console.log(`📧 URL detectada por email (${source}): ${url}`);
+        try {
+            // processPropertyUpdates espera un array de URLs
+            const result = await processPropertyUpdates([url]);
+            if (result.success) {
+                console.log(`✅ Propiedad actualizada desde email: ${url}`);
+                // Notificar al frontend si es posible (opcional, por ahora solo log)
+            } else {
+                console.error(`❌ Error actualizando propiedad desde email: ${result.error}`);
+            }
+        } catch (error) {
+            console.error(`❌ Error crítico procesando URL de email:`, error);
+        }
+    });
 });

@@ -4,10 +4,80 @@ import Papa from 'papaparse';
 import UpdateNotification from './components/UpdateNotification';
 import CalendarPanel from './components/CalendarPanel';
 import MetricsPanel from './components/MetricsPanel';
+import InboxPanel from './components/InboxPanel';
+import EditPropertyModal from './components/EditPropertyModal';
 import './App.css'
 
 const API_URL = 'http://localhost:3001/api';
 const NOTIFICATION_SOUND_URL = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
+
+// WhatsApp Modal Component
+const WhatsAppModal = ({ isOpen, onClose, url }) => {
+  if (!isOpen) return null;
+
+  // Detectar si estamos en Electron (por el User Agent o API expuesta)
+  const isElectron = navigator.userAgent.toLowerCase().includes('electron');
+  
+  // Transformar URL para webview si es necesario (wa.me -> web.whatsapp.com)
+  // Aunque wa.me redirige, webview maneja mejor URLs directas
+  let finalUrl = url;
+  if (url && url.includes('wa.me')) {
+      // Extraer número
+      const number = url.split('/').pop();
+      finalUrl = `https://web.whatsapp.com/send?phone=${number}`;
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content whatsapp-modal" onClick={e => e.stopPropagation()} style={{ width: '90%', height: '90%', maxWidth: '1200px', display: 'flex', flexDirection: 'column', padding: 0 }}>
+        <div className="modal-header-custom" style={{ padding: '1rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#075E54', color: 'white' }}>
+          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <MessageSquare size={20} /> WhatsApp Web
+          </h3>
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+             <a href={finalUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'white', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <ExternalLink size={16} /> Abrir en navegador externo
+             </a>
+             <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'white' }}><X size={24} /></button>
+          </div>
+        </div>
+        <div className="modal-body" style={{ flex: 1, position: 'relative', background: '#e5ddd5', display: 'flex', flexDirection: 'column' }}>
+           
+           {isElectron ? (
+               <webview 
+                 src={finalUrl} 
+                 style={{ width: '100%', height: '100%', border: 'none' }} 
+                 useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                 allowpopups="true"
+               />
+           ) : (
+               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#555', padding: '2rem', textAlign: 'center' }}>
+                   <div style={{ background: 'white', padding: '2rem', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+                       <MessageSquare size={64} style={{ color: '#25D366', marginBottom: '1rem' }} />
+                       <h3 style={{ marginBottom: '0.5rem' }}>WhatsApp Web no se puede mostrar aquí</h3>
+                       <p style={{ marginBottom: '1.5rem', maxWidth: '400px' }}>
+                           Por restricciones de seguridad de WhatsApp, la versión web no se puede incrustar en el navegador (Chrome/Edge).
+                       </p>
+                       <p style={{ marginBottom: '1.5rem', fontWeight: 'bold' }}>
+                           💡 Para usarlo dentro de la App, ejecuta la versión de escritorio (Electron).
+                       </p>
+                       <a 
+                           href={finalUrl} 
+                           target="_blank" 
+                           rel="noopener noreferrer" 
+                           className="btn-primary"
+                           style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '0.75rem 1.5rem', textDecoration: 'none' }}
+                       >
+                           <ExternalLink size={18} /> Abrir WhatsApp Web en pestaña nueva
+                       </a>
+                   </div>
+               </div>
+           )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -57,7 +127,10 @@ function App() {
   const [searchTerm, setSearchTerm] = useState('')
   const [filterType, setFilterType] = useState('all')
   const [sortBy, setSortBy] = useState('date_desc')
+  const [clientSortBy, setClientSortBy] = useState('date_desc')
   const [activeTab, setActiveTab] = useState('properties')
+  const [whatsAppModalOpen, setWhatsAppModalOpen] = useState(false);
+  const [whatsAppUrl, setWhatsAppUrl] = useState('');
   const [scrapingInProgress, setScrapingInProgress] = useState({ 
     fotocasa_viviendas: false, fotocasa_locales: false, fotocasa_terrenos: false,
     idealista_viviendas: false, idealista_locales: false, idealista_terrenos: false
@@ -270,6 +343,101 @@ function App() {
 
   const closeConfirmModal = () => {
     setConfirmModal(prev => ({ ...prev, isOpen: false }));
+  };
+
+  const deleteProperty = async (id, url) => {
+    requestConfirm({
+      title: 'Eliminar Propiedad',
+      message: '¿Estás seguro de que deseas eliminar esta propiedad? Esta acción no se puede deshacer.',
+      isDanger: true,
+      confirmText: 'Eliminar',
+      onConfirm: async () => {
+        try {
+          const target = url ? encodeURIComponent(url) : id;
+          const response = await fetch(`${API_URL}/properties/${target}`, { method: 'DELETE' });
+          if (response.ok) {
+            setProperties(prev => prev.filter(p => p.id !== id));
+            setFilteredProperties(prev => prev.filter(p => p.id !== id));
+            showNotification('Propiedad eliminada correctamente', 'success');
+          } else {
+            throw new Error('Error al eliminar');
+          }
+        } catch (error) {
+          console.error('Error eliminando propiedad:', error);
+          showNotification('Error al eliminar propiedad', 'error');
+        }
+      }
+    });
+  };
+
+  // --- EDIT PROPERTY LOGIC ---
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [propertyToEdit, setPropertyToEdit] = useState(null);
+
+  const handleEditProperty = (property) => {
+    setPropertyToEdit(property);
+    setEditModalOpen(true);
+  };
+
+  const handleSaveProperty = async (id, updatedData) => {
+    try {
+        const response = await fetch(`${API_URL}/properties/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatedData)
+        });
+
+        if (response.ok) {
+            // Update local state to reflect changes immediately
+            setProperties(prev => prev.map(p => {
+                if (p.id === id) {
+                     // Merge updates safely. Map updatedData keys to frontend keys if needed.
+                     // The endpoint expects data as is, and the mapping logic in sqlite-manager handles it.
+                     // But for the frontend display, we need to update the specific fields.
+                     return { 
+                        ...p, 
+                        ...updatedData, 
+                        // Explicitly map for immediate UI update
+                        Title: updatedData.title || p.Title,
+                        Price: updatedData.price || p.Price,
+                        Description: updatedData.description || p.Description,
+                        Advertiser: updatedData.advertiser || p.Advertiser,
+                        Phone: updatedData.phone || p.Phone,
+                        Municipality: updatedData.location || p.Municipality,
+                        notes: updatedData.notes || p.notes
+                     };
+                }
+                return p;
+            }));
+            
+            // Re-apply filters to update the list if needed
+            setFilteredProperties(prev => prev.map(p => {
+                 if (p.id === id) {
+                     return { 
+                        ...p, 
+                        ...updatedData, 
+                        Title: updatedData.title || p.Title,
+                        Price: updatedData.price || p.Price,
+                        Description: updatedData.description || p.Description,
+                        Advertiser: updatedData.advertiser || p.Advertiser,
+                        Phone: updatedData.phone || p.Phone,
+                        Municipality: updatedData.location || p.Municipality,
+                        notes: updatedData.notes || p.notes
+                     };
+                }
+                return p;
+            }));
+
+            showNotification('Propiedad actualizada correctamente', 'success');
+            setEditModalOpen(false);
+            setPropertyToEdit(null);
+        } else {
+            throw new Error('Error al actualizar');
+        }
+    } catch (error) {
+        console.error('Error actualizando propiedad:', error);
+        showNotification('Error al actualizar propiedad', 'error');
+    }
   };
 
 
@@ -529,11 +697,11 @@ function App() {
     };
 
     result.sort((a, b) => {
-      if (sortBy === 'name_asc') {
+      if (clientSortBy === 'name_asc') {
         return (a.name || '').trim().toLowerCase().localeCompare((b.name || '').trim().toLowerCase());
-      } else if (sortBy === 'name_desc') {
+      } else if (clientSortBy === 'name_desc') {
         return (b.name || '').trim().toLowerCase().localeCompare((a.name || '').trim().toLowerCase());
-      } else if (sortBy === 'date_asc') {
+      } else if (clientSortBy === 'date_asc') {
         return parseDate(a.date) - parseDate(b.date);
       } else { // date_desc (default)
         return parseDate(b.date) - parseDate(a.date);
@@ -541,7 +709,7 @@ function App() {
     });
 
     setFilteredClients(result);
-  }, [clients, clientFilters, sortBy]);
+  }, [clients, clientFilters, clientSortBy]);
 
   const loadProperties = async (silent = false) => {
     if (!silent) setLoading(true)
@@ -1027,12 +1195,22 @@ function App() {
       return
     }
 
+    // Auto-generar link de WhatsApp si no existe y hay teléfono
+    let clientToSave = { ...newClient };
+    if (!clientToSave.whatsappLink && clientToSave.phone) {
+        const rawPhone = clientToSave.phone;
+        const cleanPhone = rawPhone.replace(/\D/g, '');
+        if (cleanPhone.length >= 9) {
+            clientToSave.whatsappLink = `https://wa.me/${cleanPhone}`;
+        }
+    }
+
     try {
       if (editingId) {
         const response = await fetch(`${API_URL}/clients/${editingId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newClient)
+          body: JSON.stringify(clientToSave)
         })
         const data = await response.json()
         setClients(clients.map(c => c.id === editingId ? data : c))
@@ -1042,7 +1220,7 @@ function App() {
         const response = await fetch(`${API_URL}/clients`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newClient)
+          body: JSON.stringify(clientToSave)
         })
         const data = await response.json()
         setClients([...clients, data])
@@ -1601,6 +1779,13 @@ function App() {
             <span>Calendario</span>
           </button>
           <button
+            className={activeTab === 'inbox' ? 'active' : ''}
+            onClick={() => setActiveTab('inbox')}
+          >
+            <Mail size={20} />
+            <span>Bandeja de Entrada</span>
+          </button>
+          <button
             className={activeTab === 'metrics' ? 'active' : ''}
             onClick={() => setActiveTab('metrics')}
           >
@@ -1794,15 +1979,34 @@ function App() {
                         </div>
                       )}
 
-                      <a
-                        href={property.url !== 'None' ? property.url : '#'}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="view-more"
-                      >
-                        Ver detalles
-                        <ExternalLink size={16} />
-                      </a>
+                      <div className="property-actions-row" style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto', paddingTop: '1rem' }}>
+                        <a
+                          href={property.url !== 'None' ? property.url : '#'}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="view-more"
+                          style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem' }}
+                        >
+                          Ver detalles
+                          <ExternalLink size={16} />
+                        </a>
+                        <button
+                          onClick={() => handleEditProperty(property)}
+                          className="edit-btn"
+                          title="Editar propiedad"
+                          style={{ padding: '0.5rem', background: 'var(--secondary)', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        <button
+                          onClick={() => deleteProperty(property.id, property.url)}
+                          className="delete-btn"
+                          title="Eliminar propiedad"
+                          style={{ padding: '0.5rem', background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1982,6 +2186,20 @@ function App() {
                         />
                       </div>
 
+                      <div className="filter-group" style={{ marginBottom: 0 }}>
+                        <BarChart2 size={18} style={{ color: 'var(--text-secondary)' }} />
+                        <select 
+                          value={clientSortBy} 
+                          onChange={(e) => setClientSortBy(e.target.value)} 
+                          style={{ padding: '0.5rem 2rem 0.5rem 0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', cursor: 'pointer', fontWeight: '500' }}
+                        >
+                          <option value="date_desc">Más Recientes</option>
+                          <option value="date_asc">Más Antiguos</option>
+                          <option value="name_asc">Nombre (A-Z)</option>
+                          <option value="name_desc">Nombre (Z-A)</option>
+                        </select>
+                      </div>
+
                       <button
                         onClick={() => setClientFilters({ search: '', status: 'all', propertyType: 'all', answered: 'all', location: '', date: '', appointmentDate: '', phone: '', email: '', adLink: '' })}
                         style={{ marginLeft: 'auto', padding: '0.5rem 1rem', background: 'var(--surface-hover)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--text)', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem', fontWeight: '500' }}
@@ -2016,15 +2234,15 @@ function App() {
                         <th
                           style={{ width: columnWidths.name, cursor: 'pointer', userSelect: 'none' }}
                           onClick={() => {
-                            if (sortBy === 'name_asc') setSortBy('name_desc');
-                            else if (sortBy === 'name_desc') setSortBy('date_desc');
-                            else setSortBy('name_asc');
+                            if (clientSortBy === 'name_asc') setClientSortBy('name_desc');
+                            else if (clientSortBy === 'name_desc') setClientSortBy('date_desc');
+                            else setClientSortBy('name_asc');
                           }}
                         >
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                             Nombre
-                            {sortBy === 'name_asc' && <span style={{ fontSize: '0.8em' }}>▲</span>}
-                            {sortBy === 'name_desc' && <span style={{ fontSize: '0.8em' }}>▼</span>}
+                            {clientSortBy === 'name_asc' && <span style={{ fontSize: '0.8em' }}>▲</span>}
+                            {clientSortBy === 'name_desc' && <span style={{ fontSize: '0.8em' }}>▼</span>}
                           </div>
                           <div className="resizer" onMouseDown={(e) => { e.stopPropagation(); startResizing(e, 'name'); }} />
                         </th>
@@ -2064,8 +2282,18 @@ function App() {
                           Respuesta
                           <div className="resizer" onMouseDown={(e) => startResizing(e, 'response')} />
                         </th>
-                        <th style={{ width: columnWidths.date }}>
-                          Fecha
+                        <th 
+                          style={{ width: columnWidths.date, cursor: 'pointer', userSelect: 'none' }}
+                          onClick={() => {
+                            if (clientSortBy === 'date_asc') setClientSortBy('date_desc');
+                            else setClientSortBy('date_asc');
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            Fecha
+                            {clientSortBy === 'date_asc' && <span style={{ fontSize: '0.8em' }}>▲</span>}
+                            {clientSortBy === 'date_desc' && <span style={{ fontSize: '0.8em' }}>▼</span>}
+                          </div>
                           <div className="resizer" onMouseDown={(e) => startResizing(e, 'date')} />
                         </th>
                         <th style={{ width: columnWidths.appointmentDate }}>
@@ -2116,9 +2344,25 @@ function App() {
                             </td>
                             <td>
                               {client.whatsappLink ? (
-                                <a href={client.whatsappLink} target="_blank" rel="noopener noreferrer" style={{ color: '#22c55e', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <button 
+                                  onClick={() => {
+                                      setWhatsAppUrl(client.whatsappLink);
+                                      setWhatsAppModalOpen(true);
+                                  }}
+                                  style={{ 
+                                    background: 'none', 
+                                    border: 'none', 
+                                    cursor: 'pointer', 
+                                    color: '#22c55e', 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '4px',
+                                    padding: 0,
+                                    fontSize: 'inherit'
+                                  }}
+                                >
                                   <MessageSquare size={14} /> Chat
-                                </a>
+                                </button>
                               ) : '-'}
                             </td>
                             <td>
@@ -2247,6 +2491,13 @@ function App() {
 
           {activeTab === 'calendar' && (
             <CalendarPanel clients={clients} showNotification={showNotification} />
+          )}
+          {activeTab === 'inbox' && (
+            <InboxPanel 
+              API_URL={API_URL} 
+              showNotification={showNotification} 
+              onOpenConfig={() => setConfigModalOpen(true)}
+            />
           )}
           {activeTab === 'metrics' && (
             <MetricsPanel properties={properties} clients={clients} API_URL={API_URL} />
@@ -2630,6 +2881,21 @@ function App() {
             </div>
           )
         }
+
+        {/* Modal de WhatsApp */}
+        <WhatsAppModal 
+          isOpen={whatsAppModalOpen} 
+          onClose={() => setWhatsAppModalOpen(false)} 
+          url={whatsAppUrl} 
+        />
+
+        {/* Modal de Edición de Propiedad */}
+        <EditPropertyModal
+          property={propertyToEdit}
+          isOpen={editModalOpen}
+          onClose={() => setEditModalOpen(false)}
+          onSave={handleSaveProperty}
+        />
 
         {/* Componente de Notificación de Actualización */}
         <UpdateNotification />

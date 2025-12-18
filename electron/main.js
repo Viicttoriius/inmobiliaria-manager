@@ -52,6 +52,7 @@ function createWindow() {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
       backgroundThrottling: false, // Evitar que se congele en segundo plano
+      webviewTag: true, // Permitir <webview> para WhatsApp integrado
       // Configuraciones de compatibilidad
       webgl: !isMacOSLegacy(),
       offscreen: false,
