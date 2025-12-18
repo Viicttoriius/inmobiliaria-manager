@@ -2,7 +2,7 @@
 
 Todas las cambios notables de este proyecto serán documentados en este archivo.
 
-## [2.2.20] - 2025-12-18
+## [2.2.21] - 2025-12-18
 ### Fixed
 - **Scraper Idealista**: Corregida la clasificación de tipo de propiedad. Ahora detecta "terrenos" y "parcelas" en el título en lugar de marcar todo como "vivienda".
 - **Extracción de Nombres**: Añadido soporte prioritario para extraer el nombre real del particular desde inputs ocultos (`user-name`), solucionando casos donde se extraía un nombre genérico.
