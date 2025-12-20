@@ -183,6 +183,18 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEBUG: electron-builder
         run: |
-          # Build for both architectures in a single pass to generate a unified latest-mac.yml
-          # electron-builder handles the native dependency rebuilds for each arch automatically
-          npx electron-builder --mac --x64 --arm64 --publish always
+          # Step 1: Rebuild native modules for x64
+          echo "🔨 Rebuilding for x64..."
+          npm run rebuild-backend:x64
+          
+          # Step 2: Build and Publish x64 (generates/updates latest-mac.yml)
+          echo "📦 Building and Publishing x64..."
+          npx electron-builder --mac --x64 --publish always
+
+          # Step 3: Rebuild native modules for arm64
+          echo "🔨 Rebuilding for arm64..."
+          npm run rebuild-backend:arm64
+          
+          # Step 4: Build and Publish arm64 (updates latest-mac.yml)
+          echo "📦 Building and Publishing arm64..."
+          npx electron-builder --mac --arm64 --publish always
