@@ -88,11 +88,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG_NAME=${{ github.ref_name }}
-          echo "Checking for existing assets to clean for tag: $TAG_NAME"
+          echo "🔍 Checking for existing assets to clean for tag: $TAG_NAME"
           
           # Check if release exists
           if ! gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            echo "Release $TAG_NAME does not exist yet. Skipping cleanup."
+            echo "ℹ️ Release $TAG_NAME does not exist yet. Skipping cleanup."
             exit 0
           fi
 
@@ -106,10 +106,22 @@ jobs:
             PATTERN="-mac-${{ matrix.arch }}"
           fi
 
-          echo "Searching for assets containing: $PATTERN"
+          echo "🎯 Searching for assets containing: '$PATTERN' (OS: ${{ matrix.os }})"
           
           # List all assets and delete matches
-          gh release view "$TAG_NAME" --json assets -q '.assets[].name' | while read -r asset; do
+          # Use a temporary file to handle potential pipe issues or weird chars
+          gh release view "$TAG_NAME" --json assets -q '.assets[].name' > assets_list.txt || echo "No assets found or error listing."
+          
+          if [ ! -s assets_list.txt ]; then
+             echo "✅ No assets found on release."
+             rm -f assets_list.txt
+             exit 0
+          fi
+
+          echo "📄 Current assets on release:"
+          cat assets_list.txt
+
+          while read -r asset; do
             # Skip empty lines
             [ -z "$asset" ] && continue
 
@@ -120,7 +132,7 @@ jobs:
               SHOULD_DELETE=true
             fi
 
-            # Check shared metadata files
+            # Check shared metadata files - Always delete them to force regeneration/update
             if [ "${{ matrix.os }}" == "windows-latest" ] && [[ "$asset" == "latest.yml" ]]; then
                SHOULD_DELETE=true
             elif [ "${{ matrix.os }}" == "ubuntu-latest" ] && [[ "$asset" == "latest-linux.yml" ]]; then
@@ -130,10 +142,14 @@ jobs:
             fi
 
             if [ "$SHOULD_DELETE" = true ]; then
-              echo "Deleting existing asset: $asset"
+              echo "🗑️ Deleting existing asset: '$asset'"
               gh release delete-asset "$TAG_NAME" "$asset" -y || echo "⚠️ Failed to delete $asset (might allow overwrite or already gone)"
+            else
+              echo "⏭️ Skipping asset: '$asset' (Does not match pattern '$PATTERN')"
             fi
-          done
+          done < assets_list.txt
+          
+          rm -f assets_list.txt
 
       - name: Install Linux Dependencies
         if: matrix.os == 'ubuntu-latest'
@@ -149,7 +165,7 @@ jobs:
           DEBUG: electron-builder
         run: |
           npm run rebuild-backend
-          npx electron-builder --win --publish always --overwrite
+          npx electron-builder --win --publish always
 
       - name: Build/Release Electron App (Linux)
         if: matrix.os == 'ubuntu-latest'
@@ -159,7 +175,7 @@ jobs:
           DEBUG: electron-builder
         run: |
           npm run rebuild-backend
-          npx electron-builder --linux --publish always --overwrite
+          npx electron-builder --linux --publish always
 
       - name: Build/Release Electron App (macOS)
         if: matrix.os == 'macos-latest'
@@ -169,4 +185,4 @@ jobs:
           DEBUG: electron-builder
         run: |
           npm run rebuild-backend:${{ matrix.arch }}
-          npx electron-builder --mac --${{ matrix.arch }} --publish always --overwrite
+          npx electron-builder --mac --${{ matrix.arch }} --publish always
