@@ -21,9 +21,8 @@ jobs:
           - os: ubuntu-latest
             arch: x64
           - os: macos-latest
-            arch: x64
-          - os: macos-latest
-            arch: arm64
+            # arch removed to run a single job for both x64 and arm64
+
 
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: false
@@ -103,7 +102,7 @@ jobs:
           elif [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
             PATTERN=".AppImage"
           elif [ "${{ matrix.os }}" == "macos-latest" ]; then
-            PATTERN="-mac-${{ matrix.arch }}"
+            PATTERN="-mac-"
           fi
 
           echo "🎯 Searching for assets containing: '$PATTERN' (OS: ${{ matrix.os }})"
@@ -184,5 +183,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEBUG: electron-builder
         run: |
-          npm run rebuild-backend:${{ matrix.arch }}
-          npx electron-builder --mac --${{ matrix.arch }} --publish always
+          # Build for both architectures in a single pass to generate a unified latest-mac.yml
+          # electron-builder handles the native dependency rebuilds for each arch automatically
+          npx electron-builder --mac --x64 --arm64 --publish always
