@@ -2655,6 +2655,14 @@ app.post('/api/messages/send', async (req, res) => {
                     sqliteManager.saveMessage(clientId, channels, message, 'sent');
 
                     console.log(`   📝 Historial actualizado para cliente ${clientId}`);
+
+                    // Notificar al sistema operativo (alerta bot)
+                    notifier.notify({
+                        title: 'Mensaje Enviado',
+                        message: `Mensaje enviado correctamente a ${client.name}`,
+                        sound: 'Glass',
+                        wait: false
+                    });
                 }
             } catch (err) {
                 console.error('   ⚠️ Error actualizando historial:', err);
