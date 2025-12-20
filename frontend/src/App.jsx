@@ -981,9 +981,9 @@ function App() {
     setScrapingLog(`Iniciando scraper de ${scraperName}${propertyType ? ` (${propertyType})` : ''}...\n`)
 
     try {
-      // Usar un timeout en el fetch para evitar esperas infinitas si el backend tarda, pero dando margen suficiente (5 min)
+      // Usar un timeout en el fetch para evitar esperas infinitas si el backend tarda, pero dando margen suficiente (30 min)
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutos
+      const timeoutId = setTimeout(() => controller.abort(), 1800000); // 30 minutos
 
       const response = await fetch(`${API_URL}/scraper/${scraperName}/run`, {
         method: 'POST',
@@ -1011,7 +1011,7 @@ function App() {
     } catch (error) {
       let errorMsg = error.message;
       if (error.name === 'AbortError') {
-        errorMsg = 'Tiempo de espera agotado (Timeout)';
+        errorMsg = 'Tiempo de espera agotado. El scraper sigue ejecutándose en segundo plano (puede tardar más de 30 min).';
       } else if (errorMsg === 'Failed to fetch') {
         errorMsg = 'No se pudo conectar con el servidor. Verifica que el backend esté corriendo.';
       }
