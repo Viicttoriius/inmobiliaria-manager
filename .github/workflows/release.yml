@@ -136,15 +136,59 @@ jobs:
 
             if [ "$SHOULD_DELETE" = true ]; then
               echo "🗑️ Deleting existing asset: '$asset'"
-              gh release delete-asset "$TAG_NAME" "$asset" -y || echo "⚠️ Failed to delete $asset (might already be gone)"
+              
+              # Retry loop for deletion
+              MAX_RETRIES=3
+              for ((i=1; i<=MAX_RETRIES; i++)); do
+                if gh release delete-asset "$TAG_NAME" "$asset" -y; then
+                  echo "✅ Deleted '$asset'"
+                  break
+                else
+                  echo "⚠️ Attempt $i failed to delete '$asset'"
+                  if [ $i -eq $MAX_RETRIES ]; then
+                    echo "❌ Failed to delete '$asset' after $MAX_RETRIES attempts. Exiting."
+                    exit 1
+                  fi
+                  sleep 2
+                fi
+              done
             else
               echo "⏭️ Skipping asset: '$asset' (Does not match patterns)"
             fi
           done < assets_list.txt
           
-          # Verify cleanup
-          echo "🔍 Verifying remaining assets..."
-          gh release view "$TAG_NAME" --json assets -q '.assets[].name' || echo "No assets remaining."
+          # Verify cleanup loop
+          echo "🔍 Verifying cleanup..."
+          for ((i=1; i<=5; i++)); do
+             REMAINING=$(gh release view "$TAG_NAME" --json assets -q '.assets[].name' 2>/dev/null)
+             
+             FOUND_CONFLICT=false
+             if [ ! -z "$REMAINING" ]; then
+                echo "⚠️ Assets still present: $REMAINING"
+                # Check if any remaining asset matches our patterns
+                for asset in $REMAINING; do
+                   for pattern in "${PATTERNS[@]}"; do
+                      if [[ "$asset" == *"$pattern"* ]]; then
+                         echo "❌ Conflict detected: '$asset' should have been deleted."
+                         FOUND_CONFLICT=true
+                      fi
+                   done
+                done
+             else
+                echo "✅ No assets remaining."
+             fi
+
+             if [ "$FOUND_CONFLICT" = false ]; then
+                echo "✅ Cleanup verified."
+                break
+             fi
+             
+             if [ $i -eq 5 ]; then
+               echo "❌ Cleanup verification failed. Conflicting assets still exist."
+               exit 1
+             fi
+             sleep 3
+          done
           
           rm -f assets_list.txt
 
