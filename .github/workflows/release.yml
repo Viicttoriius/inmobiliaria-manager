@@ -86,8 +86,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          echo "🔐 Checking GitHub CLI Auth Status..."
+          gh auth status
+
           TAG_NAME=${{ github.ref_name }}
-          echo "🔍 Checking for existing assets to clean for tag: $TAG_NAME"
+          echo "🏷️ Target Release Tag: $TAG_NAME"
           
           # Check if release exists
           if ! gh release view "$TAG_NAME" >/dev/null 2>&1; then
@@ -95,20 +98,19 @@ jobs:
             exit 0
           fi
 
-          # Define pattern based on OS/Arch
-          PATTERN=""
+          # Define patterns based on OS/Arch
+          declare -a PATTERNS
           if [ "${{ matrix.os }}" == "windows-latest" ]; then
-            PATTERN=".exe"
+            PATTERNS=(".exe" ".blockmap" "latest.yml")
           elif [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
-            PATTERN=".AppImage"
+            PATTERNS=(".AppImage" ".snap" ".deb" ".rpm" "latest-linux.yml" ".blockmap")
           elif [ "${{ matrix.os }}" == "macos-latest" ]; then
-            PATTERN="-mac-"
+            PATTERNS=(".dmg" ".zip" ".pkg" "latest-mac.yml" ".blockmap" "-mac-")
           fi
 
-          echo "🎯 Searching for assets containing: '$PATTERN' (OS: ${{ matrix.os }})"
+          echo "🎯 Searching for assets matching: ${PATTERNS[*]} (OS: ${{ matrix.os }})"
           
-          # List all assets and delete matches
-          # Use a temporary file to handle potential pipe issues or weird chars
+          # List all assets
           gh release view "$TAG_NAME" --json assets -q '.assets[].name' > assets_list.txt || echo "No assets found or error listing."
           
           if [ ! -s assets_list.txt ]; then
@@ -125,28 +127,24 @@ jobs:
             [ -z "$asset" ] && continue
 
             SHOULD_DELETE=false
-
-            # Check specific pattern
-            if [[ "$asset" == *"$PATTERN"* ]]; then
-              SHOULD_DELETE=true
-            fi
-
-            # Check shared metadata files - Always delete them to force regeneration/update
-            if [ "${{ matrix.os }}" == "windows-latest" ] && [[ "$asset" == "latest.yml" ]]; then
-               SHOULD_DELETE=true
-            elif [ "${{ matrix.os }}" == "ubuntu-latest" ] && [[ "$asset" == "latest-linux.yml" ]]; then
-               SHOULD_DELETE=true
-            elif [ "${{ matrix.os }}" == "macos-latest" ] && [[ "$asset" == "latest-mac.yml" ]]; then
-               SHOULD_DELETE=true
-            fi
+            for pattern in "${PATTERNS[@]}"; do
+              if [[ "$asset" == *"$pattern"* ]]; then
+                SHOULD_DELETE=true
+                break
+              fi
+            done
 
             if [ "$SHOULD_DELETE" = true ]; then
               echo "🗑️ Deleting existing asset: '$asset'"
-              gh release delete-asset "$TAG_NAME" "$asset" -y || echo "⚠️ Failed to delete $asset (might allow overwrite or already gone)"
+              gh release delete-asset "$TAG_NAME" "$asset" -y || echo "⚠️ Failed to delete $asset (might already be gone)"
             else
-              echo "⏭️ Skipping asset: '$asset' (Does not match pattern '$PATTERN')"
+              echo "⏭️ Skipping asset: '$asset' (Does not match patterns)"
             fi
           done < assets_list.txt
+          
+          # Verify cleanup
+          echo "🔍 Verifying remaining assets..."
+          gh release view "$TAG_NAME" --json assets -q '.assets[].name' || echo "No assets remaining."
           
           rm -f assets_list.txt
 
