@@ -1,88 +1,63 @@
 const whatsappScripts = {
+    // 1. Mensaje Inicial (Disparador)
     initial_contact: {
-        label: "Contacto Inicial (General)",
-        text: `Hola, buenos días.  
-Soy Alex Aldazabal Dufurneaux, agente inmobiliario en IAD, estoy ubicado en Dénia. Me pongo en contacto porque tengo clientes interesados en inmuebles con las características del que usted tiene en venta. 
-
-¿Podríamos concertar una visita para conocerlo? Así podré presentarlo correctamente y ofrecerle una opción de venta rápida, segura y sin compromiso. 
-
-Trabajo con una estrategia de marketing muy efectiva y siempre priorizo un trato directo y transparente. 
-
-Quedo a su disposición. ¡Un saludo y que tenga un excelente día! 
-
-Alex – IAD Inmobiliaria`
+        label: "1. Contacto Inicial (Disparador)",
+        text: `Hola, le contacto por la propiedad que tiene en venta`
     },
+
+    // 2. Respuesta a "¿Eres inmobiliaria?" (Bloque Alex Aldazabal)
     objection_agency: {
-        label: "Objeción: ¿Eres agencia?",
-        text: `¡Hola! Soy Alex Aldazabal, tu Agente Inmobiliario en Dénia 🤝. 
+        label: "2. Respuesta a '¿Eres inmobiliaria?'",
+        text: `¡Hola, {{CLIENT_NAME}}! Buenos días. Soy Alex Aldazabal, Asesor Inmobiliario en Dénia 🤝.
+Voy directo al grano:
+Actualmente, gestiono una cartera selecta de compradores nacionales e internacionales que están buscando activamente propiedades con las características como la suya.
 
-Le contacto porque tengo la posibilidad de captar clientes (nacionales e internacionales) buscando activamente una propiedad con las características exactas de la suya. 
+●      Mi Propuesta: En una visita rápida de 20 minutos, le muestro mi Plan de Acción Exclusivo (marketing premium y segmentación avanzada) que garantiza una venta rápida y al mejor precio del mercado.
 
-Mi compromiso: Asegurar una venta rápida y al mejor precio. 
+●      Sin Compromiso: Si mi plan le convence, será un placer ayudarle a vender su propiedad y si no le agradecía por su tiempo.
 
-Como experto local, le ofrezco: 
+¿Podríamos agendar esos 20 minutos esta semana para analizar el potencial de su inmueble?
 
-🥇 Clientes Cualificados: Compradores listos para cerrar la operación. 
-
-📈 Valoración de Mercado Real: Para vender sin perder tiempo ni dinero. 
-
-🔒 Gestión Segura y Transparente (sin ataduras). 
-
-¿Podríamos agendar una visita rápida esta semana para conocer su inmueble y presentarle mi plan de acción sin compromiso? 
-
-Mi objetivo es que venda de forma sencilla y segura. 
-
-Quedo a su disposición. ¡Un saludo!`
+Un cordial saludo, y quedo a su disposición.`
     },
-    followup_15min: {
-        label: "Seguimiento (< 15 min) - Respuesta rápida",
-        text: `¡Hola, buenos días! 👋 
 
-Soy Alex Aldazabal, Agente Inmobiliario Independiente 🏡, y estoy en Dénia. 
-
-Me pongo en contacto porque tengo la posibilidad de captar clientes 🎯, interesados en inmuebles con las características del que usted tiene en venta, tanto nacionales 🇪🇸 como internacionales 🌍. ¡Tenemos una cartera de clientes muy amplia! 😉 
-
-¿Podríamos concertar una visita para conocerlo? 🗓️ Así podré presentarlo correctamente y ofrecerle una opción de venta rápida 🚀, segura 🛡️ y sin compromiso ✅. 
-
-Quedo a su disposición para cualquier duda. 
-
-¡Un saludo cordial y que tenga un excelente día! ☀️😊 
-Alex`
+    // 3. Gestión de Silencios (Secuencia)
+    silence_1: {
+        label: "3a. Silencio (Intento 1)",
+        text: `Este es el anuncio, ¿es correcto? ¿Sigue disponible?`
     },
-    followup_20min: {
-        label: "Seguimiento (< 20 min) - Ya vendido/No interesa",
-        text: `Buenos días, 
-
-Gracias por su respuesta. Lo entiendo perfectamente. 
-
-Quedo a su disposición por si en el futuro cambia de opinión o necesita cualquier tipo de asesoramiento inmobiliario, sin compromiso. 
-
-Le deseo lo mejor con la venta y que tenga un excelente día. 
-
-Un saludo cordial,  
-Alex Aldazabal Dufurneaux  
-Agente Inmobiliario – IAD España`
+    silence_2: {
+        label: "3b. Silencio (Intento 2)",
+        text: `Perdón ¿Sigue a la venta?`
     },
-    followup_next_day: {
-        label: "Seguimiento (Día siguiente) - Último intento",
-        text: `Hola, muy buenas.  
-Espero que todo esté yendo bien.  
-Solo quería consultar si sigue en pie la venta del apartamento del que hablamos hace un tiempo.  
-Quedo a tu disposición por si necesitas apoyo en cualquier momento. 
-
-Un saludo cordial,  
-Alex – IAD Inmobiliaria`
+    silence_3: {
+        label: "3c. Silencio (Último Intento)",
+        text: `Hola de nuevo, no quiero molestar, este es mi último mensaje, si sigue a la venta, mi cliente estará encantada de saber más de su propiedad, si no está disponible o no le interesa, perdón por la molestias 😊✌️`
     },
-    specific_link: {
-        label: "Contacto Específico (con Link)",
-        text: `Hola, buenos días, Sr. Pedro 
-Soy Alex Aldazabal Dufurneaux, agente inmobiliario en IAD, estoy ubicado en Dénia,le contacté hace unos días porque vi su publicación 
-{{LINK}} 
-Reitero mi interés en ayudarte. Hay un punto clave que nos diferencia y que te beneficiaría: 
 
-La mayoría solo publica en portales nacionales... nosotros vamos más allá. Tu propiedad podría estar ahora mismo visible en 85 portales, cubriendo 51 países (¡gracias a nuestra tecnología PRO). 
-Esto multiplica la posibilidad de encontrar al comprador ideal. 
-para mí será un placer ayudarle, estoy a su disposición que tenga un excelente día.`
+    // 4. Gestión de Negativas ("No agencias" Educado)
+    refusal_polite: {
+        label: "4a. Negativa Educada ('Solo particulares')",
+        text: `Hola 🙂
+He visto su publicación y también su indicación de que prefiere gestionar la venta de su propiedad de forma particular.
+Entiendo y respeto completamente su decisión. Le deseo mucho éxito en el proceso.
+
+No obstante, si en algún punto del camino las circunstancias cambian o si valora que un apoyo profesional podría ahorrarle tiempo y garantizar el mejor precio, sepa que tengo las herramientas necesarias para facilitarle la venta de su propiedad, la posibilidad de captar clientes nacionales e internacionales y estoy a su disposición para una conversación sin compromiso.
+
+Sin más,  Alex Aldazabal asesor inmobiliario independiente de iAD España.
+Gracias 🙂`
+    },
+
+    // 5. Gestión de Negativas Directas (Rechazo explícito)
+    refusal_direct: {
+        label: "4b. Negativa Directa ('No quiero agencias')",
+        text: `Entiendo su decisión de vender su propiedad sin ayuda profesional, de igual forma me presento:
+Soy Alex Aldazabal, asesor inmobiliario Independiente.
+
+Si en algún momento del proceso de la venta cambia de opinión recuerde que puede contar con mis servicios inmobiliarios, tengo la posibilidad de captar clientes nacionales e internacionales , interesados en inmuebles con las características del que usted tiene en venta.
+
+Quedo a su disposición. ¡Un saludo y que tenga un excelente día!
+Gracias 🙂`
     }
 };
 

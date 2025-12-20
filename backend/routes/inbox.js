@@ -56,22 +56,28 @@ router.get('/', async (req, res) => {
 
         await connection.openBox('INBOX');
 
-        const searchCriteria = ['ALL'];
+        // Buscar específicamente correos de Fotocasa e Idealista (Remitentes exactos)
+        const searchCriteria = [
+            ['OR', 
+                ['FROM', 'enviosfotocasa@fotocasa.es'], 
+                ['FROM', 'noresponder@idealista.com']
+            ]
+        ];
+
         const fetchOptions = {
             bodies: ['HEADER', 'TEXT'],
             markSeen: false,
             struct: true
         };
 
-        // Obtener últimos 20 correos
+        // Obtener correos
         const messages = await connection.search(searchCriteria, fetchOptions);
         
-        // Ordenar por fecha descendente y tomar los últimos 20
-        // Nota: IMAP devuelve en orden de llegada, pero mejor asegurar
+        // Ordenar por fecha descendente y tomar los últimos 50 (aumentado de 20)
         messages.sort((a, b) => new Date(b.attributes.date) - new Date(a.attributes.date));
-        const recentMessages = messages.slice(0, 20);
+        const recentMessages = messages.slice(0, 50);
 
-        console.log(`📨 Recuperados ${recentMessages.length} correos.`);
+        console.log(`📨 Recuperados ${recentMessages.length} correos de portales.`);
 
         const emails = await Promise.all(recentMessages.map(async (item) => {
             const all = item.parts.find(part => part.which === 'TEXT');

@@ -153,6 +153,16 @@ function initDB() {
         }
     } catch (e) { console.error("Error migrating calendar_events:", e); }
 
+    // Migration: Add automation_status to clients if not exists
+    try {
+        const columns = db.prepare("PRAGMA table_info(clients)").all();
+        const hasAutomation = columns.some(c => c.name === 'automation_status');
+        if (!hasAutomation) {
+            db.exec("ALTER TABLE clients ADD COLUMN automation_status TEXT DEFAULT 'active'"); 
+            console.log("Migration: Added automation_status to clients table");
+        }
+    } catch (e) { console.error("Error migrating clients automation_status:", e); }
+
     // Create emails table
 
     // Create emails table
@@ -735,7 +745,9 @@ function updateClient(id, updates) {
         appointment_date: 'appointment_date',
         contactHistory: 'contact_history',
         contact_history: 'contact_history',
-        notes: 'notes'
+        notes: 'notes',
+        automationStatus: 'automation_status',
+        automation_status: 'automation_status'
     };
 
     for (const [key, value] of Object.entries(updates)) {

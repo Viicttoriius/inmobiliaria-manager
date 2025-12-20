@@ -2360,14 +2360,68 @@ app.post('/api/messages/generate', async (req, res) => {
     const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
     try {
+        // 0. ENRIQUECIMIENTO DE DATOS (PROPIEDAD)
+        let propertyContext = {};
+        if (properties && properties.length > 0) {
+            // Si nos llega una URL (ad_link), intentamos buscar la info completa en la BD
+            const link = properties[0].ad_link || properties[0].url;
+            if (link) {
+                try {
+                    const property = db.prepare('SELECT * FROM properties WHERE url = ?').get(link);
+                    if (property) {
+                        propertyContext = {
+                            type: property.title ? property.title.split(' ')[0] : 'Inmueble', // "Piso en venta..." -> "Piso"
+                            location: property.location || 'su zona',
+                            price: property.price ? `${property.price}€` : null,
+                            description: property.description || '',
+                            url: link
+                        };
+                    } else {
+                        // Si no está en BD, usamos lo poco que tengamos
+                        propertyContext = { url: link, type: 'Propiedad' };
+                    }
+                } catch (e) {
+                    console.error("Error fetching property details for context:", e);
+                    propertyContext = { url: link, type: 'Propiedad' };
+                }
+            }
+        }
+
         // 1. CASO SIN HISTORIAL: Retornar plantilla estática (si existe)
         if (effectiveTemplate && whatsappScripts[effectiveTemplate] && (!history || history.length === 0)) {
             let message = whatsappScripts[effectiveTemplate].text;
             
-            // Reemplazo básico de variables si es necesario
-            if (effectiveTemplate === 'specific_link' && properties && properties.length > 0) {
-                const link = properties[0].ad_link || properties[0].url || 'https://www.idealista.com';
-                message = message.replace('{{LINK}}', link);
+            // Reemplazo INTELIGENTE de variables
+            message = message.replace('{{CLIENT_NAME}}', clientName || '');
+            
+            // Reemplazo de {{LINK}}
+            if (propertyContext.url) {
+                message = message.replace('{{LINK}}', propertyContext.url);
+            }
+
+            // Reemplazo de {{PROPERTY_TYPE}} (Ej: "Piso", "Chalet", "Local")
+            // Si no tenemos tipo, usamos "Propiedad"
+            const typeTerm = propertyContext.type || 'propiedad';
+            // Ajuste gramatical básico (si es 'Piso' -> 'el piso', si es 'Casa' -> 'la casa')
+            // Por simplicidad en esta iteración, reemplazamos el término directo.
+            // En los scripts hemos puesto "propiedad" genérico. Vamos a intentar ser específicos si podemos.
+            
+            // Si el script tiene {{PROPERTY_TYPE}}, lo usamos. Si no, intentamos reemplazar "propiedad" o "inmueble" si tenemos un tipo específico.
+            // Pero para ser seguros, solo reemplazamos si el script tiene el placeholder explícito o si hacemos un replace global de términos genéricos.
+            // ESTRATEGIA: Si tenemos datos específicos, personalizamos.
+            
+            if (propertyContext.type && propertyContext.location) {
+                // "le contacto por su propiedad" -> "le contacto por su Piso en Dénia"
+                // Esto requiere que el script tenga un placeholder o hacemos un replace inteligente.
+                // Vamos a optar por inyectar variables si el script las tuviera, o hacer un replace de "la propiedad" -> "su [TIPO] en [ZONA]"
+                
+                // Opción segura: Reemplazar "la propiedad que tiene en venta" por "su [TIPO] en [UBICACION]"
+                if (message.includes("la propiedad que tiene en venta")) {
+                     message = message.replace("la propiedad que tiene en venta", `su ${propertyContext.type} en ${propertyContext.location}`);
+                }
+                 if (message.includes("su propiedad")) {
+                     message = message.replace("su propiedad", `su ${propertyContext.type}`);
+                }
             }
 
             return res.json({ message, source: 'script_template' });
@@ -2379,34 +2433,59 @@ app.post('/api/messages/generate', async (req, res) => {
              return res.json({ message: "Error: No API Key configured for AI responses.", source: 'error' });
         }
 
-        const AGENTE = "Alex Aldazabal Dufurneaux";
-        const COMPANIA = "IAD Inmobiliaria";
+        const AGENTE = "Alex Aldazabal"; // Quitamos Dufurneaux si prefiere ser más directo
+        const COMPANIA = "IAD Inmobiliaria"; // O "Asesor Independiente" según toque
         
         let systemPrompt = "";
         let goalText = "";
+        
+        // Construir contexto del inmueble para la IA
+        let propertyPromptContext = "";
+        if (propertyContext.url) {
+            propertyPromptContext = `
+DATOS DEL INMUEBLE DEL CLIENTE (USAR PARA PERSONALIZAR):
+- Tipo: ${propertyContext.type || 'Desconocido'}
+- Ubicación: ${propertyContext.location || 'Desconocida'}
+- Precio: ${propertyContext.price || 'Desconocido'}
+- Descripción (Extracto): ${propertyContext.description ? propertyContext.description.substring(0, 300) + '...' : 'No disponible'}
+`;
+        }
 
         // Determinar el OBJETIVO basado en el script seleccionado
         if (effectiveTemplate && whatsappScripts[effectiveTemplate]) {
             goalText = whatsappScripts[effectiveTemplate].text;
-            systemPrompt = `Eres ${AGENTE} de ${COMPANIA}. Tu objetivo es seguir la estrategia del siguiente GUION, pero adaptándote a la conversación actual con el cliente (${clientName}).
+            systemPrompt = `Eres ${AGENTE}, Asesor Inmobiliario (particular/independiente). Tu objetivo es seguir la estrategia del siguiente GUION, pero adaptándote a la conversación actual con el cliente (${clientName}).
+
+${propertyPromptContext}
 
 GUION ORIGINAL (REFERENCIA DE ESTILO Y OBJETIVO):
 "${goalText}"
 
 INSTRUCCIONES:
 - Analiza el historial de conversación.
+- USA LOS DATOS DEL INMUEBLE: Si el cliente vende un "Chalet con piscina", menciónalo. Demuestra que has leído su anuncio.
 - Si el cliente responde positivamente, avanza hacia el cierre (cita/visita).
-- Si el cliente tiene dudas, respóndelas usando la información del guion como base (valoración real, clientes cualificados, etc.).
-- Si el cliente se desvía, redirige sutilmente al objetivo del guion.
-- MANTÉN EL TONO profesional, cercano y directo del guion original.
-- NO copies el guion palabra por palabra si ya no tiene sentido en el contexto (ej. no te vuelvas a presentar si ya lo hiciste).
-- Sé conciso y natural.`;
+- Si el cliente tiene dudas, respóndelas usando la información del guion como base.
+
+REGLAS DE ORO (SEGURIDAD Y HONESTIDAD):
+1. NO MIENTAS NI INVENTES COMPRADORES: Nunca digas "tengo un cliente específico para tu casa" o "tengo una visita lista" si no es cierto.
+2. SI TE PREGUNTAN POR CLIENTES CONCRETOS: Responde que gestionas una cartera de compradores buscando en esa zona/rango, y que necesitas VER la propiedad para saber si encaja con alguno de ellos.
+3. TU OBJETIVO: Vender tu SERVICIO PROFESIONAL y tu PLAN DE MARKETING, no prometer una venta falsa inmediata.
+4. MANTÉN EL TONO profesional, cercano y directo del guion original.
+5. NO copies el guion palabra por palabra si ya no tiene sentido en el contexto.
+6. Sé conciso y natural.
+
+ADAPTACIÓN LINGÜÍSTICA Y DE FORMATO:
+- IDIOMA: Detecta el idioma en el que escribe el cliente (Español, Inglés, Alemán, Francés, etc.) y RESPONDE EN EL MISMO IDIOMA.
+- EMOJIS: Úsalos con moderación (máximo 1 por mensaje) para mantener la seriedad.
+- SEGURIDAD: Si el cliente se muestra agresivo o amenaza legalmente, responde con máxima educación y brevedad, cerrando la conversación sin insistir.`;
 
         } else {
             // Fallback genérico si no hay script seleccionado o es desconocido
-             systemPrompt = `Eres ${AGENTE} de ${COMPANIA}. Estás contactando a ${clientName} sobre su propiedad.
+             systemPrompt = `Eres ${AGENTE}, Asesor Inmobiliario. Estás contactando a ${clientName} sobre su propiedad.
+${propertyPromptContext}
 Objetivo: Concertar una visita para captar el inmueble.
-Tono: Profesional, empático y directo.`;
+Tono: Profesional, empático y directo. Demuestra conocimiento sobre el inmueble específico (tipo, zona, características) si dispones de los datos.`;
         }
 
         // Añadir contexto de historial

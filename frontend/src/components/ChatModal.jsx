@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, RefreshCw, MessageSquare, Bot, Phone, User } from 'lucide-react';
+import { X, Send, RefreshCw, MessageSquare, Bot, Phone, User, PauseCircle, PlayCircle } from 'lucide-react';
 
 const ChatModal = ({ client, onClose, API_URL, onSendMessage, showNotification }) => {
   const [messages, setMessages] = useState([]);
@@ -7,6 +7,8 @@ const ChatModal = ({ client, onClose, API_URL, onSendMessage, showNotification }
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [automationStatus, setAutomationStatus] = useState(client.automation_status || 'active');
+  const [togglingAutomation, setTogglingAutomation] = useState(false);
   const messagesEndRef = useRef(null);
   const [pollInterval, setPollInterval] = useState(null);
 
@@ -25,6 +27,30 @@ const ChatModal = ({ client, onClose, API_URL, onSendMessage, showNotification }
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  const toggleAutomation = async () => {
+    const newStatus = automationStatus === 'active' ? 'paused' : 'active';
+    setTogglingAutomation(true);
+    try {
+        const response = await fetch(`${API_URL}/clients/${client.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ automation_status: newStatus })
+        });
+        
+        if (response.ok) {
+            setAutomationStatus(newStatus);
+            if (showNotification) showNotification(`Bot ${newStatus === 'active' ? 'ACTIVADO' : 'PAUSADO'}`, 'success');
+        } else {
+            if (showNotification) showNotification('Error actualizando estado del bot', 'error');
+        }
+    } catch (error) {
+        console.error('Error toggling automation:', error);
+        if (showNotification) showNotification('Error de conexión', 'error');
+    } finally {
+        setTogglingAutomation(false);
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -91,13 +117,27 @@ const ChatModal = ({ client, onClose, API_URL, onSendMessage, showNotification }
       const defaultScript = localStorage.getItem('whatsapp_default_script') || 'initial_contact';
       const defaultModel = localStorage.getItem('whatsapp_default_model') || 'openai/gpt-oss-20b:free';
 
+      // 1. Intentar obtener contexto de propiedad si el cliente tiene ad_link
+      let contextProperties = [];
+      if (client.ad_link) {
+          try {
+            // Buscamos la propiedad en la base de datos local del frontend si es posible, 
+            // o enviamos el link para que el backend la busque.
+            // Al ser un modal, no tenemos acceso directo al estado 'properties' de App.jsx fácilmente sin prop drilling.
+            // Lo más robusto es enviar el ad_link y que el backend resuelva.
+            // Pero para el prompt inmediato, podemos enviar un objeto básico si lo tuviéramos.
+            // Vamos a enviar el ad_link en la petición.
+            contextProperties = [{ url: client.ad_link }];
+          } catch (e) { console.error("Error setting property context", e); }
+      }
+
       const response = await fetch(`${API_URL}/messages/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clientName: client.name,
           clientPhone: client.phone,
-          properties: [], // No specific property context for general chat, or maybe fetch?
+          properties: contextProperties, 
           preferences: client.preferences,
           model: defaultModel,
           scriptType: defaultScript,
@@ -147,9 +187,36 @@ const ChatModal = ({ client, onClose, API_URL, onSendMessage, showNotification }
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{client.phone}</span>
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
-            <X size={24} />
-          </button>
+          <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+              <button 
+                  onClick={toggleAutomation} 
+                  disabled={togglingAutomation}
+                  title={automationStatus === 'active' ? "Pausar Bot" : "Activar Bot"}
+                  style={{ 
+                      background: 'none', 
+                      border: 'none', 
+                      cursor: 'pointer', 
+                      color: automationStatus === 'active' ? '#22c55e' : '#ef4444',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      fontSize: '0.85rem',
+                      fontWeight: 'bold',
+                      backgroundColor: automationStatus === 'active' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                      padding: '6px 12px',
+                      borderRadius: '20px'
+                  }}
+              >
+                  {togglingAutomation ? <RefreshCw size={16} className="spinning" /> : (
+                      automationStatus === 'active' ? 
+                      <><PauseCircle size={16} /> BOT ON</> : 
+                      <><PlayCircle size={16} /> BOT PAUSED</>
+                  )}
+              </button>
+              <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+                <X size={24} />
+              </button>
+          </div>
         </div>
 
         {/* Messages Area */}
