@@ -55,6 +55,22 @@ const InboxPanel = ({ API_URL, showNotification, onOpenConfig }) => {
     } catch { return dateStr; }
   };
 
+  // Helper para formatear direcciones de correo y evitar errores de objetos en React
+  const formatAddress = (val) => {
+    if (!val) return '';
+    if (Array.isArray(val)) {
+      return val.map(v => formatAddress(v)).join(', ');
+    }
+    if (typeof val === 'object' && val !== null) {
+      // Manejar objeto {address, name} que causa el error React #31
+      if (val.name && val.address) {
+        return `${val.name} <${val.address}>`;
+      }
+      return val.address || val.name || '';
+    }
+    return String(val);
+  };
+
   return (
     <div className="inbox-container" style={{ display: 'flex', height: 'calc(100vh - 100px)', gap: '1rem' }}>
       {/* Left List Panel */}
@@ -120,7 +136,7 @@ const InboxPanel = ({ API_URL, showNotification, onOpenConfig }) => {
                 className="email-item-hover"
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                  <span style={{ fontWeight: 'bold', color: 'var(--text)' }}>{email.from.replace(/<.*>/, '').trim()}</span>
+                  <span style={{ fontWeight: 'bold', color: 'var(--text)' }}>{formatAddress(email.from).replace(/<.*>/, '').trim()}</span>
                   <span>{formatDate(email.date)}</span>
                 </div>
                 <div style={{ fontSize: '0.9rem', fontWeight: '500', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -152,9 +168,9 @@ const InboxPanel = ({ API_URL, showNotification, onOpenConfig }) => {
               <h2 style={{ margin: '0 0 1rem 0', fontSize: '1.5rem' }}>{selectedEmail.subject}</h2>
               <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
                 <div>
-                  <strong>De:</strong> {selectedEmail.from}
+                  <strong>De:</strong> {formatAddress(selectedEmail.from)}
                   <br />
-                  <strong>Para:</strong> {Array.isArray(selectedEmail.to) ? selectedEmail.to.join(', ') : selectedEmail.to}
+                  <strong>Para:</strong> {formatAddress(selectedEmail.to)}
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   {formatDate(selectedEmail.date)}
