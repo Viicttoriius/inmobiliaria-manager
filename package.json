@@ -21,6 +21,7 @@
     "appId": "com.victormunoz.inmobiliaria",
     "productName": "Inmobiliaria Manager",
     "copyright": "Copyright © 2025 Victor Muñoz Lopez",
+    "beforePack": "scripts/beforePack.js",
     "afterPack": "scripts/afterPack.js",
     "directories": {
       "output": "dist"
