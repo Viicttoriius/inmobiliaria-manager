@@ -807,7 +807,20 @@ const initializeWhatsApp = async () => {
         await whatsappClient.initialize();
     } catch (err) {
         console.error('❌ Error fatal al inicializar WhatsApp Client:', err);
-        Sentry.captureException(err);
+        
+        // Filtrar errores operativos conocidos
+        const msg = err.message || '';
+        const isKnownError = msg.includes('waiting for target failed: timeout') || 
+                             msg.includes('Target closed') ||
+                             msg.includes('Protocol error') ||
+                             msg.includes('Navigation failed because browser has disconnected');
+
+        if (!isKnownError) {
+            Sentry.captureException(err);
+        } else {
+            console.warn(`⚠️ Error operativo conocido (no enviado a Sentry): ${msg}`);
+        }
+
         whatsappLastError = err.message || 'Error desconocido al inicializar';
 
         // Nuevo: Si es error de timeout (selector) o evaluación, borrar caché de autenticación para forzar reinicio limpio
