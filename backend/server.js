@@ -1,5 +1,15 @@
 const Sentry = require('@sentry/node');
+const path = require('path');
+
+// Cargar variables de entorno con prioridad:
+// 1. process.env (ya cargado por sistema)
+// 2. USER_DATA_PATH/.env (configuración persistente en producción)
+// 3. .env local (desarrollo)
+if (process.env.USER_DATA_PATH) {
+    require('dotenv').config({ path: path.join(process.env.USER_DATA_PATH, '.env') });
+}
 require('dotenv').config();
+
 // --- INICIALIZACIÓN SENTRY BACKEND ---
 Sentry.init({
     dsn: "https://15bf6ed890e254dc94272dd272911ddd@o4510509929857024.ingest.de.sentry.io/4510509939032144",
@@ -816,6 +826,29 @@ app.get('/api/scraper/fotocasa/run', (req, res) => {
 });
 app.get('/api/scraper/idealista/run', (req, res) => {
     res.status(405).json({ error: 'Method Not Allowed', message: 'This endpoint requires a POST request. Use the application interface to run scrapers.' });
+});
+
+// Endpoint unificado para correr scrapers (Disparado desde InboxPanel)
+app.post('/api/scraper/run', async (req, res) => {
+    try {
+        console.log('🚀 Iniciando escaneo manual de portales (solicitado por usuario)...');
+        
+        // 1. Forzar chequeo de emails (busca nuevas URLs)
+        emailService.checkEmails();
+
+        // 2. Ejecutar scrapers de portales en paralelo (si están habilitados/configurados)
+        // Nota: Idealmente deberíamos llamar a la función interna, pero aquí simulamos la llamada a los endpoints existentes
+        // O mejor, invocamos los scrapers directamente si tenemos acceso a la lógica.
+        // Dado que runPythonScraper es interno, lo invocamos.
+
+        const runFotocasa = runPythonScraper(path.join(SCRAPERS_DIR, 'fotocasa_scraper.py'), null, 'fotocasa-manual', ['--headless']);
+        const runIdealista = runPythonScraper(path.join(SCRAPERS_DIR, 'idealista_scraper.py'), null, 'idealista-manual', ['--headless']);
+
+        res.json({ success: true, message: 'Scrapers iniciados en segundo plano.' });
+    } catch (error) {
+        console.error('❌ Error iniciando scrapers manuales:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
 });
 
 // ============ RUTAS DE CONFIGURACIÓN ============
@@ -1914,7 +1947,10 @@ async function processPropertyUpdates(urls) {
             if (newClientMatches) newClientsCount = newClientMatches.length;
         } catch (e) {}
 
-        return { success: true, updatedCount: successCount, newClientsCount };
+        // Usamos updatedProperties.length como la cuenta real de éxito (propiedades scrapeadas y guardadas en DB)
+        const totalProcessed = updatedProperties.length;
+
+        return { success: true, updatedCount: successCount, newClientsCount, totalProcessed };
 
     } catch (error) {
         console.error('❌ Error en el proceso de actualización de propiedades:', error);
@@ -3011,17 +3047,46 @@ app.listen(PORT, () => {
     // Iniciar monitor de email con callback para procesar URLs
     emailService.startMonitoring(async (url, source) => {
         console.log(`📧 URL detectada por email (${source}): ${url}`);
+        
+        // Notificar inicio de procesamiento (opcional, para feedback inmediato)
+        notifier.notify({
+            title: 'Alerta Inmobiliaria Detectada',
+            message: `Procesando enlace de ${source}...`,
+            sound: false // Silencioso para no molestar si hay muchos
+        });
+
         try {
             // processPropertyUpdates espera un array de URLs
             const result = await processPropertyUpdates([url]);
+            
             if (result.success) {
                 console.log(`✅ Propiedad actualizada desde email: ${url}`);
-                // Notificar al frontend si es posible (opcional, por ahora solo log)
+                
+                // Notificar ÉXITO al usuario
+                notifier.notify({
+                    title: '¡Nueva Oportunidad Captada!',
+                    message: `Se ha importado correctamente una propiedad de ${source}.`,
+                    sound: 'Hero', // Sonido distintivo de éxito
+                    wait: false
+                });
+
             } else {
                 console.error(`❌ Error actualizando propiedad desde email: ${result.error}`);
+                
+                // Notificar ERROR
+                notifier.notify({
+                    title: 'Error Importando Alerta',
+                    message: `No se pudo procesar el enlace de ${source}. Revisa el log.`,
+                    sound: 'Basso'
+                });
             }
         } catch (error) {
             console.error(`❌ Error crítico procesando URL de email:`, error);
+            notifier.notify({
+                title: 'Error Crítico Scraper Email',
+                message: `Ocurrió un error inesperado al procesar la alerta.`,
+                sound: 'Sosumi'
+            });
         }
     });
 });

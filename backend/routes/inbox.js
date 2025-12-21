@@ -92,7 +92,8 @@ router.get('/', async (req, res) => {
                     from: item.parts.find(p => p.which === 'HEADER').body.from[0],
                     subject: item.parts.find(p => p.which === 'HEADER').body.subject[0],
                     date: item.attributes.date,
-                    body: mail.text ? mail.text.substring(0, 200) + '...' : '(Sin vista previa)'
+                    body: mail.text ? mail.text.substring(0, 200) + '...' : '(Sin vista previa)',
+                    seen: item.attributes.flags && item.attributes.flags.includes('\\Seen')
                 };
             } catch (err) {
                  return {
@@ -100,7 +101,8 @@ router.get('/', async (req, res) => {
                     from: item.parts.find(p => p.which === 'HEADER').body.from ? item.parts.find(p => p.which === 'HEADER').body.from[0] : 'Desconocido',
                     subject: item.parts.find(p => p.which === 'HEADER').body.subject ? item.parts.find(p => p.which === 'HEADER').body.subject[0] : 'Sin asunto',
                     date: item.attributes.date,
-                    body: '(Error analizando cuerpo)'
+                    body: '(Error analizando cuerpo)',
+                    seen: item.attributes.flags && item.attributes.flags.includes('\\Seen')
                 };
             }
         }));

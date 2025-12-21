@@ -6,6 +6,7 @@ const InboxPanel = ({ API_URL, showNotification, onOpenConfig }) => {
   const [selectedEmail, setSelectedEmail] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingBody, setLoadingBody] = useState(false);
+  const [runningScraper, setRunningScraper] = useState(false);
   const [error, setError] = useState(null);
 
   const fetchEmails = async () => {
@@ -25,6 +26,27 @@ const InboxPanel = ({ API_URL, showNotification, onOpenConfig }) => {
       showNotification(`Error cargando bandeja: ${err.message}`, 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRunScraper = async () => {
+    setRunningScraper(true);
+    showNotification('Iniciando scraper de portales...', 'info');
+    try {
+      const res = await fetch(`${API_URL}/scraper/run`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        showNotification('Scrapers iniciados correctamente.', 'success');
+        // Opcional: Recargar emails después de un tiempo
+        setTimeout(fetchEmails, 5000);
+      } else {
+        showNotification('Error iniciando scrapers: ' + (data.error || 'Desconocido'), 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showNotification('Error de conexión al iniciar scrapers', 'error');
+    } finally {
+      setRunningScraper(false);
     }
   };
 
@@ -87,13 +109,24 @@ const InboxPanel = ({ API_URL, showNotification, onOpenConfig }) => {
           <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Mail size={20} /> Bandeja
           </h3>
-          <button 
-            onClick={fetchEmails} 
-            disabled={loading}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text)' }}
-          >
-            <RefreshCw size={18} className={loading ? 'spinning' : ''} />
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button 
+              onClick={handleRunScraper} 
+              disabled={runningScraper}
+              title="Escanear Portales (Fotocasa/Idealista)"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text)', display: 'flex', alignItems: 'center' }}
+            >
+              <Search size={18} className={runningScraper ? 'spinning' : ''} />
+            </button>
+            <button 
+              onClick={fetchEmails} 
+              disabled={loading}
+              title="Actualizar Bandeja"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text)' }}
+            >
+              <RefreshCw size={18} className={loading ? 'spinning' : ''} />
+            </button>
+          </div>
         </div>
 
         <div className="email-list-content" style={{ overflowY: 'auto', flex: 1 }}>
@@ -136,10 +169,10 @@ const InboxPanel = ({ API_URL, showNotification, onOpenConfig }) => {
                 className="email-item-hover"
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                  <span style={{ fontWeight: 'bold', color: 'var(--text)' }}>{formatAddress(email.from).replace(/<.*>/, '').trim()}</span>
-                  <span>{formatDate(email.date)}</span>
+                  <span style={{ fontWeight: email.seen ? 'normal' : 'bold', color: 'var(--text)' }}>{formatAddress(email.from).replace(/<.*>/, '').trim()}</span>
+                  <span style={{ fontWeight: email.seen ? 'normal' : 'bold' }}>{formatDate(email.date)}</span>
                 </div>
-                <div style={{ fontSize: '0.9rem', fontWeight: '500', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: '0.9rem', fontWeight: email.seen ? '500' : 'bold', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {email.subject}
                 </div>
               </div>
