@@ -953,29 +953,43 @@ app.post('/api/scraper/rescrape-email', async (req, res) => {
 
         // 3. Extraer URL
         const source = fromLine.includes('fotocasa') ? 'fotocasa' : (fromLine.includes('idealista') ? 'idealista' : 'unknown');
-        let propertyUrl = null;
+        let propertyUrls = [];
 
         if (source === 'idealista') {
-            const urlRegex = /https:\/\/www\.idealista\.com\/inmueble\/\d+\/?/;
-            const match = mail.text ? mail.text.match(urlRegex) : (mail.html ? mail.html.match(urlRegex) : null);
-            propertyUrl = match ? match[0] : null;
+            const urlRegex = /https:\/\/www\.idealista\.com\/inmueble\/\d+\/?/g;
+            const matchesText = mail.text ? mail.text.match(urlRegex) : [];
+            const matchesHtml = mail.html ? mail.html.match(urlRegex) : [];
+            propertyUrls = [...new Set([...(matchesText || []), ...(matchesHtml || [])])];
         } else if (source === 'fotocasa') {
-            const urlRegex = /https:\/\/www\.fotocasa\.es\/es\/[\w-]+\/[\w-]+\/[\w-]+\/[\w-]+\/\d+\/d/;
-            const match = mail.text ? mail.text.match(urlRegex) : (mail.html ? mail.html.match(urlRegex) : null);
-            propertyUrl = match ? match[0] : null;
+            // Regex generalizada para capturar URLs de Fotocasa de cualquier tipo (vivienda, terreno, local, etc.)
+            // Busca patrones que terminen en /ID/d
+            const urlRegex = /https:\/\/www\.fotocasa\.es\/es\/(?:comprar|alquiler|traspaso)\/[\w-]+\/[^\/]+\/[^\/]+\/\d+\/d(?:\?[\w=&-]+)?/g;
+            
+            const matchesText = mail.text ? mail.text.match(urlRegex) : [];
+            const matchesHtml = mail.html ? mail.html.match(urlRegex) : [];
+            propertyUrls = [...new Set([...(matchesText || []), ...(matchesHtml || [])])];
         }
 
-        if (!propertyUrl) {
-            return res.status(400).json({ error: 'No se encontró URL de propiedad en el correo' });
+        if (propertyUrls.length === 0) {
+            return res.status(400).json({ error: 'No se encontraron URLs de propiedad en el correo' });
         }
 
-        console.log(`   🔗 URL encontrada para re-escaneo: ${propertyUrl}`);
+        console.log(`   🔗 URLs encontradas para re-escaneo (${propertyUrls.length}):`, propertyUrls);
 
-        // 4. Ejecutar scraper de actualización
+        // 4. Ejecutar scraper de actualización con TODAS las URLs
+        // Guardamos las URLs en un archivo temporal para pasarlas al script
+        const tempUrlsFile = path.join(SCRAPERS_DIR, `temp_urls_${uid}.json`);
+        fs.writeFileSync(tempUrlsFile, JSON.stringify(propertyUrls));
+
         const scriptPath = path.join(SCRAPERS_DIR, 'update_scraper.py');
-        runPythonScraper(scriptPath, null, `rescrape-${uid}`, [propertyUrl]);
+        runPythonScraper(scriptPath, null, `rescrape-${uid}`, [tempUrlsFile]);
 
-        res.json({ success: true, message: 'Re-escaneo iniciado', url: propertyUrl });
+        // Programar eliminación del archivo temporal después de un tiempo prudencial (ej. 5 minutos)
+        setTimeout(() => {
+            if (fs.existsSync(tempUrlsFile)) fs.unlinkSync(tempUrlsFile);
+        }, 300000);
+
+        res.json({ success: true, message: 'Re-escaneo iniciado', urls: propertyUrls });
 
     } catch (error) {
         console.error('❌ Error en re-escaneo:', error);

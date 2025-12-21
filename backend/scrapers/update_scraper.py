@@ -8,12 +8,17 @@ from datetime import datetime
 # Añadir el directorio 'fotocasa' al path para poder importar el módulo
 current_dir = os.path.dirname(os.path.abspath(__file__))
 fotocasa_dir = os.path.join(current_dir, 'fotocasa')
+idealista_dir = os.path.join(current_dir, 'idealista')
 sys.path.append(fotocasa_dir)
+sys.path.append(idealista_dir)
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException
+
+# Importar scraper de Idealista
+from run_idealista_single import scrape_single_url as scrape_idealista_raw
 
 # Importar todas las funciones necesarias del scraper principal
 from Fotocasa_scraping_selenium import (
@@ -110,8 +115,38 @@ def scrape_single_url(driver, url):
     """
     Scrapea una URL usando un driver existente.
     Retorna un diccionario con los datos o None si falla.
+    Soporta Fotocasa e Idealista.
     """
     try:
+        # --- LÓGICA IDEALISTA ---
+        if "idealista.com" in url:
+            print(f"  ℹ️ Detectada URL de Idealista: {url}", file=sys.stderr)
+            
+            # Usar la función importada de Idealista
+            # Nota: run_idealista_single ya tiene lógica de espera y cookies
+            raw_data = scrape_idealista_raw(url, driver)
+            
+            if not raw_data:
+                print(f"  ⚠️ Idealista scraper retornó vacío para {url}", file=sys.stderr)
+                return None
+            
+            # Mapear datos al formato esperado por save_client_from_property
+            updated_details = {
+                "url": raw_data.get("url"),
+                "Price": raw_data.get("price"),
+                "Title": raw_data.get("title"),
+                "Advertiser": raw_data.get("advertiser"),
+                "Phone": raw_data.get("phone"),
+                # Idealista no siempre da municipio claro en el objeto, usamos el título o extra data
+                "Municipality": "Idealista", 
+                "Description": raw_data.get("extra_data", {}).get("stats_text", "")
+            }
+            
+            # Guardar cliente
+            save_client_from_property(updated_details)
+            return updated_details
+
+        # --- LÓGICA FOTOCASA (Original) ---
         driver.get(url)
         
         # Ejecutar las funciones de navegación y anti-detección silenciando su salida

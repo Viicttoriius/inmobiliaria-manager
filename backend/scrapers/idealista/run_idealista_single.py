@@ -84,10 +84,15 @@ def setup_driver(headless=False):
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     return driver
 
-def scrape_single_url(url):
+def scrape_single_url(url, driver=None):
     # Usar stderr para logs para no ensuciar stdout (que es para el JSON final)
     sys.stderr.write(f"Scraping single URL: {url}\n")
-    driver = setup_driver(headless=False) # Visual para evitar bloqueos
+    
+    should_close_driver = False
+    if driver is None:
+        driver = setup_driver(headless=False) # Visual para evitar bloqueos
+        should_close_driver = True
+        
     result = None
 
     try:
@@ -353,7 +358,7 @@ def scrape_single_url(url):
     except Exception as e:
         sys.stderr.write(f"Error scraping url: {e}\n")
     finally:
-        if driver:
+        if should_close_driver and driver:
             driver.quit()
         
     return result
