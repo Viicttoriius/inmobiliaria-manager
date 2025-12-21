@@ -28,15 +28,15 @@ jobs:
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
             echo "✅ Release $TAG_NAME already exists. Skipping creation."
           else
-            echo "✨ Creating new draft release..."
+            echo "✨ Creating new published release..."
             NOTES_FILE="RELEASE_NOTES_${TAG_NAME}.md"
             
             if [ -f "$NOTES_FILE" ]; then
               echo "📝 Found release notes file: $NOTES_FILE"
-              gh release create "$TAG_NAME" --title "$TAG_NAME" --notes-file "$NOTES_FILE" --draft --prerelease=false
+              gh release create "$TAG_NAME" --title "$TAG_NAME" --notes-file "$NOTES_FILE" --prerelease=false
             else
               echo "📝 Generating automatic notes"
-              gh release create "$TAG_NAME" --title "$TAG_NAME" --generate-notes --draft --prerelease=false
+              gh release create "$TAG_NAME" --title "$TAG_NAME" --generate-notes --prerelease=false
             fi
             echo "✅ Release created successfully!"
           fi
