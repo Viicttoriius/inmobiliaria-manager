@@ -1009,8 +1009,11 @@ app.post('/api/scraper/rescrape-email', async (req, res) => {
         const mail = await simpleParser(idHeader + all.body);
 
         // 3. Extraer URL
-        const source = fromLine.includes('fotocasa') ? 'fotocasa' : (fromLine.includes('idealista') ? 'idealista' : 'unknown');
+        const lowerFrom = fromLine.toLowerCase();
+        const source = lowerFrom.includes('fotocasa') ? 'fotocasa' : (lowerFrom.includes('idealista') ? 'idealista' : 'unknown');
         let propertyUrls = [];
+
+        console.log(`   📧 Fuente detectada para UID ${uid}: ${source} (From: ${fromLine})`);
 
         if (source === 'idealista') {
             const urlRegex = /https:\/\/www\.idealista\.com\/inmueble\/\d+\/?/g;
@@ -1018,24 +1021,40 @@ app.post('/api/scraper/rescrape-email', async (req, res) => {
             const matchesHtml = mail.html ? mail.html.match(urlRegex) : [];
             propertyUrls = [...new Set([...(matchesText || []), ...(matchesHtml || [])])];
         } else if (source === 'fotocasa') {
-            // Regex generalizada para capturar URLs de Fotocasa de cualquier tipo (vivienda, terreno, local, etc.)
-            // Busca patrones que terminen en /ID/d
-            const urlRegex = /https:\/\/www\.fotocasa\.es\/es\/(?:comprar|alquiler|traspaso)\/[\w-]+\/[^\/]+\/[^\/]+\/\d+\/d(?:\?[\w=&-]+)?/g;
+            // Regex robusta para capturar URLs de Fotocasa
+            // Captura cualquier URL de fotocasa.es/es/... que contenga dígitos y termine en /d o similar
+            // Usa lazy matching .*? para cubrir cualquier estructura de ruta intermedia
+            const urlRegex = /https:\/\/www\.fotocasa\.es\/es\/.*?\/\d+\/d(?:\?[\w=&-]+)?/g;
             
             const matchesText = mail.text ? mail.text.match(urlRegex) : [];
             const matchesHtml = mail.html ? mail.html.match(urlRegex) : [];
             propertyUrls = [...new Set([...(matchesText || []), ...(matchesHtml || [])])];
+            
+            // Fallback: Si no encuentra con /d, buscar patrones de ID numérico largo si la URL contiene fotocasa.es
+            if (propertyUrls.length === 0) {
+                 console.log('   ⚠️ Regex estricta de Fotocasa falló. Intentando búsqueda amplia...');
+                 // Busca cualquier link de fotocasa
+                 const broadRegex = /https:\/\/www\.fotocasa\.es\/es\/[^\s"']+/g;
+                 const allLinks = [...(mail.text?.match(broadRegex) || []), ...(mail.html?.match(broadRegex) || [])];
+                 // Filtrar los que parecen tener un ID (numeros de >7 digitos)
+                 propertyUrls = [...new Set(allLinks.filter(url => /\/\d{7,}\//.test(url) || url.endsWith('/d')))];
+            }
         }
 
         if (propertyUrls.length === 0) {
+            console.warn(`⚠️ No se encontraron URLs en correo UID ${uid}. Source: ${source}`);
+            console.warn('--- Snippet del correo ---');
+            console.warn(mail.text ? mail.text.substring(0, 500) : 'Sin texto plano');
+            console.warn('--------------------------');
             return res.status(400).json({ error: 'No se encontraron URLs de propiedad en el correo' });
         }
 
         console.log(`   🔗 URLs encontradas para re-escaneo (${propertyUrls.length}):`, propertyUrls);
 
         // 4. Ejecutar scraper de actualización con TODAS las URLs
-        // Guardamos las URLs en un archivo temporal para pasarlas al script
-        const tempUrlsFile = path.join(SCRAPERS_DIR, `temp_urls_${uid}.json`);
+        // Guardamos las URLs en un archivo temporal del sistema (os.tmpdir) para evitar problemas de permisos en Program Files
+        const os = require('os');
+        const tempUrlsFile = path.join(os.tmpdir(), `inmobiliaria_temp_urls_${uid}.json`);
         fs.writeFileSync(tempUrlsFile, JSON.stringify(propertyUrls));
 
         const scriptPath = path.join(SCRAPERS_DIR, 'update_scraper.py');
