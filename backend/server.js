@@ -867,13 +867,40 @@ try {
 }
 
 // --- CONFIGURACIÓN EMAIL (NODEMAILER) ---
+
+// Función helper para obtener configuración de email (Env o JSON)
+const getEmailConfig = () => {
+    let config = {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+    };
+
+    // Intentar cargar de archivo de configuración (prioridad sobre ENV)
+    try {
+        const BASE_PATH = process.env.USER_DATA_PATH || process.env.APPDATA || path.join(__dirname, '..');
+        const CONFIG_FILE = path.join(BASE_PATH, 'data', 'email_config.json');
+        
+        if (fs.existsSync(CONFIG_FILE)) {
+            const savedConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+            if (savedConfig.email && savedConfig.password) {
+                config.user = savedConfig.email;
+                config.pass = savedConfig.password;
+            }
+        }
+    } catch (e) {
+        console.error('Error cargando configuración de email:', e);
+    }
+    return config;
+};
+
 // Función para crear el transporter con credenciales actualizadas
 const createTransporter = () => {
+    const config = getEmailConfig();
     return nodemailer.createTransport({
         service: 'gmail',
         auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS
+            user: config.user,
+            pass: config.pass
         },
         tls: {
             rejectUnauthorized: false
@@ -889,13 +916,29 @@ const notifyUser = async (options) => {
     notifier.notify(options);
 
     // 2. Notificación por Email
-    // Solo si tenemos credenciales y el usuario lo ha solicitado implícitamente al tenerlas configuradas
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    // Obtener configuración actual
+    const config = getEmailConfig();
+
+    // Solo si tenemos credenciales configuradas
+    if (config.user && config.pass) {
         try {
-            console.log('   📧 Enviando copia de notificación por email...');
-            await emailTransporter.sendMail({
-                from: process.env.EMAIL_USER,
-                to: process.env.EMAIL_USER, // Auto-envío
+            console.log(`   📧 Enviando copia de notificación por email a ${config.user}...`);
+            
+            // Crear transporter on-the-fly para asegurar credenciales frescas
+            const transporter = nodemailer.createTransport({
+                service: 'gmail',
+                auth: {
+                    user: config.user,
+                    pass: config.pass
+                },
+                tls: {
+                    rejectUnauthorized: false
+                }
+            });
+
+            await transporter.sendMail({
+                from: config.user,
+                to: config.user, // Auto-envío
                 subject: `[Notificación Sistema] ${options.title}`,
                 text: `${options.message}\n\n--\nNotificación generada automáticamente por Inmobiliaria Manager.`
             });
@@ -3011,14 +3054,29 @@ app.post('/api/support', async (req, res) => {
         return res.status(400).json({ error: 'El mensaje es obligatorio' });
     }
 
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    const config = getEmailConfig();
+
+    if (!config.user || !config.pass) {
         return res.status(500).json({ error: 'Faltan credenciales de email en el servidor.' });
     }
 
     try {
         console.log(`   📧 Enviando solicitud de soporte a ${DEVELOPER_EMAIL}...`);
-        await emailTransporter.sendMail({
-            from: process.env.EMAIL_USER,
+        
+        // Usar credenciales dinámicas
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: config.user,
+                pass: config.pass
+            },
+            tls: {
+                rejectUnauthorized: false
+            }
+        });
+
+        await transporter.sendMail({
+            from: config.user,
             to: DEVELOPER_EMAIL,
             subject: `[Soporte Inmobiliaria] ${subject || 'Consulta General'}`,
             text: `Mensaje enviado por: ${userEmail || 'Usuario Anónimo'}\n\n${message}`
