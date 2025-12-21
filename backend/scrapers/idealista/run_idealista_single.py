@@ -72,6 +72,17 @@ def setup_driver(headless=False):
         # User Agent Random / Specific for macOS
         if system == 'Darwin':
              options.add_argument('user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+             
+             # MacOS Specific: Check for Chrome in Applications if not in PATH
+             # Common paths for Chrome on macOS
+             mac_chrome_paths = [
+                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                "/Applications/Chromium.app/Contents/MacOS/Chromium"
+             ]
+             for path in mac_chrome_paths:
+                if os.path.exists(path):
+                    options.binary_location = path
+                    break
         else:
              options.add_argument('user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
         

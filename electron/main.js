@@ -6,7 +6,23 @@ const Sentry = require('@sentry/electron/main');
 
 Sentry.init({
   dsn: "https://15bf6ed890e254dc94272dd272911ddd@o4510509929857024.ingest.de.sentry.io/4510509939032144",
-  debug: false
+  debug: false,
+  beforeSend(event, hint) {
+    const error = hint.originalException;
+    if (error) {
+        const errorMessage = (error.message || error.toString() || '').toLowerCase();
+        
+        // Filtrar errores conocidos de AutoUpdater y Electron que son ruido
+        if (
+            errorMessage.includes('no files provided') ||
+            errorMessage.includes('net::err_connection_refused') ||
+            errorMessage.includes('cannot find latest')
+        ) {
+            return null; // Ignorar este evento
+        }
+    }
+    return event;
+  }
 });
 
 let mainWindow;
@@ -97,22 +113,20 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../frontend/dist/index.html'));
   }
 
-    // Comprobar actualizaciones al iniciar
+  // Manejar apertura de enlaces externos en el navegador predeterminado
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // Si la URL es externa (http/https), abrirla en el navegador del sistema
+    if (url.startsWith('http:') || url.startsWith('https:')) {
+      require('electron').shell.openExternal(url);
+      return { action: 'deny' };
+    }
+    return { action: 'allow' };
+  });
+
+  // Comprobar actualizaciones al iniciar
   if (!isDev) {
     autoUpdater.autoDownload = false;
     
-    // Manejo de errores de actualización para evitar ruido en Sentry
-    autoUpdater.on('error', (error) => {
-        const msg = error.message || '';
-        // Ignorar error 404 y "No files provided" (común cuando no hay release o artifacts válidos)
-        if (msg.includes('404') || msg.includes('Cannot find latest') || msg.includes('No files provided')) {
-            console.warn('⚠️ AutoUpdater: No se encontró actualización (posiblemente falta el archivo YAML). Ignorando.');
-        } else {
-            console.error('❌ AutoUpdater Error:', error);
-            Sentry.captureException(error);
-        }
-    });
-
     autoUpdater.checkForUpdates().catch(err => {
         // Catch inicial por si falla síncronamente
         console.warn('⚠️ AutoUpdater check failed:', err.message);
@@ -361,17 +375,44 @@ autoUpdater.on('update-not-available', (info) => {
 });
 
 autoUpdater.on('error', (err) => {
-  console.log('Error in auto-updater. ' + err);
+  const msg = err.message || '';
+  console.log('Error in auto-updater. ' + msg);
   
-  // Si el error es 404 buscando latest.yml, probablemente no hay actualizaciones o la release no está lista.
-  // Tratamos esto como "no hay actualizaciones" para evitar asustar al usuario.
-  if (err.message && err.message.includes('404') && err.message.includes('latest.yml')) {
-    console.log('Suppressing 404 error for latest.yml - treating as update-not-available');
-    if (mainWindow) mainWindow.webContents.send('update-status', { status: 'not-available', info: { version: 'latest' } });
+  // FILTRADO DE ERRORES CONOCIDOS (Sentry & UI)
+  // Ignorar error 404, "Cannot find latest" y "No files provided" (común cuando no hay release o artifacts válidos)
+  if (msg.includes('404') || msg.includes('Cannot find latest') || msg.includes('No files provided')) {
+    console.log('⚠️ Suppressing expected AutoUpdater error - treating as update-not-available');
+    
+    // Notificar a la UI que no hay actualización (en lugar de error)
+    if (mainWindow) {
+        mainWindow.webContents.send('update-status', { 
+            status: 'not-available', 
+            info: { version: 'latest', reason: msg } 
+        });
+    }
     return;
   }
 
-  if (mainWindow) mainWindow.webContents.send('update-status', { status: 'error', error: err.message });
+  // Si es un error real, enviarlo a Sentry y a la UI
+  console.error('❌ AutoUpdater Real Error:', err);
+  Sentry.captureException(err);
+
+  if (mainWindow) mainWindow.webContents.send('update-status', { status: 'error', error: msg });
+});
+
+// Global Error Handlers para evitar reportes basura en Sentry
+process.on('unhandledRejection', (reason, promise) => {
+  const msg = reason instanceof Error ? reason.message : JSON.stringify(reason);
+  
+  // Filtrar errores conocidos
+  if (msg.includes('No files provided') || msg.includes('net::ERR_CONNECTION_REFUSED')) {
+      console.warn('⚠️ Unhandled Rejection ignorado (conocido):', msg);
+      return;
+  }
+  
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  // Dejar que Sentry lo capture (o capturarlo manualmente si Sentry no está hookeado automáticamente)
+  // Sentry suele capturar esto automáticamente, pero si queremos filtrar, deberíamos usar beforeSend en Sentry.init
 });
 
 autoUpdater.on('download-progress', (progressObj) => {

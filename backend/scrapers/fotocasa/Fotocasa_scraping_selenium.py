@@ -66,10 +66,23 @@ def setup_driver(headless=True):
         
         # Seleccionar User Agent apropiado según versión de macOS
         if system == 'Darwin':
-            if os_major >= 11:  # Big Sur y posteriores
+             if os_major >= 11:  # Big Sur y posteriores
                 user_agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            else:  # Catalina y anteriores
+             else:  # Catalina y anteriores
                 user_agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
+             
+             # MacOS Specific: Check for Chrome in Applications if not in PATH
+             # Common paths for Chrome on macOS
+             mac_chrome_paths = [
+                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                "/Applications/Chromium.app/Contents/MacOS/Chromium",
+                os.path.expanduser("~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+             ]
+             for path in mac_chrome_paths:
+                if os.path.exists(path):
+                    options.binary_location = path
+                    print(f"✅ Usando binario de Chrome específico para macOS: {path}")
+                    break
         else:
             user_agent = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         

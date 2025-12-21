@@ -11,12 +11,33 @@ if not TOKEN:
     print("Por favor configura la variable de entorno o usa el archivo mcp.json")
     # Intentar leer de mcp.json como fallback si existe en la ruta estándar
     try:
-        mcp_path = r"C:\Users\viict\AppData\Roaming\Trae\User\mcp.json"
-        if os.path.exists(mcp_path):
-             with open(mcp_path, 'r') as f:
+        mcp_path = None
+        
+        # 1. Windows: APPDATA
+        if os.name == 'nt' and os.getenv('APPDATA'):
+             mcp_path = os.path.join(os.getenv('APPDATA'), 'Trae', 'User', 'mcp.json')
+        
+        # 2. macOS: Library/Application Support
+        elif os.name == 'posix' and os.getenv('HOME'):
+             # Comprobar si es macOS
+             if sys.platform == 'darwin':
+                 mcp_path = os.path.join(os.getenv('HOME'), 'Library', 'Application Support', 'Trae', 'User', 'mcp.json')
+             else:
+                 # Linux fallback (XDG config o similar, pero asumimos estructura Trae estándar)
+                 mcp_path = os.path.join(os.getenv('HOME'), '.config', 'Trae', 'User', 'mcp.json')
+
+        # Fallback hardcoded para Windows (Usuario específico detectado en logs anteriores)
+        if not mcp_path or not os.path.exists(mcp_path):
+             win_fallback = r"C:\Users\viict\AppData\Roaming\Trae\User\mcp.json"
+             if os.path.exists(win_fallback):
+                 mcp_path = win_fallback
+
+        if mcp_path and os.path.exists(mcp_path):
+             print(f"Leyendo mcp.json desde: {mcp_path}")
+             with open(mcp_path, 'r', encoding='utf-8') as f:
                  data = json.load(f)
-                 # Lógica simple de extracción (adaptar según estructura real si es necesario)
-                 # Aquí asumimos que el usuario lo pondrá en ENV para el script
+                 # Lógica simple de extracción
+                 # Buscamos en env vars del archivo mcp si existen
                  pass
     except:
         pass

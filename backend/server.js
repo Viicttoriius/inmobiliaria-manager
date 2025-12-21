@@ -20,24 +20,24 @@ Sentry.init({
     dsn: "https://15bf6ed890e254dc94272dd272911ddd@o4510509929857024.ingest.de.sentry.io/4510509939032144",
     tracesSampleRate: 1.0,
     beforeSend(event, hint) {
-        const error = hint.originalException;
-        if (error) {
-            const errorMessage = error.message || error.toString();
-            
-            // Filtrar errores conocidos de Puppeteer / WhatsApp que son ruido
-            if (
-                errorMessage.includes('Navigation failed because browser has disconnected') ||
-                errorMessage.includes('Protocol error (Runtime.callFunctionOn): Target closed') ||
-                errorMessage.includes('Target closed') ||
-                errorMessage.includes('Session closed') ||
-                errorMessage.includes('Browser process') ||
-                errorMessage.includes('waiting for target failed: timeout')
-            ) {
-                return null; // Ignorar este evento
+                const error = hint.originalException;
+                if (error) {
+                    const errorMessage = (error.message || error.toString() || '').toLowerCase();
+                    
+                    // Filtrar errores conocidos de Puppeteer / WhatsApp que son ruido
+                    if (
+                        errorMessage.includes('navigation failed because browser has disconnected') ||
+                        errorMessage.includes('protocol error') ||
+                        errorMessage.includes('target closed') ||
+                        errorMessage.includes('session closed') ||
+                        errorMessage.includes('browser process') ||
+                        errorMessage.includes('waiting for target failed: timeout')
+                    ) {
+                        return null; // Ignorar este evento
+                    }
+                }
+                return event;
             }
-        }
-        return event;
-    }
 });
 // -------------------------------------
 
@@ -327,7 +327,7 @@ const getBundledChromiumPath = () => {
         // Nombres de ejecutables comunes (incluyendo chrome-headless-shell para nuevas versiones de Puppeteer)
         const exeNames = isWin 
             ? ['chrome.exe', 'chromium.exe', 'chrome-headless-shell.exe'] 
-            : ['chrome', 'chromium', 'google-chrome', 'chrome-headless-shell'];
+            : ['chrome', 'chromium', 'google-chrome', 'chrome-headless-shell', 'Google Chrome', 'Chromium'];
 
         // Rutas base posibles donde buscar la cache de puppeteer
         const searchPaths = [
@@ -498,6 +498,7 @@ process.on('unhandledRejection', (reason, promise) => {
     const isKnownError = msg.includes('Execution context was destroyed') || 
                          msg.includes('Target closed') ||
                          msg.includes('Protocol error') ||
+                         msg.includes('Failed to launch the browser process') ||
                          msg.includes('Navigation failed because browser has disconnected') ||
                          msg.includes('waiting for target failed: timeout');
 
@@ -813,6 +814,7 @@ const initializeWhatsApp = async () => {
         const isKnownError = msg.includes('waiting for target failed: timeout') || 
                              msg.includes('Target closed') ||
                              msg.includes('Protocol error') ||
+                             msg.includes('Failed to launch the browser process') ||
                              msg.includes('Navigation failed because browser has disconnected');
 
         if (!isKnownError) {
@@ -2989,7 +2991,15 @@ app.post('/api/messages/send', async (req, res) => {
                 const chatId = `${formattedPhone}@c.us`;
 
                 console.log(`   📱 Enviando WhatsApp a ${chatId}...`);
-                const response = await whatsappClient.sendMessage(chatId, message);
+                
+                // Timeout de seguridad para evitar bloqueos infinitos
+                const sendPromise = whatsappClient.sendMessage(chatId, message);
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Timeout enviando mensaje de WhatsApp (>45s)')), 45000)
+                );
+
+                const response = await Promise.race([sendPromise, timeoutPromise]);
+                
                 console.log('   ✅ WhatsApp enviado. ID:', response.id ? response.id._serialized : 'Desconocido');
                 results.whatsapp = 'sent';
                 success = true;
@@ -2997,6 +3007,12 @@ app.post('/api/messages/send', async (req, res) => {
                 console.error('   ❌ Error enviando WhatsApp:', err);
                 errors.push(`Error WhatsApp: ${err.message}`);
                 results.whatsapp = 'failed';
+                
+                // Si es un error de desconexión o timeout, intentar reiniciar el cliente en segundo plano
+                if (err.message.includes('Timeout') || err.message.includes('disconnected')) {
+                    console.warn('⚠️ Detectado posible estado zombie de WhatsApp. Programando reinicio...');
+                    setTimeout(() => initializeWhatsApp(), 5000);
+                }
             }
         }
     }

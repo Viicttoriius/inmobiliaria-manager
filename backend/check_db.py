@@ -2,7 +2,7 @@ import sqlite3
 import json
 import os
 
-db_path = r'd:\Trabajo\Alex Automatización\inmobiliaria\data\inmobiliaria.db'
+db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'inmobiliaria.db')
 
 try:
     conn = sqlite3.connect(db_path)
