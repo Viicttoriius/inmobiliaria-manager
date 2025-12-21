@@ -704,6 +704,22 @@ let qrAttempts = 0;
 const initializeWhatsApp = async () => {
     try {
         console.log('🔄 Inicializando cliente de WhatsApp...');
+
+        // --- FIX: SingletonLock Cleanup ---
+        // Eliminar lock file huérfano si existe (común tras crashes en macOS/Linux)
+        try {
+            // WHATSAPP_DATA_DIR apunta a .wwebjs_auth. La sesión es 'session-client-one'
+            const lockFile = path.join(WHATSAPP_DATA_DIR, 'session-client-one', 'SingletonLock');
+            if (fs.existsSync(lockFile)) {
+                console.log(`⚠️ Detectado SingletonLock huérfano: ${lockFile}. Eliminando para evitar error de perfil...`);
+                fs.unlinkSync(lockFile);
+                console.log('✅ SingletonLock eliminado.');
+            }
+        } catch (lockErr) {
+            console.warn(`⚠️ No se pudo eliminar SingletonLock (¿permisos?): ${lockErr.message}`);
+        }
+        // ----------------------------------
+
         whatsappState = 'INITIALIZING';
         qrAttempts = 0;
 

@@ -104,8 +104,8 @@ function createWindow() {
     // Manejo de errores de actualización para evitar ruido en Sentry
     autoUpdater.on('error', (error) => {
         const msg = error.message || '';
-        // Ignorar error 404 (común cuando no hay release para la plataforma actual)
-        if (msg.includes('404') || msg.includes('Cannot find latest')) {
+        // Ignorar error 404 y "No files provided" (común cuando no hay release o artifacts válidos)
+        if (msg.includes('404') || msg.includes('Cannot find latest') || msg.includes('No files provided')) {
             console.warn('⚠️ AutoUpdater: No se encontró actualización (posiblemente falta el archivo YAML). Ignorando.');
         } else {
             console.error('❌ AutoUpdater Error:', error);
