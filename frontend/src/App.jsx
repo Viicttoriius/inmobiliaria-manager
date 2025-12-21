@@ -1059,6 +1059,18 @@ function App() {
     }
   }, [configModalOpen]);
 
+  // Polling para actualizar el estado de WhatsApp (QR) cuando el modal está abierto
+  useEffect(() => {
+    let interval;
+    if (configModalOpen) {
+        loadConfigStatus();
+        interval = setInterval(loadConfigStatus, 3000);
+    }
+    return () => {
+        if (interval) clearInterval(interval);
+    };
+  }, [configModalOpen]);
+
   const handleSaveAIConfig = () => {
     setSavingAiConfig(true);
     localStorage.setItem('whatsapp_default_model', aiConfig.model);
