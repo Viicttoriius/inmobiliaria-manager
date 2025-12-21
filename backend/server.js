@@ -459,9 +459,13 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason, promise) => {
     console.error('🔥 UNHANDLED REJECTION:', reason);
 
-    // Auto-recuperación para error común de Puppeteer/WhatsApp
-    if (reason && reason.message && reason.message.includes('Execution context was destroyed')) {
-        console.log('♻️ Detectado error de contexto destruido. Reiniciando servicio de WhatsApp en 5s...');
+    // Auto-recuperación para errores comunes de Puppeteer/WhatsApp
+    if (reason && reason.message && (
+        reason.message.includes('Execution context was destroyed') || 
+        reason.message.includes('Target closed') ||
+        reason.message.includes('Protocol error')
+    )) {
+        console.log(`♻️ Detectado error crítico (${reason.message}). Reiniciando servicio de WhatsApp en 5s...`);
         // Verificación básica para evitar bucles si ya se está reiniciando
         setTimeout(() => {
             // Intentar reiniciar si el cliente existe
@@ -512,16 +516,19 @@ console.log('🔄 Inicializando cliente de WhatsApp...');
 // Debug Browser Path
 // Debug Browser Path
 const browserPath = getSystemBrowserPath();
-console.log(`🐛 [DEBUG] Browser Path detectado: ${browserPath || 'NINGUNO (Se intentará usar Puppeteer Bundled Chromium)'}`);
+const finalBrowserPath = browserPath || getBundledChromiumPath();
+console.log(`🐛 [DEBUG] Browser Path detectado: ${browserPath || 'NINGUNO'}`);
+console.log(`🚀 [LAUNCH] Iniciando WhatsApp con ejecutable: ${finalBrowserPath || 'DEFAULT (Puppeteer Resolution)'}`);
 
 const whatsappClient = new Client({
     authStrategy: new LocalAuth({
         clientId: 'client-one', // ID específico para mantener sesión consistente
         dataPath: WHATSAPP_DATA_DIR // Ruta base para datos de sesión
     }),
-    authTimeoutMs: 120000,
+    authTimeoutMs: 180000,
     // Forzar User-Agent a nivel de cliente para evitar detección como MacOS
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 InmobiliariaManager/1.0',
+    // Usar un UA estándar de Chrome Windows reciente para máxima compatibilidad
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
     qrMaxRetries: 0,
     // Desactivamos la caché persistente para evitar errores de regex en index.html
     // y forzamos el uso de la versión más reciente compatible (o la que descargue)
@@ -532,7 +539,7 @@ const whatsappClient = new Client({
     restartOnAuthFail: true,
     puppeteer: {
         // Si browserPath es undefined, intentamos usar el bundled
-        executablePath: browserPath || getBundledChromiumPath() || undefined,
+        executablePath: finalBrowserPath || undefined,
         headless: true,
         dumpio: false, // Desactivar dumpio en producción para reducir ruido
         ignoreHTTPSErrors: true, // Ignorar errores de certificado
@@ -544,7 +551,7 @@ const whatsappClient = new Client({
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--single-process', // Importante para Windows en algunos casos de desconexión
+            // '--single-process', // DESACTIVADO: Causa inestabilidad en Windows recientes (Target closed)
             '--disable-extensions',
             '--disable-component-extensions-with-background-pages',
             '--disable-default-apps',
@@ -671,7 +678,9 @@ whatsappClient.on('disconnected', (reason) => {
     currentQR = null;
     // Reinicializar para permitir reconexión
     try {
-        whatsappClient.initialize().catch(err => console.error('Error reinicializando WhatsApp tras desconexión:', err));
+        console.log('🔄 Intentando reconexión automática...');
+        // Usar la función robusta con retries
+        setTimeout(() => initializeWhatsApp(), 5000);
     } catch (e) {
         console.error('Excepción al intentar reinicializar WhatsApp:', e);
     }
@@ -732,12 +741,13 @@ const initializeWhatsApp = async () => {
                 try { await whatsappClient.destroy(); } catch (e) { }
 
                 // Reconfigurar puppeteer options
+                const bundledPath = getBundledChromiumPath();
                 whatsappClient.options.puppeteer = {
                     ...whatsappClient.options.puppeteer,
-                    executablePath: undefined
+                    executablePath: bundledPath || undefined
                 };
 
-                console.log('🔄 Reintentando inicialización con navegador bundled...');
+                console.log(`🔄 Reintentando inicialización con navegador bundled: ${bundledPath || 'Auto-Resolution'}...`);
                 await whatsappClient.initialize();
                 return; // Éxito en el segundo intento
             } catch (retryErr) {
@@ -746,8 +756,19 @@ const initializeWhatsApp = async () => {
         }
 
         whatsappState = 'ERROR';
-        // Reintentar en 10 segundos
-        setTimeout(initializeWhatsApp, 10000);
+        
+        // Ensure client is destroyed to avoid "Client already initialized" on retry
+        try {
+            console.log('🧹 Limpiando instancia fallida de WhatsApp...');
+            await whatsappClient.destroy();
+        } catch (destroyErr) {
+            console.warn('⚠️ Error al destruir cliente fallido (puede ser normal):', destroyErr.message);
+        }
+
+        // Reintentar en 10 segundos (o 20 si fue un error de protocolo/cierre)
+        const retryDelay = (err.message && err.message.includes('Target closed')) ? 20000 : 10000;
+        console.log(`⏳ Reintentando inicialización en ${retryDelay/1000} segundos...`);
+        setTimeout(initializeWhatsApp, retryDelay);
     }
 };
 
@@ -908,11 +929,16 @@ app.post('/api/config/whatsapp/logout', async (req, res) => {
             console.warn('Error destruyendo cliente:', err.message);
         }
 
-        // Reinicializar para generar nuevo QR
+        // Reinicializar para generar nuevo QR (Usando la función robusta)
         console.log('Reinicializando cliente...');
-        whatsappClient.initialize();
+        // Usar setTimeout para dar tiempo a que el sistema operativo libere recursos
+        setTimeout(() => {
+            initializeWhatsApp();
+        }, 1000);
+        
         isWhatsAppReady = false;
         currentQR = null;
+        whatsappState = 'INITIALIZING';
 
         res.json({ success: true });
     } catch (error) {
