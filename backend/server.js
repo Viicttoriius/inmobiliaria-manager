@@ -77,6 +77,7 @@ log(`Platform: ${process.platform}`);
 process.on('uncaughtException', (err) => {
     log(`🔥 FATAL ERROR: ${err.message}\n${err.stack}`);
     console.error(err);
+    Sentry.captureException(err);
 });
 
 // Función para guardar la ruta de Python en .env
@@ -467,19 +468,29 @@ const checkPythonDependencies = () => {
 // Manejo de errores globales para evitar cierres inesperados
 process.on('uncaughtException', (err) => {
     console.error('🔥 UNCAUGHT EXCEPTION:', err);
+    Sentry.captureException(err);
     // No salimos del proceso para mantener el servidor vivo, pero logueamos el error crítico
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('🔥 UNHANDLED REJECTION:', reason);
+    const msg = reason?.message || '';
+    
+    // Filtrar errores conocidos de Puppeteer/WhatsApp para no saturar Sentry
+    const isKnownError = msg.includes('Execution context was destroyed') || 
+                         msg.includes('Target closed') ||
+                         msg.includes('Protocol error') ||
+                         msg.includes('Navigation failed because browser has disconnected');
+
+    if (!isKnownError) {
+        console.error('🔥 UNHANDLED REJECTION:', reason);
+        Sentry.captureException(reason);
+    } else {
+        console.warn(`⚠️ Error conocido capturado (no enviado a Sentry): ${msg}`);
+    }
 
     // Auto-recuperación para errores comunes de Puppeteer/WhatsApp
-    if (reason && reason.message && (
-        reason.message.includes('Execution context was destroyed') || 
-        reason.message.includes('Target closed') ||
-        reason.message.includes('Protocol error')
-    )) {
-        console.log(`♻️ Detectado error crítico (${reason.message}). Reiniciando servicio de WhatsApp en 5s...`);
+    if (isKnownError) {
+        console.log(`♻️ Detectado error crítico (${msg}). Reiniciando servicio de WhatsApp en 5s...`);
         // Verificación básica para evitar bucles si ya se está reiniciando
         setTimeout(() => {
             // Intentar reiniciar si el cliente existe
@@ -500,9 +511,51 @@ const PORT = 3001;
 const WHATSAPP_DATA_DIR = path.join(BASE_PATH, '.wwebjs_auth'); // Usar directorio de datos de usuario para persistencia
 const SESSION_DIR = path.join(WHATSAPP_DATA_DIR, 'session');
 
+// Función crítica para eliminar SingletonLock (Fix error macOS/Linux)
+const removeSingletonLock = () => {
+    try {
+        // La ruta estándar creada por LocalAuth es session-{clientId}
+        // En este caso clientId es 'client-one'
+        const sessionPath = path.join(WHATSAPP_DATA_DIR, 'session-client-one');
+        const lockFile = path.join(sessionPath, 'SingletonLock');
+        
+        if (fs.existsSync(lockFile)) {
+            console.log(`🔒 SingletonLock detectado en: ${lockFile}`);
+            try {
+                fs.unlinkSync(lockFile);
+                console.log('✅ SingletonLock eliminado correctamente. Permitiendo nuevo proceso.');
+            } catch (unlinkErr) {
+                // Si falla borrarlo, puede ser permisos o que el proceso sigue vivo
+                console.warn(`⚠️ No se pudo eliminar SingletonLock: ${unlinkErr.message}`);
+                
+                // Intento agresivo: matar procesos de Chrome huérfanos si estamos en macOS/Linux
+                if (process.platform !== 'win32') {
+                    try {
+                        console.log('🔪 Intentando matar procesos Chrome huérfanos...');
+                        execSync('pkill -f "Google Chrome" || true');
+                        execSync('pkill -f "Chromium" || true');
+                    } catch (e) {}
+                }
+            }
+        }
+        
+        // También limpiar directorios temporales de Puppeteer si existen
+        const tempDirs = [
+            path.join(sessionPath, 'Default', 'SingletonLock'),
+            path.join(sessionPath, 'SingletonLock') 
+        ];
+        
+        // Limpieza preventiva adicional
+    } catch (e) {
+        console.error('Error en limpieza de SingletonLock:', e);
+    }
+};
+
 // Función para limpiar caché de WhatsApp al inicio
 const cleanWhatsAppCache = () => {
     try {
+        removeSingletonLock(); // Llamar a limpieza de lock antes de nada
+        
         const cachePath = path.join(WHATSAPP_DATA_DIR, '.wwebjs_cache');
         if (fs.existsSync(cachePath)) {
             console.log('🧹 Limpiando caché antigua de WhatsApp...');
@@ -547,7 +600,8 @@ const whatsappClient = new Client({
     // Desactivamos la caché persistente para evitar errores de regex en index.html
     // y forzamos el uso de la versión más reciente compatible (o la que descargue)
     webVersionCache: {
-        type: 'none'
+        type: 'remote',
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
     },
     // Añadido para intentar mitigar problemas de timeout/evaluación en mac
     restartOnAuthFail: true,
@@ -576,6 +630,9 @@ const whatsappClient = new Client({
             '--disable-backgrounding-occluded-windows',
             '--disable-renderer-backgrounding',
             '--disable-infobars',
+            '--disable-breakpad', // Desactivar crash reporting
+            '--disable-ipc-flooding-protection',
+            '--disable-dev-shm-usage', // Redundante pero crítico
             // Añadir estos flags para mejorar compatibilidad Windows
             '--disable-software-rasterizer',
             '--disable-gl-drawing-for-tests',
@@ -584,7 +641,7 @@ const whatsappClient = new Client({
             '--disable-features=site-per-process', // Ahorro de memoria
             '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
         ],
-        timeout: 60000 // Aumentar timeout de inicialización de puppeteer
+        timeout: 120000 // Aumentar timeout de inicialización de puppeteer (120s)
     }
 });
 
@@ -1100,7 +1157,12 @@ app.post('/api/config/whatsapp/logout', async (req, res) => {
                 await whatsappClient.logout();
                 console.log('Logout ejecutado correctamente.');
             } catch (err) {
-                console.warn('Logout falló (posiblemente ya desconectado):', err.message);
+                // Ignorar errores de protocolo o target closed al hacer logout, ya que el objetivo es desconectar
+                if (err.message && (err.message.includes('Protocol error') || err.message.includes('Target closed'))) {
+                    console.log('Logout completado (con advertencia de conexión cerrada).');
+                } else {
+                    console.warn('Logout falló:', err.message);
+                }
             }
         }
 
@@ -1109,7 +1171,11 @@ app.post('/api/config/whatsapp/logout', async (req, res) => {
             await whatsappClient.destroy();
             console.log('Cliente destruido.');
         } catch (err) {
-            console.warn('Error destruyendo cliente:', err.message);
+            if (err.message && (err.message.includes('Protocol error') || err.message.includes('Target closed'))) {
+                 // Ignorar ruido
+            } else {
+                 console.warn('Error destruyendo cliente:', err.message);
+            }
         }
 
         // Reinicializar para generar nuevo QR (Usando la función robusta)
@@ -1606,7 +1672,7 @@ const runPythonScraper = (scraperPath, res, scraperId, args = []) => {
 
     pythonProcess.on('close', (code) => {
         // Evitar respuestas múltiples si ya se respondió
-        if (res.headersSent) {
+        if (res && res.headersSent) {
             console.warn('⚠️ Intento de respuesta duplicada ignorado en evento close.');
             return;
         }
@@ -1632,16 +1698,19 @@ const runPythonScraper = (scraperPath, res, scraperId, args = []) => {
             const stats = consolidatePropertiesFolder();
 
             console.log(`✅ Consolidación completada: ${sqliteManager.getPropertiesCount()} propiedades en SQLite.`);
-            res.json({
-                success: true,
-                message: 'Scraper y consolidación completados',
-                output,
-                stats: {
-                    inserted: stats.inserted,
-                    updated: stats.updated,
-                    total: sqliteManager.getPropertiesCount()
-                }
-            });
+            
+            if (res) {
+                res.json({
+                    success: true,
+                    message: 'Scraper y consolidación completados',
+                    output,
+                    stats: {
+                        inserted: stats.inserted,
+                        updated: stats.updated,
+                        total: sqliteManager.getPropertiesCount()
+                    }
+                });
+            }
 
         } else {
             console.error(`❌ Scraper falló con código ${code}`);
@@ -1660,21 +1729,37 @@ const runPythonScraper = (scraperPath, res, scraperId, args = []) => {
             } else if (errorOutput) {
                 errorMessage = `Error del script: ${errorOutput.slice(0, 300)}...`; // Limitar longitud
             }
-
-            res.status(500).json({
-                success: false,
-                error: errorMessage,
-                output: output,
-                errorDetails: errorOutput,
-                pythonUsed: pythonExecutable
+            
+            // Reportar a Sentry con contexto
+            Sentry.withScope(scope => {
+                scope.setTag("scraper_id", scraperId || "unknown");
+                scope.setExtra("python_executable", pythonExecutable);
+                scope.setExtra("args", args);
+                scope.setExtra("error_output", errorOutput);
+                Sentry.captureException(new Error(`Scraper Failed: ${errorMessage}`));
             });
+
+            if (res) {
+                res.status(500).json({
+                    success: false,
+                    error: errorMessage,
+                    output: output,
+                    errorDetails: errorOutput,
+                    pythonUsed: pythonExecutable
+                });
+            }
         }
     });
 
     pythonProcess.on('error', (error) => {
-        if (res.headersSent) return;
+        if (res && res.headersSent) return;
         console.error('❌ Error iniciando scraper:', error);
-        res.status(500).json({ success: false, error: 'Error iniciando scraper: ' + error.message });
+        
+        Sentry.captureException(error);
+        
+        if (res) {
+            res.status(500).json({ success: false, error: 'Error iniciando scraper: ' + error.message });
+        }
     });
 };
 

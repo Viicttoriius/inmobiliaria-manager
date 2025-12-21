@@ -366,10 +366,17 @@ def scrape_single_url(url, driver=None):
 if __name__ == "__main__":
     url_arg = sys.argv[1] if len(sys.argv) > 1 else ""
     if url_arg:
-        data = scrape_single_url(url_arg)
-        if data:
-            print(json.dumps(data, ensure_ascii=False))
-        else:
-            print(json.dumps({"error": "Not found or not particular"}))
+        try:
+            data = scrape_single_url(url_arg)
+            if data:
+                print(json.dumps(data, ensure_ascii=False))
+            else:
+                print(json.dumps({"error": "Not found or not particular"}))
+        except Exception as e:
+            sys.stderr.write(f"🔥 Critical Error in main: {e}\n")
+            # Imprimir JSON de error para que el backend pueda parsearlo si quisiera (aunque usa stderr)
+            print(json.dumps({"error": str(e), "type": "critical"}))
+            sys.exit(1)
     else:
         sys.stderr.write("No URL provided\n")
+        sys.exit(1)
