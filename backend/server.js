@@ -569,9 +569,11 @@ const whatsappClient = new Client({
 
 let isWhatsAppReady = false;
 let currentQR = null; // Guardar el QR actual para enviarlo al frontend
+let whatsappLastError = null; // Guardar el último error para mostrarlo al usuario
 
 // Manejo robusto de eventos
 whatsappClient.on('qr', (qr) => {
+    whatsappLastError = null; // Limpiar errores previos si se genera QR
     console.log('\n=============================================================');
     console.log('⚠️  ESCANEA ESTE CÓDIGO QR CON TU WHATSAPP PARA INICIAR SESIÓN:');
     console.log('=============================================================\n');
@@ -689,6 +691,8 @@ const initializeWhatsApp = async () => {
         await whatsappClient.initialize();
     } catch (err) {
         console.error('❌ Error fatal al inicializar WhatsApp Client:', err);
+        Sentry.captureException(err);
+        whatsappLastError = err.message || 'Error desconocido al inicializar';
 
         // Nuevo: Si es error de timeout (selector) o evaluación, borrar caché de autenticación para forzar reinicio limpio
         if (err.message && (err.message.includes('Timeout') || err.message.includes('Evaluation failed') || err.message.includes('Protocol error'))) {
@@ -807,6 +811,7 @@ app.get('/api/config/status', (req, res) => {
             ready: isWhatsAppReady,
             qr: currentQR,
             state: whatsappState, // Nuevo campo de estado detallado
+            lastError: whatsappLastError,
             attempts: qrAttempts
         },
         email: {

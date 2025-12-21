@@ -2576,8 +2576,13 @@ function App() {
                             ? '❌ Error iniciando WhatsApp. Intenta reiniciar el servicio.'
                             : '⏳ Iniciando servicio de WhatsApp...'}
                         </p>
+                        {configStatus.whatsapp.lastError && (
+                          <div style={{ color: '#ef4444', marginBottom: '0.5rem', fontSize: '0.85rem', background: 'rgba(239, 68, 68, 0.1)', padding: '0.5rem', borderRadius: '4px', maxWidth: '100%', overflowWrap: 'break-word' }}>
+                             <strong>Detalle:</strong> {configStatus.whatsapp.lastError}
+                          </div>
+                        )}
                         <small style={{ display: 'block', marginBottom: '1rem', color: 'var(--text-secondary)' }}>
-                          {configStatus.whatsapp.state || 'Esperando conexión...'}
+                          Estado: {configStatus.whatsapp.state || 'Esperando conexión...'}
                         </small>
                         <button
                           onClick={handleWhatsAppLogout}
