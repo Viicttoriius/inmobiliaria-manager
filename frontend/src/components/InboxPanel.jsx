@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, RefreshCw, ExternalLink, Calendar, Search } from 'lucide-react';
+import { Mail, RefreshCw, ExternalLink, Calendar, Search, Play } from 'lucide-react';
 
 const InboxPanel = ({ API_URL, showNotification, onOpenConfig }) => {
   const [emails, setEmails] = useState([]);
   const [selectedEmail, setSelectedEmail] = useState(null);
+  const [selectedForRescrape, setSelectedForRescrape] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingBody, setLoadingBody] = useState(false);
   const [runningScraper, setRunningScraper] = useState(false);
@@ -20,6 +21,8 @@ const InboxPanel = ({ API_URL, showNotification, onOpenConfig }) => {
       }
       const data = await res.json();
       setEmails(data);
+      // Limpiar selección al recargar
+      setSelectedForRescrape([]);
     } catch (err) {
       console.error(err);
       setError(err.message);
@@ -31,6 +34,48 @@ const InboxPanel = ({ API_URL, showNotification, onOpenConfig }) => {
 
   const handleRunScraper = async () => {
     setRunningScraper(true);
+    
+    // Si hay correos seleccionados, ejecutar re-escaneo específico
+    if (selectedForRescrape.length > 0) {
+      showNotification(`Iniciando re-escaneo de ${selectedForRescrape.length} correos...`, 'info');
+      
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (const uid of selectedForRescrape) {
+        try {
+          const res = await fetch(`${API_URL}/scraper/rescrape-email`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uid })
+          });
+          const data = await res.json();
+          if (data.success) {
+            successCount++;
+          } else {
+            errorCount++;
+            console.error(`Error re-escaneando UID ${uid}:`, data.error);
+          }
+        } catch (err) {
+          errorCount++;
+          console.error(`Error de conexión UID ${uid}:`, err);
+        }
+      }
+
+      if (successCount > 0) {
+        showNotification(`Re-escaneo iniciado para ${successCount} correos.`, 'success');
+      }
+      if (errorCount > 0) {
+        showNotification(`Hubo errores al iniciar ${errorCount} correos.`, 'warning');
+      }
+      
+      // Limpiar selección y estado
+      setSelectedForRescrape([]);
+      setRunningScraper(false);
+      return;
+    }
+
+    // Comportamiento por defecto (Scraper completo)
     showNotification('Iniciando scraper de portales...', 'info');
     try {
       const res = await fetch(`${API_URL}/scraper/run`, { method: 'POST' });
@@ -50,6 +95,17 @@ const InboxPanel = ({ API_URL, showNotification, onOpenConfig }) => {
     }
   };
 
+  const toggleRescrapeSelect = (uid, e) => {
+    e.stopPropagation();
+    setSelectedForRescrape(prev => {
+      if (prev.includes(uid)) {
+        return prev.filter(id => id !== uid);
+      } else {
+        return [...prev, uid];
+      }
+    });
+  };
+
   const fetchEmailBody = async (uid) => {
     setLoadingBody(true);
     try {
@@ -57,6 +113,10 @@ const InboxPanel = ({ API_URL, showNotification, onOpenConfig }) => {
       if (!res.ok) throw new Error('Error cargando contenido');
       const data = await res.json();
       setSelectedEmail(data);
+      
+      // Actualizar estado local a leido
+      setEmails(prev => prev.map(e => e.uid === uid ? { ...e, seen: true } : e));
+      
     } catch (err) {
       console.error(err);
       showNotification('No se pudo cargar el contenido del correo', 'error');
@@ -113,10 +173,11 @@ const InboxPanel = ({ API_URL, showNotification, onOpenConfig }) => {
             <button 
               onClick={handleRunScraper} 
               disabled={runningScraper}
-              title="Escanear Portales (Fotocasa/Idealista)"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text)', display: 'flex', alignItems: 'center' }}
+              title={selectedForRescrape.length > 0 ? `Re-escanear ${selectedForRescrape.length} seleccionados` : "Escanear Portales (Fotocasa/Idealista)"}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: selectedForRescrape.length > 0 ? '#3b82f6' : 'var(--text)', display: 'flex', alignItems: 'center', gap: '4px' }}
             >
-              <Search size={18} className={runningScraper ? 'spinning' : ''} />
+              {selectedForRescrape.length > 0 && <span style={{fontSize: '0.8rem', fontWeight: 'bold'}}>{selectedForRescrape.length}</span>}
+              <Play size={18} className={runningScraper ? 'spinning' : ''} fill={runningScraper || selectedForRescrape.length > 0 ? "currentColor" : "none"} />
             </button>
             <button 
               onClick={fetchEmails} 
@@ -163,14 +224,25 @@ const InboxPanel = ({ API_URL, showNotification, onOpenConfig }) => {
                   padding: '1rem', 
                   borderBottom: '1px solid var(--border)', 
                   cursor: 'pointer',
-                  background: selectedEmail?.uid === email.uid ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
-                  borderLeft: selectedEmail?.uid === email.uid ? '3px solid #3b82f6' : '3px solid transparent'
+                  background: selectedEmail?.uid === email.uid ? 'rgba(59, 130, 246, 0.1)' : (email.seen ? 'transparent' : 'rgba(59, 130, 246, 0.08)'),
+                  borderLeft: selectedEmail?.uid === email.uid ? '4px solid #3b82f6' : (email.seen ? '4px solid transparent' : '4px solid #ef4444'),
+                  fontWeight: email.seen ? 'normal' : '700'
                 }}
                 className="email-item-hover"
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                   <span style={{ fontWeight: email.seen ? 'normal' : 'bold', color: 'var(--text)' }}>{formatAddress(email.from).replace(/<.*>/, '').trim()}</span>
-                  <span style={{ fontWeight: email.seen ? 'normal' : 'bold' }}>{formatDate(email.date)}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontWeight: email.seen ? 'normal' : 'bold' }}>{formatDate(email.date)}</span>
+                    <input 
+                        type="checkbox" 
+                        title="Seleccionar para re-escanear"
+                        checked={selectedForRescrape.includes(email.uid)}
+                        onClick={(e) => toggleRescrapeSelect(email.uid, e)}
+                        onChange={() => {}} // React requiere onChange para inputs controlados, pero manejamos click
+                        style={{ cursor: 'pointer', width: '14px', height: '14px' }}
+                    />
+                  </div>
                 </div>
                 <div style={{ fontSize: '0.9rem', fontWeight: email.seen ? '500' : 'bold', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {email.subject}

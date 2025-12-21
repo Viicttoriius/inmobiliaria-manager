@@ -1,5 +1,10 @@
 const Sentry = require('@sentry/node');
 const path = require('path');
+const imaps = require('imap-simple');
+const { simpleParser } = require('mailparser');
+
+// Definir directorio de scrapers
+const SCRAPERS_DIR = path.join(__dirname, 'scrapers');
 
 // Cargar variables de entorno con prioridad:
 // 1. process.env (ya cargado por sistema)
@@ -821,6 +826,29 @@ const createTransporter = () => {
 
 let emailTransporter = createTransporter();
 
+// Función auxiliar para notificar (Sistema + Email)
+const notifyUser = async (options) => {
+    // 1. Notificación de Sistema (Desktop)
+    notifier.notify(options);
+
+    // 2. Notificación por Email
+    // Solo si tenemos credenciales y el usuario lo ha solicitado implícitamente al tenerlas configuradas
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+        try {
+            console.log('   📧 Enviando copia de notificación por email...');
+            await emailTransporter.sendMail({
+                from: process.env.EMAIL_USER,
+                to: process.env.EMAIL_USER, // Auto-envío
+                subject: `[Notificación Sistema] ${options.title}`,
+                text: `${options.message}\n\n--\nNotificación generada automáticamente por Inmobiliaria Manager.`
+            });
+            console.log('   ✅ Copia de notificación enviada por email.');
+        } catch (error) {
+            console.error('   ❌ Error enviando copia de notificación por email:', error.message);
+        }
+    }
+};
+
 // Middleware
 app.use(compression()); // Comprimir todas las respuestas HTTP
 app.use(cors());
@@ -863,6 +891,99 @@ app.post('/api/scraper/run', async (req, res) => {
     } catch (error) {
         console.error('❌ Error iniciando scrapers manuales:', error);
         res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Endpoint para re-escanear un correo específico
+app.post('/api/scraper/rescrape-email', async (req, res) => {
+    const { uid } = req.body;
+    if (!uid) return res.status(400).json({ error: 'UID requerido' });
+
+    console.log(`🚀 Solicitud de re-escaneo para email UID: ${uid}`);
+
+    let connection = null;
+    try {
+        // 1. Configuración IMAP
+        let config = {
+            user: process.env.EMAIL_USER,
+            password: process.env.EMAIL_PASS,
+            host: 'imap.gmail.com',
+            port: 993,
+            tls: true,
+            tlsOptions: { rejectUnauthorized: false },
+            authTimeout: 30000
+        };
+
+        // Try to load from local config file if env vars are missing
+        if (!config.user || !config.password) {
+             const BASE_PATH = process.env.USER_DATA_PATH || path.join(__dirname, '..');
+             const CONFIG_FILE = path.join(BASE_PATH, 'data', 'email_config.json');
+             if (fs.existsSync(CONFIG_FILE)) {
+                 const savedConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+                 if (savedConfig.email && savedConfig.password) {
+                     config.user = savedConfig.email;
+                     config.password = savedConfig.password;
+                 }
+             }
+        }
+
+        if (!config.user || !config.password) {
+            return res.status(400).json({ error: 'Credenciales de email no configuradas' });
+        }
+
+        // 2. Conectar y buscar el correo
+        connection = await imaps.connect({ imap: config });
+        await connection.openBox('INBOX');
+
+        const searchCriteria = [['UID', uid]];
+        const fetchOptions = { bodies: ['HEADER', 'TEXT'], markSeen: false };
+        const messages = await connection.search(searchCriteria, fetchOptions);
+
+        if (messages.length === 0) {
+            return res.status(404).json({ error: 'Correo no encontrado' });
+        }
+
+        const item = messages[0];
+        const all = item.parts.find(part => part.which === 'TEXT');
+        const idHeader = "Imap-Id: " + uid + "\r\n";
+        const header = item.parts.find(p => p.which === 'HEADER');
+        const fromLine = header.body.from ? header.body.from[0] : '';
+        
+        const mail = await simpleParser(idHeader + all.body);
+
+        // 3. Extraer URL
+        const source = fromLine.includes('fotocasa') ? 'fotocasa' : (fromLine.includes('idealista') ? 'idealista' : 'unknown');
+        let propertyUrl = null;
+
+        if (source === 'idealista') {
+            const urlRegex = /https:\/\/www\.idealista\.com\/inmueble\/\d+\/?/;
+            const match = mail.text ? mail.text.match(urlRegex) : (mail.html ? mail.html.match(urlRegex) : null);
+            propertyUrl = match ? match[0] : null;
+        } else if (source === 'fotocasa') {
+            const urlRegex = /https:\/\/www\.fotocasa\.es\/es\/[\w-]+\/[\w-]+\/[\w-]+\/[\w-]+\/\d+\/d/;
+            const match = mail.text ? mail.text.match(urlRegex) : (mail.html ? mail.html.match(urlRegex) : null);
+            propertyUrl = match ? match[0] : null;
+        }
+
+        if (!propertyUrl) {
+            return res.status(400).json({ error: 'No se encontró URL de propiedad en el correo' });
+        }
+
+        console.log(`   🔗 URL encontrada para re-escaneo: ${propertyUrl}`);
+
+        // 4. Ejecutar scraper de actualización
+        const scriptPath = path.join(SCRAPERS_DIR, 'update_scraper.py');
+        runPythonScraper(scriptPath, null, `rescrape-${uid}`, [propertyUrl]);
+
+        res.json({ success: true, message: 'Re-escaneo iniciado', url: propertyUrl });
+
+    } catch (error) {
+        console.error('❌ Error en re-escaneo:', error);
+        res.status(500).json({ error: error.message });
+    } finally {
+        if (connection) {
+            try { connection.end(); } catch(e) {}
+        }
     }
 });
 
@@ -1399,7 +1520,7 @@ const consolidatePropertiesFolder = () => {
     }
 
     if (totalInserted > 0) {
-        notifier.notify({
+        notifyUser({
             title: 'Nuevas Propiedades',
             message: `Se han importado ${totalInserted} nuevas propiedades automáticamente.`,
             sound: 'Ping',
@@ -1485,7 +1606,7 @@ const runPythonScraper = (scraperPath, res, scraperId, args = []) => {
             console.log(`✅ Scraper completado exitosamente`);
 
             // Notificación de ÉXITO
-            notifier.notify({
+            notifyUser({
                 title: 'Scraper Finalizado',
                 message: `El proceso de scraping terminó correctamente.`,
                 sound: 'Glass', // Sonido en Windows/macOS
@@ -1511,7 +1632,7 @@ const runPythonScraper = (scraperPath, res, scraperId, args = []) => {
         } else {
             console.error(`❌ Scraper falló con código ${code}`);
 
-            notifier.notify({
+            notifyUser({
                 title: 'Error Fatal en Scraper',
                 message: `El proceso falló con código ${code}`,
                 sound: 'Sosumi',
@@ -1570,7 +1691,7 @@ app.post('/api/properties/import', (req, res) => {
 
         // Notificar si hay nuevas
         if (result.inserted > 0) {
-            notifier.notify({
+            notifyUser({
                 title: 'Propiedades Importadas',
                 message: `Se han importado ${result.inserted} nuevas propiedades.`,
                 sound: 'Ping'
@@ -2739,7 +2860,7 @@ app.post('/api/messages/send', async (req, res) => {
                     console.log(`   📝 Historial actualizado para cliente ${clientId}`);
 
                     // Notificar al sistema operativo (alerta bot)
-                    notifier.notify({
+                    notifyUser({
                         title: 'Mensaje Enviado',
                         message: `Mensaje enviado correctamente a ${client.name}`,
                         sound: 'Glass',
@@ -2873,7 +2994,7 @@ const runAutoScrapers = async () => {
 
         // Notificar solo si hay propiedades nuevas
         if (stats.inserted > 0) {
-            notifier.notify({
+            notifyUser({
                 title: 'Scraper Automático',
                 message: `Se encontraron ${stats.inserted} nuevas propiedades automáticamente.`,
                 sound: 'Ping',
@@ -3064,7 +3185,7 @@ app.listen(PORT, () => {
         console.log(`📧 URL detectada por email (${source}): ${url}`);
         
         // Notificar inicio de procesamiento (opcional, para feedback inmediato)
-        notifier.notify({
+        notifyUser({
             title: 'Alerta Inmobiliaria Detectada',
             message: `Procesando enlace de ${source}...`,
             sound: false // Silencioso para no molestar si hay muchos
@@ -3078,7 +3199,7 @@ app.listen(PORT, () => {
                 console.log(`✅ Propiedad actualizada desde email: ${url}`);
                 
                 // Notificar ÉXITO al usuario
-                notifier.notify({
+                notifyUser({
                     title: '¡Nueva Oportunidad Captada!',
                     message: `Se ha importado correctamente una propiedad de ${source}.`,
                     sound: 'Hero', // Sonido distintivo de éxito
@@ -3089,7 +3210,7 @@ app.listen(PORT, () => {
                 console.error(`❌ Error actualizando propiedad desde email: ${result.error}`);
                 
                 // Notificar ERROR
-                notifier.notify({
+                notifyUser({
                     title: 'Error Importando Alerta',
                     message: `No se pudo procesar el enlace de ${source}. Revisa el log.`,
                     sound: 'Basso'
@@ -3097,7 +3218,7 @@ app.listen(PORT, () => {
             }
         } catch (error) {
             console.error(`❌ Error crítico procesando URL de email:`, error);
-            notifier.notify({
+            notifyUser({
                 title: 'Error Crítico Scraper Email',
                 message: `Ocurrió un error inesperado al procesar la alerta.`,
                 sound: 'Sosumi'
