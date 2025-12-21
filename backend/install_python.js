@@ -11,6 +11,12 @@ if (!fs.existsSync(DEST_DIR)) {
 
 // Detectar arquitectura en macOS
 const getMacArch = () => {
+    // Permitir sobreescribir la arquitectura vía variable de entorno (para cross-compilation en CI)
+    if (process.env.TARGET_ARCH) {
+        console.log(`ℹ️ Usando arquitectura forzada por variable de entorno: ${process.env.TARGET_ARCH}`);
+        return process.env.TARGET_ARCH === 'x64' ? 'x86_64' : process.env.TARGET_ARCH;
+    }
+
     try {
         const arch = execSync('uname -m').toString().trim();
         return arch === 'arm64' ? 'arm64' : 'x86_64';
