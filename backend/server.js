@@ -1078,7 +1078,9 @@ app.post('/api/scraper/rescrape-email', async (req, res) => {
                  console.log('   ⚠️ Regex estricta de Fotocasa falló. Intentando búsqueda amplia...');
                  // Busca cualquier link de fotocasa
                  const broadRegex = /https:\/\/www\.fotocasa\.es\/es\/[^\s"']+/g;
-                 const allLinks = [...(mail.text?.match(broadRegex) || []), ...(mail.html?.match(broadRegex) || [])];
+                 const textLinks = mail.text ? mail.text.match(broadRegex) : [];
+                 const htmlLinks = (mail.html && typeof mail.html === 'string') ? mail.html.match(broadRegex) : [];
+                 const allLinks = [...(textLinks || []), ...(htmlLinks || [])];
                  // Filtrar los que parecen tener un ID (numeros de >7 digitos)
                  propertyUrls = [...new Set(allLinks.filter(url => /\/\d{7,}\//.test(url) || url.endsWith('/d')))];
             }
