@@ -251,15 +251,26 @@ jobs:
           npm run rebuild-backend
           npx electron-builder --linux --publish always
 
-      - name: Build/Release Electron App (macOS)
+      - name: Build/Release Electron App (macOS x64)
         if: matrix.os == 'macos-latest'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEBUG: electron-builder
         run: |
-          echo "📦 Building and Publishing for macOS (x64 and arm64)..."
-          # The 'beforePack' hook configured in package.json will automatically 
-          # rebuild backend native modules for the correct architecture (x64/arm64)
-          # just before packaging each one.
-          npx electron-builder --mac --x64 --arm64 --publish always
+          echo "📦 Building and Publishing for macOS (x64)..."
+          # Force rebuild for x64 explicitely (optional, as beforePack also does it, but safer)
+          npm run rebuild-backend:x64
+          npx electron-builder --mac --x64 --publish always
+
+      - name: Build/Release Electron App (macOS arm64)
+        if: matrix.os == 'macos-latest'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEBUG: electron-builder
+        run: |
+          echo "📦 Building and Publishing for macOS (arm64)..."
+          # Force rebuild for arm64 explicitely
+          npm run rebuild-backend:arm64
+          npx electron-builder --mac --arm64 --publish always
