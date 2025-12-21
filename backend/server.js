@@ -498,7 +498,8 @@ process.on('unhandledRejection', (reason, promise) => {
     const isKnownError = msg.includes('Execution context was destroyed') || 
                          msg.includes('Target closed') ||
                          msg.includes('Protocol error') ||
-                         msg.includes('Navigation failed because browser has disconnected');
+                         msg.includes('Navigation failed because browser has disconnected') ||
+                         msg.includes('waiting for target failed: timeout');
 
     if (!isKnownError) {
         console.error('🔥 UNHANDLED REJECTION:', reason);
