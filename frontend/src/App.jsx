@@ -2719,9 +2719,11 @@ function App() {
                         onChange={e => setAiConfig({...aiConfig, model: e.target.value})}
                         style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', width: '100%' }}
                       >
-                          <option value="openai/gpt-oss-20b:free">GPT-3.5 Free (OpenRouter)</option>
-                          <option value="google/gemini-pro:free">Gemini Pro Free</option>
-                          <option value="mistralai/mistral-7b-instruct:free">Mistral 7B Free</option>
+                          <option value="openai/gpt-oss-120b:free">GPT-4o OSS 120B (Gratis)</option>
+                          <option value="openai/gpt-oss-20b:free">GPT-4o OSS 20B (Gratis)</option>
+                          <option value="tngtech/deepseek-r1t-chimera:free">DeepSeek R1 Chimera (Gratis)</option>
+                          <option value="meta-llama/llama-3.3-70b-instruct:free">Llama 3.3 70B (Gratis)</option>
+                          <option value="nex-agi/deepseek-v3.1-nex-n1:free">DeepSeek V3.1 Nex (Gratis)</option>
                       </select>
                   </div>
 
