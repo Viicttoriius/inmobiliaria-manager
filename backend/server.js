@@ -19,6 +19,25 @@ require('dotenv').config();
 Sentry.init({
     dsn: "https://15bf6ed890e254dc94272dd272911ddd@o4510509929857024.ingest.de.sentry.io/4510509939032144",
     tracesSampleRate: 1.0,
+    beforeSend(event, hint) {
+        const error = hint.originalException;
+        if (error) {
+            const errorMessage = error.message || error.toString();
+            
+            // Filtrar errores conocidos de Puppeteer / WhatsApp que son ruido
+            if (
+                errorMessage.includes('Navigation failed because browser has disconnected') ||
+                errorMessage.includes('Protocol error (Runtime.callFunctionOn): Target closed') ||
+                errorMessage.includes('Target closed') ||
+                errorMessage.includes('Session closed') ||
+                errorMessage.includes('Browser process') ||
+                errorMessage.includes('waiting for target failed: timeout')
+            ) {
+                return null; // Ignorar este evento
+            }
+        }
+        return event;
+    }
 });
 // -------------------------------------
 

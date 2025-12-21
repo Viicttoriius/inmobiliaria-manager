@@ -1944,7 +1944,7 @@ function App() {
                       />
                       <div className={`property-source ${property.source?.toLowerCase() || 'fotocasa'}`}>{property.source || 'Fotocasa'}</div>
 
-                      <div className="property-type">{property.property_type}</div>
+                      <div className="property-type">{property.property_type === 'terreno' ? 'terrenos' : property.property_type}</div>
                       <label className="property-checkbox-label">
                         <input
                           type="checkbox"
