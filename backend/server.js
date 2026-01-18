@@ -762,26 +762,107 @@ whatsappClient.on('message', async msg => {
             let hasSentBefore = false;
             try {
                 const history = sqliteManager.getClientMessages(client.id) || [];
-                hasSentBefore = history.some(m => m.status === 'sent');
+                hasSentBefore = history.some(m => m.status === 'sent' && m.type === 'whatsapp');
             } catch (e) { /* noop */ }
             if (automation === 'active' && hasSentBefore) {
-                const text = (msg.body || '').toLowerCase();
-                const negatives = ['no me interesa', 'no quiero', 'no agencias', 'no inmobiliaria', 'no gracias'];
-                const neutrals = ['eres inmobiliaria', 'quien eres', 'quién eres', 'inmobiliaria'];
-                const positives = ['si', 'sí', 'me interesa', 'vale', 'ok', 'podemos quedar', 'de acuerdo'];
-                let reply = '';
-                if (negatives.some(k => text.includes(k))) {
-                    reply = whatsappScripts.refusal_direct.text;
-                } else if (neutrals.some(k => text.includes(k))) {
-                    reply = whatsappScripts.objection_agency.text;
-                } else if (positives.some(k => text.includes(k))) {
-                    reply = 'Genial. ¿Cuándo le viene bien una visita de 20 minutos esta semana? Puedo adaptarme a su horario.';
-                } else {
-                    reply = whatsappScripts.objection_agency.text;
-                }
                 try {
+                    const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+                    if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY === 'tu_api_key_aqui') {
+                        console.warn('⚠️ OPENROUTER_API_KEY no configurada. Se desactiva la auto-respuesta IA para evitar respuestas genéricas.');
+                        return;
+                    }
+
+                    // Construir contexto de historial (últimos 12 mensajes) + el actual entrante
+                    const fullHistory = sqliteManager.getClientMessages(client.id) || [];
+                    const lastHistory = fullHistory.slice(0, 12).reverse().map(m => ({
+                        type: (m.status === 'received') ? 'received' : 'sent',
+                        content: m.content || ''
+                    }));
+                    lastHistory.push({ type: 'received', content: msg.body || '' });
+
+                    // Contexto del inmueble si tenemos ad_link
+                    let propertyContext = {};
+                    try {
+                        const link = client.ad_link || client.adLink;
+                        if (link) {
+                            const property = sqliteManager.getPropertyByUrl ? sqliteManager.getPropertyByUrl(link) : null;
+                            if (property) {
+                                propertyContext = {
+                                    type: property.title ? property.title.split(' ')[0] : 'Propiedad',
+                                    location: property.location || property.direccion || 'su zona',
+                                    price: property.price || null,
+                                    description: property.description || '',
+                                    url: link
+                                };
+                            } else {
+                                propertyContext = { url: link, type: 'Propiedad' };
+                            }
+                        }
+                    } catch (_) {}
+
+                    // Construir prompt del sistema (respeta el guion pero adapta al contexto)
+                    const AGENTE = "Alex Aldazabal";
+                    const COMPANIA = "IAD Inmobiliaria";
+                    const baseScript = whatsappScripts.initial_contact?.text || 'Hola, le contacto por la propiedad que tiene en venta.';
+
+                    let propertyPromptContext = "";
+                    if (propertyContext.url) {
+                        propertyPromptContext = `
+DATOS DEL INMUEBLE DEL CLIENTE:
+- Tipo: ${propertyContext.type || 'Desconocido'}
+- Ubicación: ${propertyContext.location || 'Desconocida'}
+- Precio: ${propertyContext.price || 'Desconocido'}
+- Descripción: ${propertyContext.description ? propertyContext.description.substring(0, 300) + '...' : 'No disponible'}
+`;
+                    }
+
+                    const systemPrompt = `Eres ${AGENTE}, asesor inmobiliario de ${COMPANIA}. Tu objetivo es continuar la conversación de forma coherente según el historial y el guion de referencia, adaptándolo al contexto real del cliente (${client.name}).
+
+${propertyPromptContext}
+
+GUION DE REFERENCIA (ESTILO/OBJETIVO):
+"${baseScript}"
+
+INSTRUCCIONES:
+- Analiza el historial y responde de forma natural y breve (1-3 frases).
+- Si el cliente es positivo, propon una cita concreta (día/horario).
+- Si tiene dudas u objeciones, acláralas sin prometer compradores concretos.
+- Demuestra que conoces su inmueble si hay datos disponibles.
+- Responde SIEMPRE en el mismo idioma que el cliente.
+- No uses lenguaje comercial agresivo; mantén cercanía y profesionalidad.
+- Mantén naturalidad y variedad: no repitas siempre las mismas expresiones; usa conectores humanos y adapta tu tono al del cliente.`;
+
+                    const historyContext = lastHistory.map(m => `${m.type === 'received' ? 'Cliente' : 'Yo'}: ${m.content}`).join('\n');
+
+                    const fetch = (await import('node-fetch')).default;
+                    const aiResp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+                            'Content-Type': 'application/json',
+                            'HTTP-Referer': 'http://localhost:3001',
+                            'X-Title': 'Inmobiliaria Manager'
+                        },
+                        body: JSON.stringify({
+                            model: 'openai/gpt-oss-20b:free',
+                            messages: [
+                                { role: 'system', content: systemPrompt },
+                                { role: 'user', content: `HISTORIAL:\n${historyContext}\n\nResponde con el siguiente turno de la conversación, de forma humana y coherente.` }
+                            ],
+                            temperature: 0.8,
+                            max_tokens: 300
+                        })
+                    });
+                    const aiData = await aiResp.json();
+                    if (!aiData.choices || !aiData.choices[0]) {
+                        console.warn('⚠️ Respuesta IA vacía en auto-respuesta. No se envía mensaje.');
+                        return;
+                    }
+                    const reply = aiData.choices[0].message.content;
+
                     await whatsappClient.sendMessage(msg.from, reply);
                     sqliteManager.saveMessage(client.id, 'whatsapp', reply, 'sent');
+
                     const ch = client.contactHistory || [];
                     ch.push({
                         date: new Date().toISOString(),
@@ -791,12 +872,14 @@ whatsappClient.on('message', async msg => {
                         status: { whatsapp: 'sent' }
                     });
                     sqliteManager.updateClient(client.id, { contactHistory: ch });
+
                     notifyUser({
-                        title: 'Bot WhatsApp',
-                        message: `Respuesta automática enviada a ${client.name}`,
+                        title: 'Bot WhatsApp (IA)',
+                        message: `Respuesta IA enviada a ${client.name}`,
                         sound: 'Glass',
                         wait: false
                     });
+
                     const config = getEmailConfig();
                     if (client.email && config.user && config.pass) {
                         await emailTransporter.sendMail({
@@ -807,7 +890,7 @@ whatsappClient.on('message', async msg => {
                         });
                     }
                 } catch (e) {
-                    console.error('Error enviando auto-respuesta:', e.message);
+                    console.error('Error enviando auto-respuesta IA:', e.message);
                 }
             }
         }
@@ -2820,11 +2903,11 @@ app.get('/api/messages/:clientId', (req, res) => {
 
 // Generar mensaje con IA (o Template)
 app.post('/api/messages/generate', async (req, res) => {
-    const { clientName, clientPhone, properties, preferences, model, template, scriptType, history } = req.body;
+    const { clientName, clientPhone, properties, preferences, model, template, scriptType, history, apiKey } = req.body;
 
     // Unificar template y scriptType
     const effectiveTemplate = scriptType || template;
-    const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+    const OPENROUTER_API_KEY = apiKey || process.env.OPENROUTER_API_KEY;
 
     try {
         // 0. ENRIQUECIMIENTO DE DATOS (PROPIEDAD)
@@ -2895,9 +2978,24 @@ app.post('/api/messages/generate', async (req, res) => {
         }
 
         // 3. GENERACIÓN CON IA (Con Historial o sin template definido)
+        // Fallback si no hay API Key: devolver plantilla inteligente independientemente del historial
         if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY === 'tu_api_key_aqui') {
-             // Fallback si no hay API Key pero hay historial (no podemos generar dinámico)
-             return res.json({ message: "Error: No API Key configured for AI responses.", source: 'error' });
+             let message = '';
+             // Usar plantilla seleccionada si existe, si no, initial_contact
+             const templateKey = (effectiveTemplate && whatsappScripts[effectiveTemplate]) ? effectiveTemplate : 'initial_contact';
+             message = whatsappScripts[templateKey]?.text || 'Hola, le contacto por la propiedad que tiene en venta';
+             
+             // Personalización básica con contexto de propiedad
+             if (propertyContext.url) {
+                 message = message.replace('{{LINK}}', propertyContext.url);
+             }
+             if (clientName) {
+                 message = message.replace('{{CLIENT_NAME}}', clientName);
+             }
+             if (propertyContext.type && message.includes('la propiedad')) {
+                 message = message.replace('la propiedad', `su ${propertyContext.type}`);
+             }
+             return res.json({ message, source: 'script_template_fallback' });
         }
 
         const AGENTE = "Alex Aldazabal"; // Quitamos Dufurneaux si prefiere ser más directo
@@ -2933,6 +3031,9 @@ INSTRUCCIONES:
 - USA LOS DATOS DEL INMUEBLE: Si el cliente vende un "Chalet con piscina", menciónalo. Demuestra que has leído su anuncio.
 - Si el cliente responde positivamente, avanza hacia el cierre (cita/visita).
 - Si el cliente tiene dudas, respóndelas usando la información del guion como base.
+- Mantén naturalidad y variedad: evita repetir frases literales del guion si no encajan; usa conectores variados (por ejemplo, "por cierto", "además", "en ese caso").
+- Adapta el trato (tú/usted) al del cliente; evita tecnicismos innecesarios; sé breve y claro (1–3 frases o 1 párrafo corto).
+- No generes listas ni bloques largos; responde como humano en chat.
 
 REGLAS DE ORO (SEGURIDAD Y HONESTIDAD):
 1. NO MIENTAS NI INVENTES COMPRADORES: Nunca digas "tengo un cliente específico para tu casa" o "tengo una visita lista" si no es cierto.

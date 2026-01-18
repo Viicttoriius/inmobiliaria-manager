@@ -122,6 +122,18 @@ function initDB() {
         CREATE INDEX IF NOT EXISTS idx_messages_client_id ON messages(client_id);
     `);
 
+    try {
+        const msgColumns = db.prepare("PRAGMA table_info(messages)").all();
+        const hasCreatedAt = msgColumns.some(c => c.name === 'created_at');
+        const hasSentAt = msgColumns.some(c => c.name === 'sent_at');
+        if (!hasCreatedAt) {
+            db.exec("ALTER TABLE messages ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP");
+        }
+        if (!hasSentAt) {
+            db.exec("ALTER TABLE messages ADD COLUMN sent_at TEXT");
+        }
+    } catch (e) { }
+
     // Create calendar_events table
     db.exec(`
         CREATE TABLE IF NOT EXISTS calendar_events (
@@ -780,6 +792,8 @@ function updateClient(id, updates) {
  * Delete a client
  */
 function deleteClient(id) {
+    const delMsgs = db.prepare('DELETE FROM messages WHERE client_id = ?');
+    delMsgs.run(id);
     const stmt = db.prepare('DELETE FROM clients WHERE id = ?');
     return stmt.run(id);
 }
