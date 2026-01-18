@@ -1346,6 +1346,11 @@ app.get('/api/config/status', (req, res) => {
         },
         python: {
             path: process.env.PYTHON_PATH || 'python'
+        },
+        ai: {
+            openrouter: {
+                configured: !!(process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_API_KEY !== 'tu_api_key_aqui')
+            }
         }
     });
 });
@@ -1407,6 +1412,41 @@ app.post('/api/config/email', (req, res) => {
         res.json({ success: true });
     } catch (error) {
         console.error('Error guardando .env:', error);
+        res.status(500).json({ error: 'Error guardando configuración' });
+    }
+});
+
+// Guardar API Key de OpenRouter
+app.post('/api/config/ai/openrouter', (req, res) => {
+    const { apiKey } = req.body;
+
+    if (!apiKey) {
+        return res.status(400).json({ error: 'API Key requerida' });
+    }
+
+    // Actualizar en memoria
+    process.env.OPENROUTER_API_KEY = apiKey;
+
+    // Persistir en .env
+    try {
+        const envPath = ENV_FILE;
+        let envContent = '';
+
+        if (fs.existsSync(envPath)) {
+            envContent = fs.readFileSync(envPath, 'utf8');
+        }
+
+        if (envContent.includes('OPENROUTER_API_KEY=')) {
+            envContent = envContent.replace(/OPENROUTER_API_KEY=.*/g, `OPENROUTER_API_KEY=${apiKey}`);
+        } else {
+            envContent += `\nOPENROUTER_API_KEY=${apiKey}`;
+        }
+
+        fs.writeFileSync(envPath, envContent);
+        console.log('✅ OPENROUTER_API_KEY actualizada y guardada en .env');
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error guardando OPENROUTER_API_KEY:', error);
         res.status(500).json({ error: 'Error guardando configuración' });
     }
 });

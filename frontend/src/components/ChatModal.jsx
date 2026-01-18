@@ -65,14 +65,27 @@ const ChatModal = ({ client, onClose, API_URL, showNotification }) => {
       const response = await fetch(`${API_URL}/messages/${client.id}`);
       if (response.ok) {
         const data = await response.json();
-        // Only update if different (simple check)
-        setMessages(prev => {
-            if (prev.length !== data.length) return data.reverse(); // Backend returns DESC, we want ASC for chat? 
-            // Wait, backend returns DESC (newest first). Chat usually displays oldest at top.
-            // So we should reverse them for display.
-            return data.reverse();
-        });
-        setLoading(false);
+        // Backend retorna DESC; el chat necesita ASC
+        if (Array.isArray(data) && data.length > 0) {
+          setMessages(data.reverse());
+          setLoading(false);
+        } else {
+          // Fallback: buscar por teléfono
+          if (client.phone) {
+            const resp2 = await fetch(`${API_URL}/messages/by-phone/${encodeURIComponent(client.phone)}`);
+            if (resp2.ok) {
+              const data2 = await resp2.json();
+              setMessages(Array.isArray(data2) ? data2.reverse() : []);
+              setLoading(false);
+            } else {
+              setMessages([]);
+              setLoading(false);
+            }
+          } else {
+            setMessages([]);
+            setLoading(false);
+          }
+        }
       }
     } catch (error) {
       console.error('Error fetching messages:', error);
@@ -103,6 +116,19 @@ const ChatModal = ({ client, onClose, API_URL, showNotification }) => {
         setNewMessage('');
         fetchMessages(); // Refresh immediately
         if (showNotification) showNotification('Mensaje enviado', 'success');
+        if (automationStatus !== 'active') {
+          try {
+            const resp = await fetch(`${API_URL}/clients/${client.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ automation_status: 'active' })
+            });
+            if (resp.ok) {
+              setAutomationStatus('active');
+              if (showNotification) showNotification('Bot ACTIVADO tras primer envío', 'success');
+            }
+          } catch (e) { /* noop */ }
+        }
       } else {
         if (showNotification) showNotification('Error enviando mensaje: ' + (data.details ? data.details.join(', ') : 'Error desconocido'), 'error');
       }
@@ -120,6 +146,7 @@ const ChatModal = ({ client, onClose, API_URL, showNotification }) => {
       // Get default script from localStorage
       const defaultScript = localStorage.getItem('whatsapp_default_script') || 'initial_contact';
       const defaultModel = localStorage.getItem('whatsapp_default_model') || 'openai/gpt-oss-20b:free';
+      const openrouterApiKey = localStorage.getItem('openrouter_api_key') || null;
 
       // 1. Intentar obtener contexto de propiedad si el cliente tiene ad_link
       let contextProperties = [];
@@ -145,7 +172,8 @@ const ChatModal = ({ client, onClose, API_URL, showNotification }) => {
           preferences: client.preferences,
           model: defaultModel,
           scriptType: defaultScript,
-          history: messages.slice(-10) // Send last 10 messages as context
+          history: messages.slice(-10), // Send last 10 messages as context
+          apiKey: openrouterApiKey || undefined
         })
       });
 

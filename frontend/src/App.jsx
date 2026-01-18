@@ -171,6 +171,8 @@ function App() {
   const [savingScraperConfig, setSavingScraperConfig] = useState(false);
   const [aiConfig, setAiConfig] = useState({ model: 'openai/gpt-oss-20b:free', script: 'initial_contact' });
   const [savingAiConfig, setSavingAiConfig] = useState(false);
+  const [openRouterKeyInput, setOpenRouterKeyInput] = useState('');
+  const [savingOpenRouterKey, setSavingOpenRouterKey] = useState(false);
   const [pythonPathInput, setPythonPathInput] = useState('');
   const [savingPythonPath, setSavingPythonPath] = useState(false);
 
@@ -854,6 +856,9 @@ function App() {
         const scraperData = await scraperResponse.json();
         setScraperConfig(scraperData);
       }
+
+      // Limpiar input de API de OpenRouter por seguridad
+      setOpenRouterKeyInput('');
     } catch (error) {
       console.error('Error cargando estado de configuración:', error);
     }
@@ -1085,6 +1090,33 @@ function App() {
         setSavingAiConfig(false);
         showNotification('Configuración de IA guardada', 'success');
     }, 500);
+  };
+
+  const handleSaveOpenRouterKey = async (e) => {
+    e.preventDefault();
+    if (!openRouterKeyInput || openRouterKeyInput.trim().length < 10) {
+      showNotification('Introduce una API Key válida de OpenRouter.', 'warning');
+      return;
+    }
+    setSavingOpenRouterKey(true);
+    try {
+      const response = await fetch(`${API_URL}/config/ai/openrouter`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey: openRouterKeyInput.trim() })
+      });
+      const data = await response.json();
+      if (data.success) {
+        showNotification('API Key de OpenRouter guardada correctamente.', 'success');
+        await loadConfigStatus();
+      } else {
+        showNotification('Error guardando API Key: ' + (data.error || 'desconocido'), 'error');
+      }
+    } catch (error) {
+      showNotification('Error de conexión al guardar API Key.', 'error');
+    } finally {
+      setSavingOpenRouterKey(false);
+    }
   };
 
   const handleCleanup = async () => {
@@ -2729,6 +2761,29 @@ function App() {
                   <p className="config-info">
                     Configura el comportamiento por defecto de la IA para las respuestas automáticas.
                   </p>
+                  
+                  <div className="form-group">
+                      <label>Estado OpenRouter:</label>
+                      <div className={`status-badge ${configStatus?.ai?.openrouter?.configured ? 'success' : 'warning'}`} style={{ display: 'inline-block' }}>
+                        {configStatus?.ai?.openrouter?.configured ? 'API Configurada ✅' : 'API No Configurada ❌'}
+                      </div>
+                  </div>
+                  
+                  <form onSubmit={handleSaveOpenRouterKey} className="email-config-form" style={{ marginTop: '0.5rem' }}>
+                    <div className="form-group">
+                      <label>OpenRouter API Key:</label>
+                      <input
+                        type="password"
+                        value={openRouterKeyInput}
+                        onChange={(e) => setOpenRouterKeyInput(e.target.value)}
+                        placeholder="sk-... (tu clave de OpenRouter)"
+                        style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', width: '100%' }}
+                      />
+                    </div>
+                    <button type="submit" className="save-btn" disabled={savingOpenRouterKey}>
+                      {savingOpenRouterKey ? 'Guardando...' : 'Guardar API de OpenRouter'}
+                    </button>
+                  </form>
                   
                   <div className="form-group">
                       <label>Modelo de IA por defecto:</label>
