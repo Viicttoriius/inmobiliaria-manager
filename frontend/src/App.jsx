@@ -806,6 +806,7 @@ function App() {
         propertyType: c.property_type || c.propertyType,
         interest: c.interest,
         preferences: c.preferences,
+        automation_status: c.automation_status || c.automationStatus,
         answered: c.answered,
         response: c.response,
         date: c.date,

@@ -618,12 +618,8 @@ const whatsappClient = new Client({
     // Usar un UA estándar de Chrome Windows reciente para máxima compatibilidad
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
     qrMaxRetries: 0,
-    // Desactivamos la caché persistente para evitar errores de regex en index.html
-    // y forzamos el uso de la versión más reciente compatible (o la que descargue)
-    webVersionCache: {
-        type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
-    },
+    // Desactivar cache remoto de versión para evitar incompatibilidades con cambios internos (markedUnread/sendSeen)
+    webVersionCache: { type: 'none' },
     // Añadido para intentar mitigar problemas de timeout/evaluación en mac
     restartOnAuthFail: true,
     puppeteer: {
@@ -704,6 +700,22 @@ whatsappClient.on('ready', () => {
     isWhatsAppReady = true;
     whatsappState = 'CONNECTED';
     currentQR = null; // Ya no se necesita QR
+    // Intentar desactivar sendSeen para prevenir errores internos en versiones recientes
+    try {
+        const page = whatsappClient?.pupPage || whatsappClient?.page;
+        if (page && typeof page.evaluate === 'function') {
+            page.evaluate(() => {
+                try {
+                    window.WWebJS = window.WWebJS || {};
+                    window.WWebJS.sendSeen = async () => {};
+                } catch (e) { /* noop */ }
+            }).then(() => {
+                console.log('🛡️ Protección aplicada: sendSeen desactivado.');
+            }).catch(() => {});
+        }
+    } catch (e) {
+        console.warn('⚠️ No se pudo aplicar protección sendSeen:', e.message);
+    }
 });
 
 // Escuchar mensajes entrantes
@@ -2988,7 +3000,16 @@ app.post('/api/messages/send', async (req, res) => {
                     formattedPhone = '34' + formattedPhone;
                 }
 
-                const chatId = `${formattedPhone}@c.us`;
+                // Resolver ID de número (más robusto que construir @c.us manual)
+                let chatId = `${formattedPhone}@c.us`;
+                try {
+                    const numberId = await whatsappClient.getNumberId(formattedPhone);
+                    if (numberId && numberId._serialized) {
+                        chatId = numberId._serialized;
+                    }
+                } catch (e) {
+                    console.warn('   [WARN] getNumberId falló, usando chatId directo:', e.message);
+                }
 
                 console.log(`   📱 Enviando WhatsApp a ${chatId}...`);
                 

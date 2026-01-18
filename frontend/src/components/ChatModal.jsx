@@ -28,6 +28,12 @@ const ChatModal = ({ client, onClose, API_URL, onSendMessage, showNotification }
     scrollToBottom();
   }, [messages]);
 
+  useEffect(() => {
+    if (!loading && messages.length === 0 && automationStatus === 'active' && !newMessage && client.phone) {
+      handleGenerateReply();
+    }
+  }, [loading, messages, automationStatus, newMessage, client.phone]);
+
   const toggleAutomation = async () => {
     const newStatus = automationStatus === 'active' ? 'paused' : 'active';
     setTogglingAutomation(true);
