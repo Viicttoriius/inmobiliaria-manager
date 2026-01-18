@@ -756,6 +756,60 @@ whatsappClient.on('message', async msg => {
             if (client.answered === 0) {
                  sqliteManager.updateClient(client.id, { answered: 1, response: msg.body });
             }
+
+            const automation = client.automation_status || client.automationStatus;
+            // Gate: solo auto-responder si YA hemos enviado al menos un mensaje (primer envío manual)
+            let hasSentBefore = false;
+            try {
+                const history = sqliteManager.getClientMessages(client.id) || [];
+                hasSentBefore = history.some(m => m.status === 'sent');
+            } catch (e) { /* noop */ }
+            if (automation === 'active' && hasSentBefore) {
+                const text = (msg.body || '').toLowerCase();
+                const negatives = ['no me interesa', 'no quiero', 'no agencias', 'no inmobiliaria', 'no gracias'];
+                const neutrals = ['eres inmobiliaria', 'quien eres', 'quién eres', 'inmobiliaria'];
+                const positives = ['si', 'sí', 'me interesa', 'vale', 'ok', 'podemos quedar', 'de acuerdo'];
+                let reply = '';
+                if (negatives.some(k => text.includes(k))) {
+                    reply = whatsappScripts.refusal_direct.text;
+                } else if (neutrals.some(k => text.includes(k))) {
+                    reply = whatsappScripts.objection_agency.text;
+                } else if (positives.some(k => text.includes(k))) {
+                    reply = 'Genial. ¿Cuándo le viene bien una visita de 20 minutos esta semana? Puedo adaptarme a su horario.';
+                } else {
+                    reply = whatsappScripts.objection_agency.text;
+                }
+                try {
+                    await whatsappClient.sendMessage(msg.from, reply);
+                    sqliteManager.saveMessage(client.id, 'whatsapp', reply, 'sent');
+                    const ch = client.contactHistory || [];
+                    ch.push({
+                        date: new Date().toISOString(),
+                        propertyUrl: client.ad_link || client.adLink || '',
+                        channel: 'whatsapp',
+                        message: reply.substring(0, 100) + '...',
+                        status: { whatsapp: 'sent' }
+                    });
+                    sqliteManager.updateClient(client.id, { contactHistory: ch });
+                    notifyUser({
+                        title: 'Bot WhatsApp',
+                        message: `Respuesta automática enviada a ${client.name}`,
+                        sound: 'Glass',
+                        wait: false
+                    });
+                    const config = getEmailConfig();
+                    if (client.email && config.user && config.pass) {
+                        await emailTransporter.sendMail({
+                            from: config.user,
+                            to: client.email,
+                            subject: '[WhatsApp BOT] Información automática',
+                            text: reply
+                        });
+                    }
+                } catch (e) {
+                    console.error('Error enviando auto-respuesta:', e.message);
+                }
+            }
         }
 
     } catch (err) {
@@ -3049,10 +3103,20 @@ app.post('/api/messages/send', async (req, res) => {
         } else {
             try {
                 console.log(`   📧 Enviando Email a ${clientEmail}...`);
+                let emailSubject = 'Información Inmobiliaria - Alex Aldazabal';
+                try {
+                    if (clientId) {
+                        const c = sqliteManager.getClientById(clientId);
+                        const auto = c?.automation_status || c?.automationStatus;
+                        if (auto === 'active') {
+                            emailSubject = `[WhatsApp BOT] ${emailSubject}`;
+                        }
+                    }
+                } catch (_) {}
                 await emailTransporter.sendMail({
                     from: process.env.EMAIL_USER,
                     to: clientEmail,
-                    subject: 'Información Inmobiliaria - Alex Aldazabal',
+                    subject: emailSubject,
                     text: message
                 });
                 console.log('   ✅ Email enviado.');

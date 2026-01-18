@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, RefreshCw, MessageSquare, Bot, Phone, User, PauseCircle, PlayCircle } from 'lucide-react';
 
-const ChatModal = ({ client, onClose, API_URL, onSendMessage, showNotification }) => {
+const ChatModal = ({ client, onClose, API_URL, showNotification }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -10,7 +10,6 @@ const ChatModal = ({ client, onClose, API_URL, onSendMessage, showNotification }
   const [automationStatus, setAutomationStatus] = useState(client.automation_status || 'active');
   const [togglingAutomation, setTogglingAutomation] = useState(false);
   const messagesEndRef = useRef(null);
-  const [pollInterval, setPollInterval] = useState(null);
 
   // Load messages on mount and start polling
   useEffect(() => {
@@ -18,7 +17,6 @@ const ChatModal = ({ client, onClose, API_URL, onSendMessage, showNotification }
     
     // Poll every 3 seconds
     const interval = setInterval(fetchMessages, 3000);
-    setPollInterval(interval);
 
     return () => clearInterval(interval);
   }, [client.id]);
@@ -243,7 +241,7 @@ const ChatModal = ({ client, onClose, API_URL, onSendMessage, showNotification }
             </div>
           ) : (
             messages.map((msg, index) => {
-                const isMe = msg.type !== 'received';
+                const isMe = msg.status !== 'received';
                 return (
                     <div key={msg.id || index} style={{ 
                         alignSelf: isMe ? 'flex-end' : 'flex-start',
