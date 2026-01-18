@@ -757,6 +757,22 @@ whatsappClient.on('message', async msg => {
                  sqliteManager.updateClient(client.id, { answered: 1, response: msg.body });
             }
 
+            // Detectar intención de cita y notificar al usuario (sin agendar automáticamente)
+            try {
+                const textLower = (msg.body || '').toLowerCase();
+                const schedulingKeywords = ['cita', 'quedar', 'visita', 'vernos', 'agendar', 'reunirnos'];
+                const timePattern = /\b(hoy|mañana|lunes|martes|miércoles|jueves|viernes|sábado|domingo|\d{1,2}[:.]\d{2}|a las \d{1,2})\b/;
+                const wantsSchedule = schedulingKeywords.some(k => textLower.includes(k)) || timePattern.test(textLower);
+                if (wantsSchedule) {
+                    notifyUser({
+                        title: 'Solicitud de cita',
+                        message: `El cliente ${client.name} sugiere agenda: "${msg.body.substring(0, 80)}..."`,
+                        sound: 'Glass',
+                        wait: false
+                    });
+                }
+            } catch (_) {}
+
             const automation = client.automation_status || client.automationStatus;
             // Gate: solo auto-responder si YA hemos enviado al menos un mensaje (primer envío manual)
             let hasSentBefore = false;
@@ -825,7 +841,8 @@ GUION DE REFERENCIA (ESTILO/OBJETIVO):
 
 INSTRUCCIONES:
 - Analiza el historial y responde de forma natural y breve (1-3 frases).
-- Si el cliente es positivo, propon una cita concreta (día/horario).
+- Si el cliente es positivo, NO propongas fecha/hora concreta. PIDE disponibilidad: "¿Qué día te viene bien?" o "¿prefieres mañana tarde?".
+- NO confirmes citas ni cierres agenda tú; solo recoge intención y disponibilidad del cliente.
 - Si tiene dudas u objeciones, acláralas sin prometer compradores concretos.
 - Demuestra que conoces su inmueble si hay datos disponibles.
 - Responde SIEMPRE en el mismo idioma que el cliente.
@@ -835,24 +852,24 @@ INSTRUCCIONES:
                     const historyContext = lastHistory.map(m => `${m.type === 'received' ? 'Cliente' : 'Yo'}: ${m.content}`).join('\n');
 
                     const fetch = (await import('node-fetch')).default;
-                    const aiResp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-                            'Content-Type': 'application/json',
-                            'HTTP-Referer': 'http://localhost:3001',
-                            'X-Title': 'Inmobiliaria Manager'
-                        },
-                        body: JSON.stringify({
-                            model: 'openai/gpt-oss-20b:free',
-                            messages: [
-                                { role: 'system', content: systemPrompt },
-                                { role: 'user', content: `HISTORIAL:\n${historyContext}\n\nResponde con el siguiente turno de la conversación, de forma humana y coherente.` }
-                            ],
-                            temperature: 0.8,
-                            max_tokens: 300
-                        })
-                    });
+                        const aiResp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+                                'Content-Type': 'application/json',
+                                'HTTP-Referer': 'http://localhost:3001',
+                                'X-Title': 'Inmobiliaria Manager'
+                            },
+                            body: JSON.stringify({
+                                model: 'meta-llama/llama-3.3-70b-instruct:free',
+                                messages: [
+                                    { role: 'system', content: systemPrompt },
+                                    { role: 'user', content: `HISTORIAL:\n${historyContext}\n\nResponde con el siguiente turno de la conversación, de forma humana y coherente.` }
+                                ],
+                                temperature: 0.8,
+                                max_tokens: 300
+                            })
+                        });
                     const aiData = await aiResp.json();
                     if (!aiData.choices || !aiData.choices[0]) {
                         console.warn('⚠️ Respuesta IA vacía en auto-respuesta. No se envía mensaje.');
@@ -2901,6 +2918,19 @@ app.get('/api/messages/:clientId', (req, res) => {
     }
 });
 
+// Obtener historial de mensajes por teléfono (fallback robusto)
+app.get('/api/messages/by-phone/:phone', (req, res) => {
+    try {
+        const client = sqliteManager.getClientByPhone(req.params.phone);
+        if (!client) return res.json([]);
+        const messages = sqliteManager.getClientMessages(client.id);
+        res.json(messages);
+    } catch (error) {
+        console.error('Error obteniendo mensajes por teléfono:', error);
+        res.status(500).json({ error: 'Error obteniendo mensajes' });
+    }
+});
+
 // Generar mensaje con IA (o Template)
 app.post('/api/messages/generate', async (req, res) => {
     const { clientName, clientPhone, properties, preferences, model, template, scriptType, history, apiKey } = req.body;
@@ -3029,7 +3059,8 @@ GUION ORIGINAL (REFERENCIA DE ESTILO Y OBJETIVO):
 INSTRUCCIONES:
 - Analiza el historial de conversación.
 - USA LOS DATOS DEL INMUEBLE: Si el cliente vende un "Chalet con piscina", menciónalo. Demuestra que has leído su anuncio.
-- Si el cliente responde positivamente, avanza hacia el cierre (cita/visita).
+- Si el cliente muestra interés, NO propongas fecha/hora concreta. PIDE su disponibilidad: "¿Qué día te viene bien?" o "¿prefieres mañana tarde?".
+- NO confirmes citas ni cierres agenda tú; solo recoge intención y disponibilidad del cliente.
 - Si el cliente tiene dudas, respóndelas usando la información del guion como base.
 - Mantén naturalidad y variedad: evita repetir frases literales del guion si no encajan; usa conectores variados (por ejemplo, "por cierto", "además", "en ese caso").
 - Adapta el trato (tú/usted) al del cliente; evita tecnicismos innecesarios; sé breve y claro (1–3 frases o 1 párrafo corto).
@@ -3073,7 +3104,7 @@ Tono: Profesional, empático y directo. Demuestra conocimiento sobre el inmueble
                 'X-Title': 'Inmobiliaria Manager'
             },
             body: JSON.stringify({
-                model: model || 'openai/gpt-oss-20b:free',
+                model: model || 'meta-llama/llama-3.3-70b-instruct:free',
                 messages: [
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: historyContext ? `HISTORIAL DE CONVERSACIÓN:\n${historyContext}\n\nGenera la respuesta adecuada continuando la conversación.` : "Genera el mensaje inicial." }
