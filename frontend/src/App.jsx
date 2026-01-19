@@ -18,14 +18,14 @@ const WhatsAppModal = ({ isOpen, onClose, url, clientName }) => {
 
   // Detectar si estamos en Electron (por el User Agent o API expuesta)
   const isElectron = navigator.userAgent.toLowerCase().includes('electron');
-  
+
   // Transformar URL para webview si es necesario (wa.me -> web.whatsapp.com)
   // Aunque wa.me redirige, webview maneja mejor URLs directas
   let finalUrl = url;
   if (url && url.includes('wa.me')) {
-      // Extraer número
-      const number = url.split('/').pop();
-      finalUrl = `https://web.whatsapp.com/send?phone=${number}`;
+    // Extraer número
+    const number = url.split('/').pop();
+    finalUrl = `https://web.whatsapp.com/send?phone=${number}`;
   }
 
   return (
@@ -36,44 +36,44 @@ const WhatsAppModal = ({ isOpen, onClose, url, clientName }) => {
             <MessageSquare size={20} /> WhatsApp Web {clientName ? `- ${clientName}` : ''}
           </h3>
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-             <a href={finalUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'white', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <ExternalLink size={16} /> Abrir en navegador externo
-             </a>
-             <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'white' }}><X size={24} /></button>
+            <a href={finalUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'white', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <ExternalLink size={16} /> Abrir en navegador externo
+            </a>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'white' }}><X size={24} /></button>
           </div>
         </div>
         <div className="modal-body" style={{ flex: 1, position: 'relative', background: '#e5ddd5', display: 'flex', flexDirection: 'column' }}>
-           
-           {isElectron ? (
-               <webview 
-                 src={finalUrl} 
-                 style={{ width: '100%', height: '100%', border: 'none' }} 
-                 useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                 allowpopups="true"
-               />
-           ) : (
-               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#555', padding: '2rem', textAlign: 'center' }}>
-                   <div style={{ background: 'white', padding: '2rem', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
-                       <MessageSquare size={64} style={{ color: '#25D366', marginBottom: '1rem' }} />
-                       <h3 style={{ marginBottom: '0.5rem' }}>WhatsApp Web no se puede mostrar aquí</h3>
-                       <p style={{ marginBottom: '1.5rem', maxWidth: '400px' }}>
-                           Por restricciones de seguridad de WhatsApp, la versión web no se puede incrustar en el navegador (Chrome/Edge).
-                       </p>
-                       <p style={{ marginBottom: '1.5rem', fontWeight: 'bold' }}>
-                           💡 Para usarlo dentro de la App, ejecuta la versión de escritorio (Electron).
-                       </p>
-                       <a 
-                           href={finalUrl} 
-                           target="_blank" 
-                           rel="noopener noreferrer" 
-                           className="btn-primary"
-                           style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '0.75rem 1.5rem', textDecoration: 'none' }}
-                       >
-                           <ExternalLink size={18} /> Abrir WhatsApp Web en pestaña nueva
-                       </a>
-                   </div>
-               </div>
-           )}
+
+          {isElectron ? (
+            <webview
+              src={finalUrl}
+              style={{ width: '100%', height: '100%', border: 'none' }}
+              useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+              allowpopups="true"
+            />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#555', padding: '2rem', textAlign: 'center' }}>
+              <div style={{ background: 'white', padding: '2rem', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+                <MessageSquare size={64} style={{ color: '#25D366', marginBottom: '1rem' }} />
+                <h3 style={{ marginBottom: '0.5rem' }}>WhatsApp Web no se puede mostrar aquí</h3>
+                <p style={{ marginBottom: '1.5rem', maxWidth: '400px' }}>
+                  Por restricciones de seguridad de WhatsApp, la versión web no se puede incrustar en el navegador (Chrome/Edge).
+                </p>
+                <p style={{ marginBottom: '1.5rem', fontWeight: 'bold' }}>
+                  💡 Para usarlo dentro de la App, ejecuta la versión de escritorio (Electron).
+                </p>
+                <a
+                  href={finalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-primary"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '0.75rem 1.5rem', textDecoration: 'none' }}
+                >
+                  <ExternalLink size={18} /> Abrir WhatsApp Web en pestaña nueva
+                </a>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -135,7 +135,7 @@ function App() {
   const [whatsAppClientName, setWhatsAppClientName] = useState('');
   const [chatModalOpen, setChatModalOpen] = useState(false);
   const [chatClient, setChatClient] = useState(null);
-  const [scrapingInProgress, setScrapingInProgress] = useState({  
+  const [scrapingInProgress, setScrapingInProgress] = useState({
     fotocasa_viviendas: false, fotocasa_locales: false, fotocasa_terrenos: false,
     idealista_viviendas: false, idealista_locales: false, idealista_terrenos: false
   });
@@ -389,62 +389,62 @@ function App() {
 
   const handleSaveProperty = async (id, updatedData) => {
     try {
-        const response = await fetch(`${API_URL}/properties/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(updatedData)
-        });
+      const response = await fetch(`${API_URL}/properties/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedData)
+      });
 
-        if (response.ok) {
-            // Update local state to reflect changes immediately
-            setProperties(prev => prev.map(p => {
-                if (p.id === id) {
-                     // Merge updates safely. Map updatedData keys to frontend keys if needed.
-                     // The endpoint expects data as is, and the mapping logic in sqlite-manager handles it.
-                     // But for the frontend display, we need to update the specific fields.
-                     return { 
-                        ...p, 
-                        ...updatedData, 
-                        // Explicitly map for immediate UI update
-                        Title: updatedData.title || p.Title,
-                        Price: updatedData.price || p.Price,
-                        Description: updatedData.description || p.Description,
-                        Advertiser: updatedData.advertiser || p.Advertiser,
-                        Phone: updatedData.phone || p.Phone,
-                        Municipality: updatedData.location || p.Municipality,
-                        notes: updatedData.notes || p.notes
-                     };
-                }
-                return p;
-            }));
-            
-            // Re-apply filters to update the list if needed
-            setFilteredProperties(prev => prev.map(p => {
-                 if (p.id === id) {
-                     return { 
-                        ...p, 
-                        ...updatedData, 
-                        Title: updatedData.title || p.Title,
-                        Price: updatedData.price || p.Price,
-                        Description: updatedData.description || p.Description,
-                        Advertiser: updatedData.advertiser || p.Advertiser,
-                        Phone: updatedData.phone || p.Phone,
-                        Municipality: updatedData.location || p.Municipality,
-                        notes: updatedData.notes || p.notes
-                     };
-                }
-                return p;
-            }));
+      if (response.ok) {
+        // Update local state to reflect changes immediately
+        setProperties(prev => prev.map(p => {
+          if (p.id === id) {
+            // Merge updates safely. Map updatedData keys to frontend keys if needed.
+            // The endpoint expects data as is, and the mapping logic in sqlite-manager handles it.
+            // But for the frontend display, we need to update the specific fields.
+            return {
+              ...p,
+              ...updatedData,
+              // Explicitly map for immediate UI update
+              Title: updatedData.title || p.Title,
+              Price: updatedData.price || p.Price,
+              Description: updatedData.description || p.Description,
+              Advertiser: updatedData.advertiser || p.Advertiser,
+              Phone: updatedData.phone || p.Phone,
+              Municipality: updatedData.location || p.Municipality,
+              notes: updatedData.notes || p.notes
+            };
+          }
+          return p;
+        }));
 
-            showNotification('Propiedad actualizada correctamente', 'success');
-            setEditModalOpen(false);
-            setPropertyToEdit(null);
-        } else {
-            throw new Error('Error al actualizar');
-        }
+        // Re-apply filters to update the list if needed
+        setFilteredProperties(prev => prev.map(p => {
+          if (p.id === id) {
+            return {
+              ...p,
+              ...updatedData,
+              Title: updatedData.title || p.Title,
+              Price: updatedData.price || p.Price,
+              Description: updatedData.description || p.Description,
+              Advertiser: updatedData.advertiser || p.Advertiser,
+              Phone: updatedData.phone || p.Phone,
+              Municipality: updatedData.location || p.Municipality,
+              notes: updatedData.notes || p.notes
+            };
+          }
+          return p;
+        }));
+
+        showNotification('Propiedad actualizada correctamente', 'success');
+        setEditModalOpen(false);
+        setPropertyToEdit(null);
+      } else {
+        throw new Error('Error al actualizar');
+      }
     } catch (error) {
-        console.error('Error actualizando propiedad:', error);
-        showNotification('Error al actualizar propiedad', 'error');
+      console.error('Error actualizando propiedad:', error);
+      showNotification('Error al actualizar propiedad', 'error');
     }
   };
 
@@ -554,35 +554,35 @@ function App() {
 
   const mapPropertyData = (rawData) => {
     return rawData.map(p => {
-        // Safe extra_data parsing
-        let extra = {};
-        if (p.extra_data) {
-            try {
-                extra = typeof p.extra_data === 'string' ? JSON.parse(p.extra_data) : p.extra_data;
-            } catch (e) {
-                console.error("Error parsing extra_data for property:", p.id);
-            }
+      // Safe extra_data parsing
+      let extra = {};
+      if (p.extra_data) {
+        try {
+          extra = typeof p.extra_data === 'string' ? JSON.parse(p.extra_data) : p.extra_data;
+        } catch (e) {
+          console.error("Error parsing extra_data for property:", p.id);
         }
+      }
 
-        // Helper to find key case-insensitive in object
-        const findVal = (obj, key) => {
-            if (!obj) return null;
-            const foundKey = Object.keys(obj).find(k => k.toLowerCase() === key.toLowerCase());
-            return foundKey ? obj[foundKey] : null;
-        };
+      // Helper to find key case-insensitive in object
+      const findVal = (obj, key) => {
+        if (!obj) return null;
+        const foundKey = Object.keys(obj).find(k => k.toLowerCase() === key.toLowerCase());
+        return foundKey ? obj[foundKey] : null;
+      };
 
-        const phone = p.phone || p.Phone || findVal(extra, 'phone') || 'None';
-        const advertiser = p.Advertiser || p.advertiser || findVal(extra, 'advertiser') || '';
+      const phone = p.phone || p.Phone || findVal(extra, 'phone') || 'None';
+      const advertiser = p.Advertiser || p.advertiser || findVal(extra, 'advertiser') || '';
 
-        return {
-            ...p,
-            Phone: phone,
-            Advertiser: advertiser,
-            Municipality: p.Municipality || findVal(extra, 'municipality') || '',
-            // Ensure other fields are mapped if needed
-            hab: p.hab || findVal(extra, 'hab') || findVal(extra, 'habitaciones') || '',
-            m2: p.m2 || findVal(extra, 'm2') || findVal(extra, 'metros') || ''
-        };
+      return {
+        ...p,
+        Phone: phone,
+        Advertiser: advertiser,
+        Municipality: p.Municipality || findVal(extra, 'municipality') || '',
+        // Ensure other fields are mapped if needed
+        hab: p.hab || findVal(extra, 'hab') || findVal(extra, 'habitaciones') || '',
+        m2: p.m2 || findVal(extra, 'm2') || findVal(extra, 'metros') || ''
+      };
     });
   };
 
@@ -728,43 +728,43 @@ function App() {
 
       const mapPropertyData = (rawData) => {
         return rawData.map(p => {
-            // Safe extra_data parsing
-            let extra = {};
-            if (p.extra_data) {
-                try {
-                    extra = typeof p.extra_data === 'string' ? JSON.parse(p.extra_data) : p.extra_data;
-                } catch (e) {
-                    console.error("Error parsing extra_data for property:", p.id);
-                }
+          // Safe extra_data parsing
+          let extra = {};
+          if (p.extra_data) {
+            try {
+              extra = typeof p.extra_data === 'string' ? JSON.parse(p.extra_data) : p.extra_data;
+            } catch (e) {
+              console.error("Error parsing extra_data for property:", p.id);
             }
-    
-            // Helper to find key case-insensitive in object
-            const findVal = (obj, key) => {
-                if (!obj) return null;
-                const foundKey = Object.keys(obj).find(k => k.toLowerCase() === key.toLowerCase());
-                return foundKey ? obj[foundKey] : null;
-            };
-    
-            const phone = p.phone || p.Phone || findVal(extra, 'phone') || 'None';
-            const advertiser = p.Advertiser || p.advertiser || findVal(extra, 'advertiser') || '';
-    
-            return {
-                ...p,
-                id: p.id,
-                Title: p.title || p.Title,
-                Price: p.price || p.Price,
-                Description: p.description || p.Description,
-                imgurl: p.image_url || p.imgurl,
-                url: p.url,
-                property_type: p.property_type,
-                source: p.source,
-                Timeago: p.timeago || p.Timeago,
-                Municipality: p.location || p.Municipality || findVal(extra, 'municipality') || '',
-                Phone: phone,
-                hab: p.habitaciones || p.hab || findVal(extra, 'hab') || findVal(extra, 'habitaciones'),
-                m2: p.metros || p.m2 || findVal(extra, 'm2') || findVal(extra, 'metros'),
-                Advertiser: advertiser
-            };
+          }
+
+          // Helper to find key case-insensitive in object
+          const findVal = (obj, key) => {
+            if (!obj) return null;
+            const foundKey = Object.keys(obj).find(k => k.toLowerCase() === key.toLowerCase());
+            return foundKey ? obj[foundKey] : null;
+          };
+
+          const phone = p.phone || p.Phone || findVal(extra, 'phone') || 'None';
+          const advertiser = p.Advertiser || p.advertiser || findVal(extra, 'advertiser') || '';
+
+          return {
+            ...p,
+            id: p.id,
+            Title: p.title || p.Title,
+            Price: p.price || p.Price,
+            Description: p.description || p.Description,
+            imgurl: p.image_url || p.imgurl,
+            url: p.url,
+            property_type: p.property_type,
+            source: p.source,
+            Timeago: p.timeago || p.Timeago,
+            Municipality: p.location || p.Municipality || findVal(extra, 'municipality') || '',
+            Phone: phone,
+            hab: p.habitaciones || p.hab || findVal(extra, 'hab') || findVal(extra, 'habitaciones'),
+            m2: p.metros || p.m2 || findVal(extra, 'm2') || findVal(extra, 'metros'),
+            Advertiser: advertiser
+          };
         });
       };
 
@@ -1058,10 +1058,10 @@ function App() {
 
   useEffect(() => {
     if (configModalOpen) {
-        setAiConfig({
-            model: localStorage.getItem('whatsapp_default_model') || 'openai/gpt-oss-20b:free',
-            script: localStorage.getItem('whatsapp_default_script') || 'initial_contact'
-        });
+      setAiConfig({
+        model: localStorage.getItem('whatsapp_default_model') || 'openai/gpt-oss-20b:free',
+        script: localStorage.getItem('whatsapp_default_script') || 'initial_contact'
+      });
     }
   }, [configModalOpen]);
 
@@ -1069,11 +1069,11 @@ function App() {
   useEffect(() => {
     let interval;
     if (configModalOpen) {
-        loadConfigStatus();
-        interval = setInterval(loadConfigStatus, 3000);
+      loadConfigStatus();
+      interval = setInterval(loadConfigStatus, 3000);
     }
     return () => {
-        if (interval) clearInterval(interval);
+      if (interval) clearInterval(interval);
     };
   }, [configModalOpen]);
 
@@ -1081,14 +1081,14 @@ function App() {
     setSavingAiConfig(true);
     localStorage.setItem('whatsapp_default_model', aiConfig.model);
     localStorage.setItem('whatsapp_default_script', aiConfig.script);
-    
+
     // También actualizar el estado de selectedModel/Script si se desea que afecte inmediatamente al panel principal
     setSelectedModel(aiConfig.model);
     setSelectedScript(aiConfig.script);
 
     setTimeout(() => {
-        setSavingAiConfig(false);
-        showNotification('Configuración de IA guardada', 'success');
+      setSavingAiConfig(false);
+      showNotification('Configuración de IA guardada', 'success');
     }, 500);
   };
 
@@ -1269,11 +1269,11 @@ function App() {
     // Auto-generar link de WhatsApp si no existe y hay teléfono
     let clientToSave = { ...newClient };
     if (!clientToSave.whatsappLink && clientToSave.phone) {
-        const rawPhone = clientToSave.phone;
-        const cleanPhone = rawPhone.replace(/\D/g, '');
-        if (cleanPhone.length >= 9) {
-            clientToSave.whatsappLink = `https://wa.me/${cleanPhone}`;
-        }
+      const rawPhone = clientToSave.phone;
+      const cleanPhone = rawPhone.replace(/\D/g, '');
+      if (cleanPhone.length >= 9) {
+        clientToSave.whatsappLink = `https://wa.me/${cleanPhone}`;
+      }
     }
 
     try {
@@ -1364,7 +1364,7 @@ function App() {
     try {
       const client = clients.find(c => c.id === selectedClients[0])
       // Handle optional property
-      const props = selectedProperties.length > 0 
+      const props = selectedProperties.length > 0
         ? properties.filter(p => selectedProperties.includes(p.url))
         : [];
 
@@ -2260,9 +2260,9 @@ function App() {
 
                       <div className="filter-group" style={{ marginBottom: 0 }}>
                         <BarChart2 size={18} style={{ color: 'var(--text-secondary)' }} />
-                        <select 
-                          value={clientSortBy} 
-                          onChange={(e) => setClientSortBy(e.target.value)} 
+                        <select
+                          value={clientSortBy}
+                          onChange={(e) => setClientSortBy(e.target.value)}
                           style={{ padding: '0.5rem 2rem 0.5rem 0.5rem', border: 'none', background: 'transparent', color: 'var(--text)', outline: 'none', cursor: 'pointer', fontWeight: '500' }}
                         >
                           <option value="date_desc">Más Recientes</option>
@@ -2354,7 +2354,7 @@ function App() {
                           Respuesta
                           <div className="resizer" onMouseDown={(e) => startResizing(e, 'response')} />
                         </th>
-                        <th 
+                        <th
                           style={{ width: columnWidths.date, cursor: 'pointer', userSelect: 'none' }}
                           onClick={() => {
                             if (clientSortBy === 'date_asc') setClientSortBy('date_desc');
@@ -2416,18 +2416,18 @@ function App() {
                             </td>
                             <td>
                               {client.whatsappLink ? (
-                                <button 
+                                <button
                                   onClick={() => {
-                                      setChatClient(client);
-                                      setChatModalOpen(true);
+                                    setChatClient(client);
+                                    setChatModalOpen(true);
                                   }}
-                                  style={{ 
-                                    background: 'none', 
-                                    border: 'none', 
-                                    cursor: 'pointer', 
-                                    color: '#22c55e', 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    color: '#22c55e',
+                                    display: 'flex',
+                                    alignItems: 'center',
                                     gap: '4px',
                                     padding: 0,
                                     fontSize: 'inherit'
@@ -2567,9 +2567,9 @@ function App() {
             <CalendarPanel clients={clients} showNotification={showNotification} />
           )}
           {activeTab === 'inbox' && (
-            <InboxPanel 
-              API_URL={API_URL} 
-              showNotification={showNotification} 
+            <InboxPanel
+              API_URL={API_URL}
+              showNotification={showNotification}
               onOpenConfig={() => setConfigModalOpen(true)}
             />
           )}
@@ -2611,7 +2611,7 @@ function App() {
                         </p>
                         {configStatus.whatsapp.lastError && (
                           <div style={{ color: '#ef4444', marginBottom: '0.5rem', fontSize: '0.85rem', background: 'rgba(239, 68, 68, 0.1)', padding: '0.5rem', borderRadius: '4px', maxWidth: '100%', overflowWrap: 'break-word' }}>
-                             <strong>Detalle:</strong> {configStatus.whatsapp.lastError}
+                            <strong>Detalle:</strong> {configStatus.whatsapp.lastError}
                           </div>
                         )}
                         <small style={{ display: 'block', marginBottom: '1rem', color: 'var(--text-secondary)' }}>
@@ -2761,14 +2761,14 @@ function App() {
                   <p className="config-info">
                     Configura el comportamiento por defecto de la IA para las respuestas automáticas.
                   </p>
-                  
+
                   <div className="form-group">
-                      <label>Estado OpenRouter:</label>
-                      <div className={`status-badge ${configStatus?.ai?.openrouter?.configured ? 'success' : 'warning'}`} style={{ display: 'inline-block' }}>
-                        {configStatus?.ai?.openrouter?.configured ? 'API Configurada ✅' : 'API No Configurada ❌'}
-                      </div>
+                    <label>Estado OpenRouter:</label>
+                    <div className={`status-badge ${configStatus?.ai?.openrouter?.configured ? 'success' : 'warning'}`} style={{ display: 'inline-block' }}>
+                      {configStatus?.ai?.openrouter?.configured ? 'API Configurada ✅' : 'API No Configurada ❌'}
+                    </div>
                   </div>
-                  
+
                   <form onSubmit={handleSaveOpenRouterKey} className="email-config-form" style={{ marginTop: '0.5rem' }}>
                     <div className="form-group">
                       <label>OpenRouter API Key:</label>
@@ -2784,25 +2784,25 @@ function App() {
                       {savingOpenRouterKey ? 'Guardando...' : 'Guardar API de OpenRouter'}
                     </button>
                   </form>
-                  
+
                   <div className="form-group">
-                      <label>Modelo de IA por defecto:</label>
-                      <select 
-                        value={aiConfig.model} 
-                        onChange={e => setAiConfig({...aiConfig, model: e.target.value})}
-                        style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', width: '100%' }}
-                      >
-                          <option value="openai/gpt-oss-120b:free">GPT-4o OSS 120B (Gratis)</option>
-                          <option value="openai/gpt-oss-20b:free">GPT-4o OSS 20B (Gratis)</option>
-                          <option value="tngtech/deepseek-r1t-chimera:free">DeepSeek R1 Chimera (Gratis)</option>
-                          <option value="meta-llama/llama-3.3-70b-instruct:free">Llama 3.3 70B (Gratis)</option>
-                          <option value="nex-agi/deepseek-v3.1-nex-n1:free">DeepSeek V3.1 Nex (Gratis)</option>
-                      </select>
+                    <label>Modelo de IA por defecto:</label>
+                    <select
+                      value={aiConfig.model}
+                      onChange={e => setAiConfig({ ...aiConfig, model: e.target.value })}
+                      style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', width: '100%' }}
+                    >
+                      <option value="openai/gpt-oss-120b:free">GPT-4o OSS 120B (Gratis)</option>
+                      <option value="openai/gpt-oss-20b:free">GPT-4o OSS 20B (Gratis)</option>
+                      <option value="tngtech/deepseek-r1t-chimera:free">DeepSeek R1 Chimera (Gratis)</option>
+                      <option value="meta-llama/llama-3.3-70b-instruct:free">Llama 3.3 70B (Gratis)</option>
+                      <option value="nex-agi/deepseek-v3.1-nex-n1:free">DeepSeek V3.1 Nex (Gratis)</option>
+                    </select>
                   </div>
 
-                  <button 
-                    onClick={handleSaveAIConfig} 
-                    className="save-btn" 
+                  <button
+                    onClick={handleSaveAIConfig}
+                    className="save-btn"
                     disabled={savingAiConfig}
                     style={{ marginTop: '1rem', backgroundColor: '#8b5cf6' }}
                   >
@@ -2888,29 +2888,52 @@ function App() {
                 {!viewingClientHistory.contactHistory || viewingClientHistory.contactHistory.length === 0 ? (
                   <p>No hay mensajes enviados a este cliente.</p>
                 ) : (
-                  <div className="history-list" style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                    {viewingClientHistory.contactHistory.slice().reverse().map((record, index) => (
-                      <div key={index} className="history-item" style={{ marginBottom: '1rem', padding: '1rem', background: 'var(--background)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                            {new Date(record.date).toLocaleString()}
-                          </span>
-                          <span className={`history-badge sent`}>
-                            {record.channel === 'both' ? 'WhatsApp + Email' : (record.channel || 'WhatsApp')}
-                          </span>
+                  <>
+                    <div className="history-list" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                      {viewingClientHistory.contactHistory.slice().reverse().map((record, index) => (
+                        <div key={index} className="history-item" style={{ marginBottom: '1rem', padding: '1rem', background: 'var(--background)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                              {new Date(record.date).toLocaleString()}
+                            </span>
+                            <span className={`history-badge sent`}>
+                              {record.channel === 'both' ? 'WhatsApp + Email' : (record.channel || 'WhatsApp')}
+                            </span>
+                          </div>
+                          <p style={{ fontSize: '0.9rem', marginBottom: '0.5rem', whiteSpace: 'pre-wrap' }}>{record.message}</p>
+                          {record.propertyUrl && record.propertyUrl !== 'Multiple/General' && (
+                            <a href={record.propertyUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.85rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                              <ExternalLink size={14} /> Ver Propiedad
+                            </a>
+                          )}
                         </div>
-                        <p style={{ fontSize: '0.9rem', marginBottom: '0.5rem', whiteSpace: 'pre-wrap' }}>{record.message}</p>
-                        {record.propertyUrl && record.propertyUrl !== 'Multiple/General' && (
-                          <a href={record.propertyUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.85rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                            <ExternalLink size={14} /> Ver Propiedad
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  </>
                 )}
 
-                <div className="modal-actions">
+                <div className="modal-actions" style={{ display: 'flex', justifyContent: 'space-between', width: '100%', marginTop: '1rem' }}>
+                  {viewingClientHistory.contactHistory && viewingClientHistory.contactHistory.length > 0 && (
+                    <button
+                      onClick={async () => {
+                        if (window.confirm('¿Estás seguro de que deseas borrar TODO el historial de este cliente?')) {
+                          try {
+                            const response = await fetch(`${API_URL}/clients/${viewingClientHistory.id}/history`, { method: 'DELETE' });
+                            if (response.ok) {
+                              setViewingClientHistory({ ...viewingClientHistory, contactHistory: [] });
+                              showNotification('Historial borrado correctamente', 'success');
+                            }
+                          } catch (e) {
+                            showNotification('Error al borrar el historial', 'error');
+                          }
+                        }
+                      }}
+                      className="modal-btn cancel"
+                      style={{ color: '#ef4444', borderColor: '#ef4444' }}
+                    >
+                      <Trash2 size={16} /> Borrar Historial
+                    </button>
+                  )}
                   <button onClick={closeHistory} className="modal-btn confirm">
                     Cerrar
                   </button>
@@ -3016,24 +3039,24 @@ function App() {
         }
 
         {/* Modal de WhatsApp */}
-        <WhatsAppModal 
-          isOpen={whatsAppModalOpen} 
-          onClose={() => setWhatsAppModalOpen(false)} 
-          url={whatsAppUrl} 
+        <WhatsAppModal
+          isOpen={whatsAppModalOpen}
+          onClose={() => setWhatsAppModalOpen(false)}
+          url={whatsAppUrl}
           clientName={whatsAppClientName}
         />
 
         {/* Modal de Chat */}
         {chatModalOpen && chatClient && (
-            <ChatModal
-                client={chatClient}
-                onClose={() => {
-                    setChatModalOpen(false);
-                    setChatClient(null);
-                }}
-                API_URL={API_URL}
-                showNotification={showNotification}
-            />
+          <ChatModal
+            client={chatClient}
+            onClose={() => {
+              setChatModalOpen(false);
+              setChatClient(null);
+            }}
+            API_URL={API_URL}
+            showNotification={showNotification}
+          />
         )}
 
         {/* Modal de Edición de Propiedad */}

@@ -170,7 +170,7 @@ function initDB() {
         const columns = db.prepare("PRAGMA table_info(clients)").all();
         const hasAutomation = columns.some(c => c.name === 'automation_status');
         if (!hasAutomation) {
-            db.exec("ALTER TABLE clients ADD COLUMN automation_status TEXT DEFAULT 'active'"); 
+            db.exec("ALTER TABLE clients ADD COLUMN automation_status TEXT DEFAULT 'active'");
             console.log("Migration: Added automation_status to clients table");
         }
     } catch (e) { console.error("Error migrating clients automation_status:", e); }
@@ -314,18 +314,18 @@ function upsertProperty(property) {
     // 2. Buscar si ya existe la propiedad (con o sin slash)
     // Esto es necesario porque ON CONFLICT solo funciona con coincidencia exacta
     const existing = db.prepare('SELECT url, extra_data FROM properties WHERE url = ? OR url = ?').get(url, url + '/');
-    
+
     if (existing) {
         // Usar la URL existente para asegurar que el UPDATE funcione
         property.url = existing.url;
-        
+
         // Preservar extra_data si no viene en el nuevo objeto
         if (!property.extra_data && existing.extra_data) {
-             try {
-                 const oldExtra = JSON.parse(existing.extra_data);
-                 const newExtra = property.extra_data ? JSON.parse(property.extra_data) : {};
-                 property.extra_data = JSON.stringify({ ...oldExtra, ...newExtra });
-             } catch (e) {}
+            try {
+                const oldExtra = JSON.parse(existing.extra_data);
+                const newExtra = property.extra_data ? JSON.parse(property.extra_data) : {};
+                property.extra_data = JSON.stringify({ ...oldExtra, ...newExtra });
+            } catch (e) { }
         }
     } else {
         // Si es nueva, usamos la URL normalizada (sin slash)
@@ -392,7 +392,7 @@ function upsertProperty(property) {
             ...(property.extra_data || {})
         })
     };
-    
+
     // Log para depuración del título
     if (!data.title) {
         console.warn(`⚠️ UpsertProperty: Título vacío para URL ${data.url}`);
@@ -427,30 +427,30 @@ function ensureClientFromProperty(propertyData) {
             const extra = JSON.parse(propertyData.extra_data);
             advertiserName = extra.Advertiser || extra.advertiser || extra.nombre || 'Anunciante';
         } else if (propertyData.extra_data) {
-             advertiserName = propertyData.extra_data.Advertiser || propertyData.extra_data.advertiser || 'Anunciante';
+            advertiserName = propertyData.extra_data.Advertiser || propertyData.extra_data.advertiser || 'Anunciante';
         }
-    } catch (e) {}
+    } catch (e) { }
 
     // Check if client exists
     const existingClient = getClientByPhone(phone);
     if (existingClient) {
         // Update name if it was generic and we found a better one
         const isGeneric = (name) => !name || name === 'Particular' || name === 'Anunciante' || name.match(/^Cliente \d+$/) || name.includes('Usuario');
-        
+
         // Check if advertiserName is actually better (not generic)
         const isNewNameGeneric = isGeneric(advertiserName);
 
         if (isGeneric(existingClient.name) && !isNewNameGeneric) {
-             try {
+            try {
                 updateClient(existingClient.id, { name: advertiserName });
                 console.log(`👤 Cliente actualizado con mejor nombre: ${advertiserName} (${phone})`);
-             } catch (e) {
+            } catch (e) {
                 console.error('Error updating client name:', e);
-             }
+            }
         }
         return;
     }
-    
+
     // Fallback if name is still generic but we have title
     if (advertiserName === 'Anunciante' && propertyData.source === 'Manual') {
         // Maybe nothing
@@ -471,8 +471,8 @@ function ensureClientFromProperty(propertyData) {
 
     // Generate WhatsApp link
     if (!newClient.whatsapp_link) {
-         const cleanPhone = newClient.phone.replace(/\D/g, '');
-         newClient.whatsapp_link = `https://wa.me/${cleanPhone}`;
+        const cleanPhone = newClient.phone.replace(/\D/g, '');
+        newClient.whatsapp_link = `https://wa.me/${cleanPhone}`;
     }
 
     insertClient(newClient);
@@ -691,12 +691,12 @@ function insertClient(client) {
         // Basic cleaning: remove non-digits
         const cleanPhone = rawPhone.replace(/\D/g, '');
         if (cleanPhone.length >= 9) { // Simple check
-             // Add country code if missing (assuming ES +34 for now if starts with 6 or 7, or just use raw if it has CC)
-             // But usually local numbers. Let's assume input might have it or not. 
-             // Ideally we'd use a lib like google-libphonenumber but let's keep it simple as requested.
-             // If it starts with 34, keep it. If not, add 34? 
-             // Let's just append to wa.me/
-             whatsappLink = `https://wa.me/${cleanPhone}`;
+            // Add country code if missing (assuming ES +34 for now if starts with 6 or 7, or just use raw if it has CC)
+            // But usually local numbers. Let's assume input might have it or not. 
+            // Ideally we'd use a lib like google-libphonenumber but let's keep it simple as requested.
+            // If it starts with 34, keep it. If not, add 34? 
+            // Let's just append to wa.me/
+            whatsappLink = `https://wa.me/${cleanPhone}`;
         }
     }
 
@@ -952,29 +952,29 @@ function getEvents(startDate, endDate) {
         try {
             // Construct an event object from client appointment
             let start = new Date(client.appointment_date);
-            
+
             // Fallback for other formats if necessary (e.g., DD/MM/YYYY or DD-MM-YY)
             if (isNaN(start.getTime()) && typeof client.appointment_date === 'string') {
-                 let dateStr = client.appointment_date.trim();
-                 // Normalize separators
-                 dateStr = dateStr.replace(/\//g, '-');
-                 
-                 const parts = dateStr.split('-');
-                 if (parts.length === 3) {
-                     let day = parseInt(parts[0], 10);
-                     let month = parseInt(parts[1], 10);
-                     let year = parseInt(parts[2], 10);
+                let dateStr = client.appointment_date.trim();
+                // Normalize separators
+                dateStr = dateStr.replace(/\//g, '-');
 
-                     // Handle 2-digit years (assume 20xx)
-                     if (year < 100) {
-                         year += 2000;
-                     }
+                const parts = dateStr.split('-');
+                if (parts.length === 3) {
+                    let day = parseInt(parts[0], 10);
+                    let month = parseInt(parts[1], 10);
+                    let year = parseInt(parts[2], 10);
 
-                     // Create date object (Month is 0-indexed in JS Date constructor)
-                     // But using string "YYYY-MM-DD" is safer
-                     const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                     start = new Date(isoDate);
-                 }
+                    // Handle 2-digit years (assume 20xx)
+                    if (year < 100) {
+                        year += 2000;
+                    }
+
+                    // Create date object (Month is 0-indexed in JS Date constructor)
+                    // But using string "YYYY-MM-DD" is safer
+                    const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    start = new Date(isoDate);
+                }
             }
 
             if (isNaN(start.getTime())) {
@@ -1002,7 +1002,7 @@ function getEvents(startDate, endDate) {
     }).filter(e => e !== null); // Filter out failed ones
 
     // 3. Merge and Sort
-    const allEvents = [...standardEvents, ...clientAppointments].sort((a, b) => 
+    const allEvents = [...standardEvents, ...clientAppointments].sort((a, b) =>
         new Date(a.start_date) - new Date(b.start_date)
     );
 
@@ -1200,11 +1200,11 @@ function updatePropertyById(id, data) {
 
     // Campos especiales que van en extra_data
     const extraFields = ['Advertiser', 'advertiser'];
-    
+
     // Obtener propiedad actual para preservar extra_data
     const currentStmt = db.prepare('SELECT * FROM properties WHERE id = ?');
     const current = currentStmt.get(id);
-    
+
     if (!current) return { changes: 0 };
 
     let currentExtra = current.extra_data ? JSON.parse(current.extra_data) : {};
@@ -1216,7 +1216,7 @@ function updatePropertyById(id, data) {
             const dbField = fieldMap[key.toLowerCase()] || fieldMap[key];
             fields.push(`${dbField} = ?`);
             params.push(value);
-        } 
+        }
         // Campos extra
         else if (extraFields.includes(key) || extraFields.includes(key.toLowerCase())) {
             currentExtra[key] = value;
@@ -1228,17 +1228,33 @@ function updatePropertyById(id, data) {
         fields.push('extra_data = ?');
         params.push(JSON.stringify(currentExtra));
     }
-    
+
     // Always update last_updated
     fields.push("last_updated = datetime('now')");
 
     if (fields.length === 0) return { changes: 0 };
 
     params.push(id);
-    
+
     const query = `UPDATE properties SET ${fields.join(', ')} WHERE id = ?`;
     const stmt = db.prepare(query);
     return stmt.run(...params);
+}
+
+/**
+ * Clear all messages for a client
+ */
+function clearMessages(clientId) {
+    const stmt = db.prepare('DELETE FROM messages WHERE client_id = ?');
+    return stmt.run(clientId);
+}
+
+/**
+ * Clear contact history for a client
+ */
+function clearClientHistory(clientId) {
+    const stmt = db.prepare("UPDATE clients SET contact_history = '[]' WHERE id = ?");
+    return stmt.run(clientId);
 }
 
 // Export all functions
@@ -1268,10 +1284,12 @@ module.exports = {
     deleteClient,
     bulkUpsertClients,
     getClientsCount,
+    clearClientHistory,
 
     // Messages
     saveMessage,
     getClientMessages,
+    clearMessages,
 
     // Calendar
     getEvents,

@@ -20,24 +20,24 @@ Sentry.init({
     dsn: "https://15bf6ed890e254dc94272dd272911ddd@o4510509929857024.ingest.de.sentry.io/4510509939032144",
     tracesSampleRate: 1.0,
     beforeSend(event, hint) {
-                const error = hint.originalException;
-                if (error) {
-                    const errorMessage = (error.message || error.toString() || '').toLowerCase();
-                    
-                    // Filtrar errores conocidos de Puppeteer / WhatsApp que son ruido
-                    if (
-                        errorMessage.includes('navigation failed because browser has disconnected') ||
-                        errorMessage.includes('protocol error') ||
-                        errorMessage.includes('target closed') ||
-                        errorMessage.includes('session closed') ||
-                        errorMessage.includes('browser process') ||
-                        errorMessage.includes('waiting for target failed: timeout')
-                    ) {
-                        return null; // Ignorar este evento
-                    }
-                }
-                return event;
+        const error = hint.originalException;
+        if (error) {
+            const errorMessage = (error.message || error.toString() || '').toLowerCase();
+
+            // Filtrar errores conocidos de Puppeteer / WhatsApp que son ruido
+            if (
+                errorMessage.includes('navigation failed because browser has disconnected') ||
+                errorMessage.includes('protocol error') ||
+                errorMessage.includes('target closed') ||
+                errorMessage.includes('session closed') ||
+                errorMessage.includes('browser process') ||
+                errorMessage.includes('waiting for target failed: timeout')
+            ) {
+                return null; // Ignorar este evento
             }
+        }
+        return event;
+    }
 });
 // -------------------------------------
 
@@ -74,7 +74,7 @@ const log = (msg) => {
     try {
         const timestamp = new Date().toISOString();
         fs.appendFileSync(LOG_FILE, `[${timestamp}] ${msg}\n`);
-    } catch (e) { 
+    } catch (e) {
         // Si falla escribir (ej. disco lleno), intentar liberar espacio borrando el .old
         if (e.code === 'ENOSPC') {
             try {
@@ -84,7 +84,7 @@ const log = (msg) => {
                     // Reintentar una vez
                     fs.appendFileSync(LOG_FILE, `[${timestamp}] ${msg} (Recovered from ENOSPC)\n`);
                 }
-            } catch (err) {}
+            } catch (err) { }
         }
     }
 };
@@ -325,8 +325,8 @@ const getBundledChromiumPath = () => {
     try {
         const isWin = process.platform === 'win32';
         // Nombres de ejecutables comunes (incluyendo chrome-headless-shell para nuevas versiones de Puppeteer)
-        const exeNames = isWin 
-            ? ['chrome.exe', 'chromium.exe', 'chrome-headless-shell.exe'] 
+        const exeNames = isWin
+            ? ['chrome.exe', 'chromium.exe', 'chrome-headless-shell.exe']
             : ['chrome', 'chromium', 'google-chrome', 'chrome-headless-shell', 'Google Chrome', 'Chromium'];
 
         // Rutas base posibles donde buscar la cache de puppeteer
@@ -493,14 +493,14 @@ process.on('uncaughtException', (err) => {
 
 process.on('unhandledRejection', (reason, promise) => {
     const msg = reason?.message || '';
-    
+
     // Filtrar errores conocidos de Puppeteer/WhatsApp para no saturar Sentry
-    const isKnownError = msg.includes('Execution context was destroyed') || 
-                         msg.includes('Target closed') ||
-                         msg.includes('Protocol error') ||
-                         msg.includes('Failed to launch the browser process') ||
-                         msg.includes('Navigation failed because browser has disconnected') ||
-                         msg.includes('waiting for target failed: timeout');
+    const isKnownError = msg.includes('Execution context was destroyed') ||
+        msg.includes('Target closed') ||
+        msg.includes('Protocol error') ||
+        msg.includes('Failed to launch the browser process') ||
+        msg.includes('Navigation failed because browser has disconnected') ||
+        msg.includes('waiting for target failed: timeout');
 
     if (!isKnownError) {
         console.error('🔥 UNHANDLED REJECTION:', reason);
@@ -539,7 +539,7 @@ const removeSingletonLock = () => {
         // En este caso clientId es 'client-one'
         const sessionPath = path.join(WHATSAPP_DATA_DIR, 'session-client-one');
         const lockFile = path.join(sessionPath, 'SingletonLock');
-        
+
         if (fs.existsSync(lockFile)) {
             console.log(`🔒 SingletonLock detectado en: ${lockFile}`);
             try {
@@ -548,24 +548,24 @@ const removeSingletonLock = () => {
             } catch (unlinkErr) {
                 // Si falla borrarlo, puede ser permisos o que el proceso sigue vivo
                 console.warn(`⚠️ No se pudo eliminar SingletonLock: ${unlinkErr.message}`);
-                
+
                 // Intento agresivo: matar procesos de Chrome huérfanos si estamos en macOS/Linux
                 if (process.platform !== 'win32') {
                     try {
                         console.log('🔪 Intentando matar procesos Chrome huérfanos...');
                         execSync('pkill -f "Google Chrome" || true');
                         execSync('pkill -f "Chromium" || true');
-                    } catch (e) {}
+                    } catch (e) { }
                 }
             }
         }
-        
+
         // También limpiar directorios temporales de Puppeteer si existen
         const tempDirs = [
             path.join(sessionPath, 'Default', 'SingletonLock'),
-            path.join(sessionPath, 'SingletonLock') 
+            path.join(sessionPath, 'SingletonLock')
         ];
-        
+
         // Limpieza preventiva adicional
     } catch (e) {
         console.error('Error en limpieza de SingletonLock:', e);
@@ -576,7 +576,7 @@ const removeSingletonLock = () => {
 const cleanWhatsAppCache = () => {
     try {
         removeSingletonLock(); // Llamar a limpieza de lock antes de nada
-        
+
         const cachePath = path.join(WHATSAPP_DATA_DIR, '.wwebjs_cache');
         if (fs.existsSync(cachePath)) {
             console.log('🧹 Limpiando caché antigua de WhatsApp...');
@@ -584,7 +584,7 @@ const cleanWhatsAppCache = () => {
         }
         // También limpiar cache local de versiones si existe en otro lado (legacy)
         const localCachePath = path.join(__dirname, '.wwebjs_cache');
-         if (fs.existsSync(localCachePath)) {
+        if (fs.existsSync(localCachePath)) {
             console.log('🧹 Limpiando caché local de WhatsApp...');
             try {
                 fs.rmSync(localCachePath, { recursive: true, force: true });
@@ -707,11 +707,11 @@ whatsappClient.on('ready', () => {
             page.evaluate(() => {
                 try {
                     window.WWebJS = window.WWebJS || {};
-                    window.WWebJS.sendSeen = async () => {};
+                    window.WWebJS.sendSeen = async () => { };
                 } catch (e) { /* noop */ }
             }).then(() => {
                 console.log('🛡️ Protección aplicada: sendSeen desactivado.');
-            }).catch(() => {});
+            }).catch(() => { });
         }
     } catch (e) {
         console.warn('⚠️ No se pudo aplicar protección sendSeen:', e.message);
@@ -751,10 +751,10 @@ whatsappClient.on('message', async msg => {
             // Guardar mensaje en historial
             sqliteManager.saveMessage(client.id, 'whatsapp', msg.body, 'received');
             console.log(`   ✅ Mensaje guardado para cliente ${client.name} (${client.id})`);
-            
+
             // Actualizar estado de "respondido" si es necesario
             if (client.answered === 0) {
-                 sqliteManager.updateClient(client.id, { answered: 1, response: msg.body });
+                sqliteManager.updateClient(client.id, { answered: 1, response: msg.body });
             }
 
             // Detectar intención de cita y notificar al usuario (sin agendar automáticamente)
@@ -771,7 +771,7 @@ whatsappClient.on('message', async msg => {
                         wait: false
                     });
                 }
-            } catch (_) {}
+            } catch (_) { }
 
             const automation = client.automation_status || client.automationStatus;
             // Gate: solo auto-responder si YA hemos enviado al menos un mensaje (primer envío manual)
@@ -814,7 +814,7 @@ whatsappClient.on('message', async msg => {
                                 propertyContext = { url: link, type: 'Propiedad' };
                             }
                         }
-                    } catch (_) {}
+                    } catch (_) { }
 
                     // Construir prompt del sistema (respeta el guion pero adapta al contexto)
                     const AGENTE = "Alex Aldazabal";
@@ -852,24 +852,24 @@ INSTRUCCIONES:
                     const historyContext = lastHistory.map(m => `${m.type === 'received' ? 'Cliente' : 'Yo'}: ${m.content}`).join('\n');
 
                     const fetch = (await import('node-fetch')).default;
-                        const aiResp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-                            method: 'POST',
-                            headers: {
-                                'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-                                'Content-Type': 'application/json',
-                                'HTTP-Referer': 'http://localhost:3001',
-                                'X-Title': 'Inmobiliaria Manager'
-                            },
-                            body: JSON.stringify({
-                                model: 'meta-llama/llama-3.3-70b-instruct:free',
-                                messages: [
-                                    { role: 'system', content: systemPrompt },
-                                    { role: 'user', content: `HISTORIAL:\n${historyContext}\n\nResponde con el siguiente turno de la conversación, de forma humana y coherente.` }
-                                ],
-                                temperature: 0.8,
-                                max_tokens: 300
-                            })
-                        });
+                    const aiResp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+                            'Content-Type': 'application/json',
+                            'HTTP-Referer': 'http://localhost:3001',
+                            'X-Title': 'Inmobiliaria Manager'
+                        },
+                        body: JSON.stringify({
+                            model: 'meta-llama/llama-3.3-70b-instruct:free',
+                            messages: [
+                                { role: 'system', content: systemPrompt },
+                                { role: 'user', content: `HISTORIAL:\n${historyContext}\n\nResponde con el siguiente turno de la conversación, de forma humana y coherente.` }
+                            ],
+                            temperature: 0.8,
+                            max_tokens: 300
+                        })
+                    });
                     const aiData = await aiResp.json();
                     if (!aiData.choices || !aiData.choices[0]) {
                         console.warn('⚠️ Respuesta IA vacía en auto-respuesta. No se envía mensaje.');
@@ -974,14 +974,14 @@ const initializeWhatsApp = async () => {
         await whatsappClient.initialize();
     } catch (err) {
         console.error('❌ Error fatal al inicializar WhatsApp Client:', err);
-        
+
         // Filtrar errores operativos conocidos
         const msg = err.message || '';
-        const isKnownError = msg.includes('waiting for target failed: timeout') || 
-                             msg.includes('Target closed') ||
-                             msg.includes('Protocol error') ||
-                             msg.includes('Failed to launch the browser process') ||
-                             msg.includes('Navigation failed because browser has disconnected');
+        const isKnownError = msg.includes('waiting for target failed: timeout') ||
+            msg.includes('Target closed') ||
+            msg.includes('Protocol error') ||
+            msg.includes('Failed to launch the browser process') ||
+            msg.includes('Navigation failed because browser has disconnected');
 
         if (!isKnownError) {
             Sentry.captureException(err);
@@ -995,12 +995,12 @@ const initializeWhatsApp = async () => {
         if (err.message && (err.message.includes('Timeout') || err.message.includes('Evaluation failed') || err.message.includes('Protocol error'))) {
             console.log('⚠️ Error crítico detectado (Timeout/Evaluation/Protocol). Posible corrupción de sesión. Limpiando caché...');
             try {
-                 // Usar la ruta correcta de WhatsApp
-                 const authPath = WHATSAPP_DATA_DIR;
-                 const cachePath = path.join(WHATSAPP_DATA_DIR, '.wwebjs_cache');
-                 
-                 // Intentar borrar con reintentos para evitar bloqueos de archivo
-                 const deleteFolder = (p) => {
+                // Usar la ruta correcta de WhatsApp
+                const authPath = WHATSAPP_DATA_DIR;
+                const cachePath = path.join(WHATSAPP_DATA_DIR, '.wwebjs_cache');
+
+                // Intentar borrar con reintentos para evitar bloqueos de archivo
+                const deleteFolder = (p) => {
                     if (fs.existsSync(p)) {
                         try {
                             fs.rmSync(p, { recursive: true, force: true });
@@ -1008,12 +1008,12 @@ const initializeWhatsApp = async () => {
                             console.warn(`⚠️ No se pudo borrar ${p} inmediatamente: ${e.message}`);
                         }
                     }
-                 };
+                };
 
-                 deleteFolder(authPath);
-                 deleteFolder(cachePath);
-                 
-                 console.log('✅ Caché de sesión eliminada. Se requerirá nuevo escaneo de QR.');
+                deleteFolder(authPath);
+                deleteFolder(cachePath);
+
+                console.log('✅ Caché de sesión eliminada. Se requerirá nuevo escaneo de QR.');
             } catch (cleanupErr) {
                 console.error('❌ Error limpiando caché:', cleanupErr);
             }
@@ -1044,7 +1044,7 @@ const initializeWhatsApp = async () => {
         }
 
         whatsappState = 'ERROR';
-        
+
         // Ensure client is destroyed to avoid "Client already initialized" on retry
         try {
             console.log('🧹 Limpiando instancia fallida de WhatsApp...');
@@ -1055,7 +1055,7 @@ const initializeWhatsApp = async () => {
 
         // Reintentar en 10 segundos (o 20 si fue un error de protocolo/cierre)
         const retryDelay = (err.message && err.message.includes('Target closed')) ? 20000 : 10000;
-        console.log(`⏳ Reintentando inicialización en ${retryDelay/1000} segundos...`);
+        console.log(`⏳ Reintentando inicialización en ${retryDelay / 1000} segundos...`);
         setTimeout(initializeWhatsApp, retryDelay);
     }
 };
@@ -1080,7 +1080,7 @@ const getEmailConfig = () => {
     try {
         const BASE_PATH = process.env.USER_DATA_PATH || process.env.APPDATA || path.join(__dirname, '..');
         const CONFIG_FILE = path.join(BASE_PATH, 'data', 'email_config.json');
-        
+
         if (fs.existsSync(CONFIG_FILE)) {
             const savedConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
             if (savedConfig.email && savedConfig.password) {
@@ -1124,7 +1124,7 @@ const notifyUser = async (options) => {
     if (config.user && config.pass) {
         try {
             console.log(`   📧 Enviando copia de notificación por email a ${config.user}...`);
-            
+
             // Crear transporter on-the-fly para asegurar credenciales frescas
             const transporter = nodemailer.createTransport({
                 service: 'gmail',
@@ -1176,7 +1176,7 @@ app.get('/api/scraper/idealista/run', (req, res) => {
 app.post('/api/scraper/run', async (req, res) => {
     try {
         console.log('🚀 Iniciando escaneo manual de portales (solicitado por usuario)...');
-        
+
         // 1. Forzar chequeo de emails (busca nuevas URLs)
         emailService.checkEmails();
 
@@ -1217,15 +1217,15 @@ app.post('/api/scraper/rescrape-email', async (req, res) => {
 
         // Try to load from local config file if env vars are missing
         if (!config.user || !config.password) {
-             const BASE_PATH = process.env.USER_DATA_PATH || path.join(__dirname, '..');
-             const CONFIG_FILE = path.join(BASE_PATH, 'data', 'email_config.json');
-             if (fs.existsSync(CONFIG_FILE)) {
-                 const savedConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-                 if (savedConfig.email && savedConfig.password) {
-                     config.user = savedConfig.email;
-                     config.password = savedConfig.password;
-                 }
-             }
+            const BASE_PATH = process.env.USER_DATA_PATH || path.join(__dirname, '..');
+            const CONFIG_FILE = path.join(BASE_PATH, 'data', 'email_config.json');
+            if (fs.existsSync(CONFIG_FILE)) {
+                const savedConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+                if (savedConfig.email && savedConfig.password) {
+                    config.user = savedConfig.email;
+                    config.password = savedConfig.password;
+                }
+            }
         }
 
         if (!config.user || !config.password) {
@@ -1249,7 +1249,7 @@ app.post('/api/scraper/rescrape-email', async (req, res) => {
         const idHeader = "Imap-Id: " + uid + "\r\n";
         const header = item.parts.find(p => p.which === 'HEADER');
         const fromLine = header.body.from ? header.body.from[0] : '';
-        
+
         const mail = await simpleParser(idHeader + all.body);
 
         // 3. Extraer URL
@@ -1269,21 +1269,21 @@ app.post('/api/scraper/rescrape-email', async (req, res) => {
             // Captura cualquier URL de fotocasa.es/es/... que contenga dígitos y termine en /d o similar
             // Usa lazy matching .*? para cubrir cualquier estructura de ruta intermedia
             const urlRegex = /https:\/\/www\.fotocasa\.es\/es\/.*?\/\d+\/d(?:\?[\w=&-]+)?/g;
-            
+
             const matchesText = mail.text ? mail.text.match(urlRegex) : [];
             const matchesHtml = mail.html ? mail.html.match(urlRegex) : [];
             propertyUrls = [...new Set([...(matchesText || []), ...(matchesHtml || [])])];
-            
+
             // Fallback: Si no encuentra con /d, buscar patrones de ID numérico largo si la URL contiene fotocasa.es
             if (propertyUrls.length === 0) {
-                 console.log('   ⚠️ Regex estricta de Fotocasa falló. Intentando búsqueda amplia...');
-                 // Busca cualquier link de fotocasa
-                 const broadRegex = /https:\/\/www\.fotocasa\.es\/es\/[^\s"']+/g;
-                 const textLinks = mail.text ? mail.text.match(broadRegex) : [];
-                 const htmlLinks = (mail.html && typeof mail.html === 'string') ? mail.html.match(broadRegex) : [];
-                 const allLinks = [...(textLinks || []), ...(htmlLinks || [])];
-                 // Filtrar los que parecen tener un ID (numeros de >7 digitos)
-                 propertyUrls = [...new Set(allLinks.filter(url => /\/\d{7,}\//.test(url) || url.endsWith('/d')))];
+                console.log('   ⚠️ Regex estricta de Fotocasa falló. Intentando búsqueda amplia...');
+                // Busca cualquier link de fotocasa
+                const broadRegex = /https:\/\/www\.fotocasa\.es\/es\/[^\s"']+/g;
+                const textLinks = mail.text ? mail.text.match(broadRegex) : [];
+                const htmlLinks = (mail.html && typeof mail.html === 'string') ? mail.html.match(broadRegex) : [];
+                const allLinks = [...(textLinks || []), ...(htmlLinks || [])];
+                // Filtrar los que parecen tener un ID (numeros de >7 digitos)
+                propertyUrls = [...new Set(allLinks.filter(url => /\/\d{7,}\//.test(url) || url.endsWith('/d')))];
             }
         }
 
@@ -1318,7 +1318,7 @@ app.post('/api/scraper/rescrape-email', async (req, res) => {
         res.status(500).json({ error: error.message });
     } finally {
         if (connection) {
-            try { connection.end(); } catch(e) {}
+            try { connection.end(); } catch (e) { }
         }
     }
 });
@@ -1477,9 +1477,9 @@ app.post('/api/config/whatsapp/logout', async (req, res) => {
             console.log('Cliente destruido.');
         } catch (err) {
             if (err.message && (err.message.includes('Protocol error') || err.message.includes('Target closed'))) {
-                 // Ignorar ruido
+                // Ignorar ruido
             } else {
-                 console.warn('Error destruyendo cliente:', err.message);
+                console.warn('Error destruyendo cliente:', err.message);
             }
         }
 
@@ -1489,7 +1489,7 @@ app.post('/api/config/whatsapp/logout', async (req, res) => {
         setTimeout(() => {
             initializeWhatsApp();
         }, 1000);
-        
+
         isWhatsAppReady = false;
         currentQR = null;
         whatsappState = 'INITIALIZING';
@@ -1736,27 +1736,27 @@ app.delete('/api/properties/:id', (req, res) => {
         // Vamos a asumir que si pasamos un ID numérico, deberíamos tener una función para borrar por ID.
         // Como sqliteManager solo expuso deleteProperty(url), vamos a obtener la URL por ID primero o modificar sqliteManager.
         // Para simplificar y dado que el frontend puede pasar la URL codificada:
-        
+
         let url = decodeURIComponent(id);
-        
+
         // Si es un ID numérico (ej. "15"), buscamos la URL primero
         // Pero para ser prácticos, añadiremos deletePropertyById en sqliteManager o usamos SQL directo aquí si fuera necesario.
         // Mejor: usar deleteProperty de sqliteManager que espera URL.
         // Frontend debe enviar encodeURIComponent(property.url).
-        
+
         const result = sqliteManager.deleteProperty(url);
-        
+
         if (result.changes > 0) {
             res.json({ success: true });
         } else {
             // Intentar borrar por ID si la URL falló (por si acaso pasaron un ID)
-             const stmt = sqliteManager.db.prepare('DELETE FROM properties WHERE id = ?');
-             const resultId = stmt.run(id);
-             if (resultId.changes > 0) {
-                 res.json({ success: true });
-             } else {
-                 res.status(404).json({ error: 'Propiedad no encontrada' });
-             }
+            const stmt = sqliteManager.db.prepare('DELETE FROM properties WHERE id = ?');
+            const resultId = stmt.run(id);
+            if (resultId.changes > 0) {
+                res.json({ success: true });
+            } else {
+                res.status(404).json({ error: 'Propiedad no encontrada' });
+            }
         }
     } catch (error) {
         console.error('Error eliminando propiedad:', error);
@@ -2003,7 +2003,7 @@ const runPythonScraper = (scraperPath, res, scraperId, args = []) => {
             const stats = consolidatePropertiesFolder();
 
             console.log(`✅ Consolidación completada: ${sqliteManager.getPropertiesCount()} propiedades en SQLite.`);
-            
+
             if (res) {
                 res.json({
                     success: true,
@@ -2034,7 +2034,7 @@ const runPythonScraper = (scraperPath, res, scraperId, args = []) => {
             } else if (errorOutput) {
                 errorMessage = `Error del script: ${errorOutput.slice(0, 300)}...`; // Limitar longitud
             }
-            
+
             // Reportar a Sentry con contexto
             Sentry.withScope(scope => {
                 scope.setTag("scraper_id", scraperId || "unknown");
@@ -2059,9 +2059,9 @@ const runPythonScraper = (scraperPath, res, scraperId, args = []) => {
     pythonProcess.on('error', (error) => {
         if (res && res.headersSent) return;
         console.error('❌ Error iniciando scraper:', error);
-        
+
         Sentry.captureException(error);
-        
+
         if (res) {
             res.status(500).json({ success: false, error: 'Error iniciando scraper: ' + error.message });
         }
@@ -2141,10 +2141,10 @@ app.post('/api/scraper/idealista/run', (req, res) => {
     if (!fs.existsSync(IDEALISTA_SCRAPER)) {
         return res.status(404).json({ success: false, error: 'El scraper de Idealista no está instalado o no se encuentra el archivo.' });
     }
-    
+
     // Usamos ID único basado en el tipo si existe
     const scraperId = type ? `idealista_${type}` : 'idealista';
-    
+
     // Argumentos para el script python (espera JSON en argv[1])
     const args = type ? [JSON.stringify({ type })] : [];
 
@@ -2300,7 +2300,7 @@ async function processPropertyUpdates(urls) {
     if (!urls || urls.length === 0) return { success: false, error: 'No URLs provided' };
 
     console.log(`🔄 [Helper] Actualizando ${urls.length} propiedades...`);
-    
+
     // Separar URLs por plataforma
     const idealistaUrls = urls.filter(u => u.includes('idealista'));
     const otherUrls = urls.filter(u => !u.includes('idealista')); // Fotocasa y otros
@@ -2320,12 +2320,12 @@ async function processPropertyUpdates(urls) {
                             env: { ...process.env, PYTHONIOENCODING: 'utf-8', USER_DATA_PATH: BASE_PATH },
                             shell: false
                         });
-                        
+
                         let stdout = '';
                         let stderr = '';
                         proc.stdout.on('data', d => stdout += d.toString());
                         proc.stderr.on('data', d => stderr += d.toString());
-                        
+
                         proc.on('close', (code) => {
                             if (code !== 0) {
                                 console.error(`❌ Idealista scraper falló para ${url}`);
@@ -2335,7 +2335,7 @@ async function processPropertyUpdates(urls) {
                                 try {
                                     const jsonStartIndex = stdout.indexOf('{');
                                     const jsonEndIndex = stdout.lastIndexOf('}');
-                                    
+
                                     if (jsonStartIndex !== -1 && jsonEndIndex !== -1) {
                                         const jsonStr = stdout.substring(jsonStartIndex, jsonEndIndex + 1);
                                         const data = JSON.parse(jsonStr);
@@ -2363,7 +2363,7 @@ async function processPropertyUpdates(urls) {
         // --- 2. PROCESAR OTROS (Fotocasa - Batch) ---
         if (otherUrls.length > 0) {
             console.log(`🔎 Procesando ${otherUrls.length} propiedades de Fotocasa/Otros...`);
-            
+
             // Crear archivo temporal
             const updateDir = path.join(DATA_DIR, 'update');
             if (!fs.existsSync(updateDir)) fs.mkdirSync(updateDir, { recursive: true });
@@ -2378,7 +2378,7 @@ async function processPropertyUpdates(urls) {
                 });
 
                 let rawData = '';
-                
+
                 pythonProcess.stdout.on('data', (data) => rawData += data.toString());
                 pythonProcess.stderr.on('data', (data) => {
                     combinedErrorData += data.toString();
@@ -2389,11 +2389,11 @@ async function processPropertyUpdates(urls) {
 
                 pythonProcess.on('close', (code) => {
                     // Borrar temp file
-                    try { if (fs.existsSync(tempUrlsFile)) fs.unlinkSync(tempUrlsFile); } catch (e) {}
+                    try { if (fs.existsSync(tempUrlsFile)) fs.unlinkSync(tempUrlsFile); } catch (e) { }
 
                     if (code !== 0) {
                         console.error(`❌ Batch scraper falló con código ${code}`);
-                        resolve(); 
+                        resolve();
                     } else {
                         try {
                             const jsonStartIndex = rawData.indexOf('[');
@@ -2413,10 +2413,10 @@ async function processPropertyUpdates(urls) {
         }
 
         if (updatedProperties.length === 0) {
-             if (combinedErrorData) {
-                 console.warn("⚠️ No se obtuvieron propiedades, pero hubo logs:", combinedErrorData.substring(0, 200));
-             }
-             return { success: true, updatedCount: 0, message: "No se obtuvieron datos actualizados.", newClientsCount: 0 };
+            if (combinedErrorData) {
+                console.warn("⚠️ No se obtuvieron propiedades, pero hubo logs:", combinedErrorData.substring(0, 200));
+            }
+            return { success: true, updatedCount: 0, message: "No se obtuvieron datos actualizados.", newClientsCount: 0 };
         }
 
         console.log(`💾 Guardando ${updatedProperties.length} propiedades actualizadas en SQLite...`);
@@ -2485,7 +2485,7 @@ async function processPropertyUpdates(urls) {
         try {
             const newClientMatches = combinedErrorData.match(/Nuevo cliente añadido/g);
             if (newClientMatches) newClientsCount = newClientMatches.length;
-        } catch (e) {}
+        } catch (e) { }
 
         // Usamos updatedProperties.length como la cuenta real de éxito (propiedades scrapeadas y guardadas en DB)
         const totalProcessed = updatedProperties.length;
@@ -2507,7 +2507,7 @@ app.post('/api/properties/update', async (req, res) => {
     }
 
     console.log(`🔄 Actualizando ${urls.length} propiedades...`);
-    
+
     // Separar URLs por plataforma
     const idealistaUrls = urls.filter(u => u.includes('idealista'));
     const otherUrls = urls.filter(u => !u.includes('idealista')); // Fotocasa y otros
@@ -2527,12 +2527,12 @@ app.post('/api/properties/update', async (req, res) => {
                             env: { ...process.env, PYTHONIOENCODING: 'utf-8', USER_DATA_PATH: BASE_PATH },
                             shell: false
                         });
-                        
+
                         let stdout = '';
                         let stderr = '';
                         proc.stdout.on('data', d => stdout += d.toString());
                         proc.stderr.on('data', d => stderr += d.toString());
-                        
+
                         proc.on('close', (code) => {
                             if (code !== 0) {
                                 console.error(`❌ Idealista scraper falló para ${url}`);
@@ -2544,7 +2544,7 @@ app.post('/api/properties/update', async (req, res) => {
                                     // Robust parsing: Find the first { and last }
                                     const jsonStartIndex = stdout.indexOf('{');
                                     const jsonEndIndex = stdout.lastIndexOf('}');
-                                    
+
                                     if (jsonStartIndex !== -1 && jsonEndIndex !== -1) {
                                         const jsonStr = stdout.substring(jsonStartIndex, jsonEndIndex + 1);
                                         const data = JSON.parse(jsonStr);
@@ -2572,7 +2572,7 @@ app.post('/api/properties/update', async (req, res) => {
         // --- 2. PROCESAR OTROS (Fotocasa - Batch) ---
         if (otherUrls.length > 0) {
             console.log(`🔎 Procesando ${otherUrls.length} propiedades de Fotocasa/Otros...`);
-            
+
             // Crear archivo temporal
             const updateDir = path.join(DATA_DIR, 'update');
             if (!fs.existsSync(updateDir)) fs.mkdirSync(updateDir, { recursive: true });
@@ -2587,7 +2587,7 @@ app.post('/api/properties/update', async (req, res) => {
                 });
 
                 let rawData = '';
-                
+
                 pythonProcess.stdout.on('data', (data) => rawData += data.toString());
                 pythonProcess.stderr.on('data', (data) => {
                     combinedErrorData += data.toString();
@@ -2598,12 +2598,12 @@ app.post('/api/properties/update', async (req, res) => {
 
                 pythonProcess.on('close', (code) => {
                     // Borrar temp file
-                    try { if (fs.existsSync(tempUrlsFile)) fs.unlinkSync(tempUrlsFile); } catch (e) {}
+                    try { if (fs.existsSync(tempUrlsFile)) fs.unlinkSync(tempUrlsFile); } catch (e) { }
 
                     if (code !== 0) {
                         console.error(`❌ Batch scraper falló con código ${code}`);
                         // No rechazamos para permitir que lo de Idealista se guarde si funcionó
-                        resolve(); 
+                        resolve();
                     } else {
                         // Parsear resultados batch
                         try {
@@ -2624,12 +2624,12 @@ app.post('/api/properties/update', async (req, res) => {
         }
 
         if (updatedProperties.length === 0) {
-             // Si falló todo, devolver error o mensaje vacío
-             if (combinedErrorData) {
-                 // Si hubo error data y no hay propiedades, quizás falló todo
-                 console.warn("⚠️ No se obtuvieron propiedades, pero hubo logs:", combinedErrorData.substring(0, 200));
-             }
-             return res.json({ success: true, updatedCount: 0, message: "No se obtuvieron datos actualizados.", newClientsCount: 0 });
+            // Si falló todo, devolver error o mensaje vacío
+            if (combinedErrorData) {
+                // Si hubo error data y no hay propiedades, quizás falló todo
+                console.warn("⚠️ No se obtuvieron propiedades, pero hubo logs:", combinedErrorData.substring(0, 200));
+            }
+            return res.json({ success: true, updatedCount: 0, message: "No se obtuvieron datos actualizados.", newClientsCount: 0 });
         }
 
         // 3. Actualizar Base de Datos SQLite (CRÍTICO: La fuente de verdad)
@@ -2662,7 +2662,7 @@ app.post('/api/properties/update', async (req, res) => {
         updatedProperties.forEach(updatedProp => {
             // Normalizar URL para comparación (quitar slash final si existe)
             const cleanUrl = updatedProp.url.replace(/\/$/, '');
-            
+
             const match = allProperties.find(p => {
                 const pClean = p.url.replace(/\/$/, '');
                 return pClean === cleanUrl;
@@ -2684,7 +2684,7 @@ app.post('/api/properties/update', async (req, res) => {
                     updatesByFile[fileName].forEach(update => {
                         // Normalizar URL para búsqueda
                         const updateUrlClean = update.url.replace(/\/$/, '');
-                        
+
                         const propIndex = fileData.properties.findIndex(p => {
                             const pUrlClean = (p.url || '').replace(/\/$/, '');
                             return pUrlClean === updateUrlClean;
@@ -2716,12 +2716,12 @@ app.post('/api/properties/update', async (req, res) => {
         try {
             const newClientMatches = combinedErrorData.match(/Nuevo cliente añadido/g);
             if (newClientMatches) newClientsCount = newClientMatches.length;
-        } catch (e) {}
+        } catch (e) { }
 
         // Usamos updatedProperties.length como la cuenta real de éxito (propiedades scrapeadas y guardadas en DB)
         // Fallback a dbStats si por alguna razón updatedProperties estuviera vacío pero dbStats no (raro)
         const finalCount = updatedProperties.length || (dbStats.inserted + dbStats.updated);
-        
+
         res.json({ success: true, updatedCount: finalCount, newClientsCount });
 
     } catch (error) {
@@ -2971,6 +2971,28 @@ app.get('/api/messages/by-phone/:phone', (req, res) => {
     }
 });
 
+// Limpiar historial de mensajes de un cliente
+app.delete('/api/messages/:clientId', (req, res) => {
+    try {
+        sqliteManager.clearMessages(req.params.clientId);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error limpiando mensajes:', error);
+        res.status(500).json({ error: 'Error limpiando mensajes' });
+    }
+});
+
+// Limpiar historial de contacto de un cliente (contactHistory en tabla clients)
+app.delete('/api/clients/:clientId/history', (req, res) => {
+    try {
+        sqliteManager.clearClientHistory(req.params.clientId);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error limpiando historial de contacto:', error);
+        res.status(500).json({ error: 'Error limpiando historial' });
+    }
+});
+
 // Generar mensaje con IA (o Template)
 app.post('/api/messages/generate', async (req, res) => {
     const { clientName, clientPhone, properties, preferences, model, template, scriptType, history, apiKey } = req.body;
@@ -3010,10 +3032,10 @@ app.post('/api/messages/generate', async (req, res) => {
         // 1. CASO SIN HISTORIAL: Retornar plantilla estática (si existe)
         if (effectiveTemplate && whatsappScripts[effectiveTemplate] && (!history || history.length === 0)) {
             let message = whatsappScripts[effectiveTemplate].text;
-            
+
             // Reemplazo INTELIGENTE de variables
             message = message.replace('{{CLIENT_NAME}}', clientName || '');
-            
+
             // Reemplazo de {{LINK}}
             if (propertyContext.url) {
                 message = message.replace('{{LINK}}', propertyContext.url);
@@ -3025,22 +3047,22 @@ app.post('/api/messages/generate', async (req, res) => {
             // Ajuste gramatical básico (si es 'Piso' -> 'el piso', si es 'Casa' -> 'la casa')
             // Por simplicidad en esta iteración, reemplazamos el término directo.
             // En los scripts hemos puesto "propiedad" genérico. Vamos a intentar ser específicos si podemos.
-            
+
             // Si el script tiene {{PROPERTY_TYPE}}, lo usamos. Si no, intentamos reemplazar "propiedad" o "inmueble" si tenemos un tipo específico.
             // Pero para ser seguros, solo reemplazamos si el script tiene el placeholder explícito o si hacemos un replace global de términos genéricos.
             // ESTRATEGIA: Si tenemos datos específicos, personalizamos.
-            
+
             if (propertyContext.type && propertyContext.location) {
                 // "le contacto por su propiedad" -> "le contacto por su Piso en Dénia"
                 // Esto requiere que el script tenga un placeholder o hacemos un replace inteligente.
                 // Vamos a optar por inyectar variables si el script las tuviera, o hacer un replace de "la propiedad" -> "su [TIPO] en [ZONA]"
-                
+
                 // Opción segura: Reemplazar "la propiedad que tiene en venta" por "su [TIPO] en [UBICACION]"
                 if (message.includes("la propiedad que tiene en venta")) {
-                     message = message.replace("la propiedad que tiene en venta", `su ${propertyContext.type} en ${propertyContext.location}`);
+                    message = message.replace("la propiedad que tiene en venta", `su ${propertyContext.type} en ${propertyContext.location}`);
                 }
-                 if (message.includes("su propiedad")) {
-                     message = message.replace("su propiedad", `su ${propertyContext.type}`);
+                if (message.includes("su propiedad")) {
+                    message = message.replace("su propiedad", `su ${propertyContext.type}`);
                 }
             }
 
@@ -3050,30 +3072,30 @@ app.post('/api/messages/generate', async (req, res) => {
         // 3. GENERACIÓN CON IA (Con Historial o sin template definido)
         // Fallback si no hay API Key: devolver plantilla inteligente independientemente del historial
         if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY === 'tu_api_key_aqui') {
-             let message = '';
-             // Usar plantilla seleccionada si existe, si no, initial_contact
-             const templateKey = (effectiveTemplate && whatsappScripts[effectiveTemplate]) ? effectiveTemplate : 'initial_contact';
-             message = whatsappScripts[templateKey]?.text || 'Hola, le contacto por la propiedad que tiene en venta';
-             
-             // Personalización básica con contexto de propiedad
-             if (propertyContext.url) {
-                 message = message.replace('{{LINK}}', propertyContext.url);
-             }
-             if (clientName) {
-                 message = message.replace('{{CLIENT_NAME}}', clientName);
-             }
-             if (propertyContext.type && message.includes('la propiedad')) {
-                 message = message.replace('la propiedad', `su ${propertyContext.type}`);
-             }
-             return res.json({ message, source: 'script_template_fallback' });
+            let message = '';
+            // Usar plantilla seleccionada si existe, si no, initial_contact
+            const templateKey = (effectiveTemplate && whatsappScripts[effectiveTemplate]) ? effectiveTemplate : 'initial_contact';
+            message = whatsappScripts[templateKey]?.text || 'Hola, le contacto por la propiedad que tiene en venta';
+
+            // Personalización básica con contexto de propiedad
+            if (propertyContext.url) {
+                message = message.replace('{{LINK}}', propertyContext.url);
+            }
+            if (clientName) {
+                message = message.replace('{{CLIENT_NAME}}', clientName);
+            }
+            if (propertyContext.type && message.includes('la propiedad')) {
+                message = message.replace('la propiedad', `su ${propertyContext.type}`);
+            }
+            return res.json({ message, source: 'script_template_fallback' });
         }
 
         const AGENTE = "Alex Aldazabal"; // Quitamos Dufurneaux si prefiere ser más directo
         const COMPANIA = "IAD Inmobiliaria"; // O "Asesor Independiente" según toque
-        
+
         let systemPrompt = "";
         let goalText = "";
-        
+
         // Construir contexto del inmueble para la IA
         let propertyPromptContext = "";
         if (propertyContext.url) {
@@ -3096,23 +3118,25 @@ ${propertyPromptContext}
 GUION ORIGINAL (REFERENCIA DE ESTILO Y OBJETIVO):
 "${goalText}"
 
-INSTRUCCIONES:
+  INSTRUCCIONES:
 - Analiza el historial de conversación.
-- USA LOS DATOS DEL INMUEBLE: Si el cliente vende un "Chalet con piscina", menciónalo. Demuestra que has leído su anuncio.
-- Si el cliente muestra interés, NO propongas fecha/hora concreta. PIDE su disponibilidad: "¿Qué día te viene bien?" o "¿prefieres mañana tarde?".
+- USA LOS DATOS DEL INMUEBLE: Solo si dispones de un enlace al anuncio del cliente ({{LINK}}) Y hay información específica confirmada, menciónala.
+- REGLA CRÍTICA: NO INVENTES características (piscina, terraza, etc.) si no aparecen explícitamente en los "DATOS DEL INMUEBLE". Si no conoces los detalles, limítate a decir "su propiedad" o "su anuncio".
+- Sé MUY DIRECTO y conciso: Ve al grano en cada respuesta. Responde en 1-2 frases siempre que sea posible.
+- Si el cliente muestra interés, NO propongas fecha/hora concreta. PIDE su disponibilidad.
 - NO confirmes citas ni cierres agenda tú; solo recoge intención y disponibilidad del cliente.
 - Si el cliente tiene dudas, respóndelas usando la información del guion como base.
-- Mantén naturalidad y variedad: evita repetir frases literales del guion si no encajan; usa conectores variados (por ejemplo, "por cierto", "además", "en ese caso").
-- Adapta el trato (tú/usted) al del cliente; evita tecnicismos innecesarios; sé breve y claro (1–3 frases o 1 párrafo corto).
+- Mantén naturalidad y variedad; evita tecnicismos innecesarios.
 - No generes listas ni bloques largos; responde como humano en chat.
 
 REGLAS DE ORO (SEGURIDAD Y HONESTIDAD):
-1. NO MIENTAS NI INVENTES COMPRADORES: Nunca digas "tengo un cliente específico para tu casa" o "tengo una visita lista" si no es cierto.
-2. SI TE PREGUNTAN POR CLIENTES CONCRETOS: Responde que gestionas una cartera de compradores buscando en esa zona/rango, y que necesitas VER la propiedad para saber si encaja con alguno de ellos.
-3. TU OBJETIVO: Vender tu SERVICIO PROFESIONAL y tu PLAN DE MARKETING, no prometer una venta falsa inmediata.
-4. MANTÉN EL TONO profesional, cercano y directo del guion original.
-5. NO copies el guion palabra por palabra si ya no tiene sentido en el contexto.
-6. Sé conciso y natural.
+1. **NO MIENTAS NI INVENTES DATOS**: No menciones nada que no esté en el extracto proporcionado.
+2. NO INVENTES COMPRADORES: Nunca digas "tengo un cliente específico" si no es cierto.
+3. SI TE PREGUNTAN POR CLIENTES CONCRETOS: Responde que gestionas una cartera de compradores en la zona y necesitas VER la propiedad primero.
+4. TU OBJETIVO: Vender tu SERVICIO PROFESIONAL y tu PLAN DE MARKETING.
+5. MANTÉN EL TONO profesional y directo.
+6. Sé BREVE y natural.
+7. NO copies el guion palabra por palabra si ya no tiene sentido en el contexto.
 
 ADAPTACIÓN LINGÜÍSTICA Y DE FORMATO:
 - IDIOMA: Detecta el idioma en el que escribe el cliente (Español, Inglés, Alemán, Francés, etc.) y RESPONDE EN EL MISMO IDIOMA.
@@ -3121,7 +3145,7 @@ ADAPTACIÓN LINGÜÍSTICA Y DE FORMATO:
 
         } else {
             // Fallback genérico si no hay script seleccionado o es desconocido
-             systemPrompt = `Eres ${AGENTE}, Asesor Inmobiliario. Estás contactando a ${clientName} sobre su propiedad.
+            systemPrompt = `Eres ${AGENTE}, Asesor Inmobiliario. Estás contactando a ${clientName} sobre su propiedad.
 ${propertyPromptContext}
 Objetivo: Concertar una visita para captar el inmueble.
 Tono: Profesional, empático y directo. Demuestra conocimiento sobre el inmueble específico (tipo, zona, características) si dispones de los datos.`;
@@ -3155,7 +3179,7 @@ Tono: Profesional, empático y directo. Demuestra conocimiento sobre el inmueble
         });
 
         const data = await response.json();
-        
+
         if (data.choices && data.choices[0]) {
             res.json({ message: data.choices[0].message.content, source: 'openrouter' });
         } else {
@@ -3238,15 +3262,15 @@ app.post('/api/messages/send', async (req, res) => {
                 }
 
                 console.log(`   📱 Enviando WhatsApp a ${chatId}...`);
-                
+
                 // Timeout de seguridad para evitar bloqueos infinitos
                 const sendPromise = whatsappClient.sendMessage(chatId, message);
-                const timeoutPromise = new Promise((_, reject) => 
+                const timeoutPromise = new Promise((_, reject) =>
                     setTimeout(() => reject(new Error('Timeout enviando mensaje de WhatsApp (>45s)')), 45000)
                 );
 
                 const response = await Promise.race([sendPromise, timeoutPromise]);
-                
+
                 console.log('   ✅ WhatsApp enviado. ID:', response.id ? response.id._serialized : 'Desconocido');
                 results.whatsapp = 'sent';
                 success = true;
@@ -3254,7 +3278,7 @@ app.post('/api/messages/send', async (req, res) => {
                 console.error('   ❌ Error enviando WhatsApp:', err);
                 errors.push(`Error WhatsApp: ${err.message}`);
                 results.whatsapp = 'failed';
-                
+
                 // Si es un error de desconexión o timeout, intentar reiniciar el cliente en segundo plano
                 if (err.message.includes('Timeout') || err.message.includes('disconnected')) {
                     console.warn('⚠️ Detectado posible estado zombie de WhatsApp. Programando reinicio...');
@@ -3284,7 +3308,7 @@ app.post('/api/messages/send', async (req, res) => {
                             emailSubject = `[WhatsApp BOT] ${emailSubject}`;
                         }
                     }
-                } catch (_) {}
+                } catch (_) { }
                 await emailTransporter.sendMail({
                     from: process.env.EMAIL_USER,
                     to: clientEmail,
@@ -3370,7 +3394,7 @@ app.post('/api/support', async (req, res) => {
 
     try {
         console.log(`   📧 Enviando solicitud de soporte a ${DEVELOPER_EMAIL}...`);
-        
+
         // Usar credenciales dinámicas
         const transporter = nodemailer.createTransport({
             service: 'gmail',
@@ -3457,7 +3481,7 @@ const runAutoScrapers = async () => {
 
                     child.stdout.on('data', (data) => console.log(`[${type}] ${data}`));
                     child.stderr.on('data', (data) => console.error(`[${type} ERROR] ${data}`));
-                    
+
                     child.on('close', (code) => {
                         console.log(`[${type}] Finished with code ${code}`);
                         resolve();
@@ -3543,12 +3567,12 @@ app.post('/api/ai/analyze-metrics', async (req, res) => {
         let text = `### 1. Resumen Ejecutivo\n`;
         text += `La agencia cuenta con **${total_propiedades} propiedades** y **${total_clientes} clientes**. `;
         text += `El precio promedio de la cartera es de **${new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(precio_promedio)}**.\n\n`;
-        
+
         text += `### 2. Análisis de Cartera\n`;
-        const topType = tipos_propiedades && tipos_propiedades.length > 0 
-            ? tipos_propiedades.sort((a, b) => b.value - a.value)[0] 
+        const topType = tipos_propiedades && tipos_propiedades.length > 0
+            ? tipos_propiedades.sort((a, b) => b.value - a.value)[0]
             : { name: 'General', value: 0 };
-        
+
         if (topType) {
             text += `El tipo de propiedad predominante es **${topType.name}** con ${topType.value} unidades. `;
         }
@@ -3567,7 +3591,7 @@ app.post('/api/ai/analyze-metrics', async (req, res) => {
 
     try {
         const fetch = (await import('node-fetch')).default;
-        
+
         // --- FALLBACK SIN API KEY ---
         const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
         if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY === 'tu_api_key_aqui') {
@@ -3638,11 +3662,11 @@ setInterval(() => {
     // Si lleva más de 2 minutos en INITIALIZING sin estar ready
     if (whatsappState === 'INITIALIZING' && !isWhatsAppReady) {
         const timeStuck = Date.now() - initStartTime;
-        if (timeStuck > 120000) { 
-             console.log('♻️ Watchdog: WhatsApp atascado en inicialización > 2min. Forzando reinicio...');
-             initStartTime = Date.now(); // Reset timer
-             if (whatsappClient) {
-                 whatsappClient.destroy()
+        if (timeStuck > 120000) {
+            console.log('♻️ Watchdog: WhatsApp atascado en inicialización > 2min. Forzando reinicio...');
+            initStartTime = Date.now(); // Reset timer
+            if (whatsappClient) {
+                whatsappClient.destroy()
                     .then(() => {
                         console.log('♻️ Cliente destruido. Reinicializando...');
                         initializeWhatsApp();
@@ -3651,7 +3675,7 @@ setInterval(() => {
                         console.error('Error destruyendo cliente:', e);
                         initializeWhatsApp();
                     });
-             }
+            }
         }
     }
 }, 30000);
@@ -3667,7 +3691,7 @@ app.listen(PORT, () => {
     // Iniciar monitor de email con callback para procesar URLs
     emailService.startMonitoring(async (url, source) => {
         console.log(`📧 URL detectada por email (${source}): ${url}`);
-        
+
         // Notificar inicio de procesamiento (opcional, para feedback inmediato)
         notifyUser({
             title: 'Alerta Inmobiliaria Detectada',
@@ -3678,10 +3702,10 @@ app.listen(PORT, () => {
         try {
             // processPropertyUpdates espera un array de URLs
             const result = await processPropertyUpdates([url]);
-            
+
             if (result.success) {
                 console.log(`✅ Propiedad actualizada desde email: ${url}`);
-                
+
                 // Notificar ÉXITO al usuario
                 notifyUser({
                     title: '¡Nueva Oportunidad Captada!',
@@ -3692,7 +3716,7 @@ app.listen(PORT, () => {
 
             } else {
                 console.error(`❌ Error actualizando propiedad desde email: ${result.error}`);
-                
+
                 // Notificar ERROR
                 notifyUser({
                     title: 'Error Importando Alerta',
